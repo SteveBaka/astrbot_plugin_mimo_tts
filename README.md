@@ -1,5 +1,7 @@
 # MiMO TTS Plugin (Enhanced)
 
+> **⚠️ 免责声明：本项目全程使用同期发布的MiMO-V2.5生成，代码发布时个人只对插件需要生成的内容与报错对其进行指正。**
+
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
 
 ## 核心特性
@@ -12,27 +14,23 @@
 - 唱歌模式：用唱歌的方式演绎
 - 笑声 / 停顿 / 呼吸声 / 重音模式
 - 音量控制：轻声/正常/大声
-- 语速/音高：0.5~2.0x 语速，-12~+12 音高
+- 语速/音高：0.5-2.0x 语速，-12-+12 音高
 - 声音克隆 & 设计：自定义音色
 - 多用户独立：每人独立设置，互不干扰
 
 ## 安装
 
-```bash
-cd AstrBot/data/plugins
-git clone https://github.com/yourname/astrbot_plugin_mimo_tts.git
-cd astrbot_plugin_mimo_tts
-pip install -r requirements.txt
-```
 
-重启 AstrBot 后在插件管理中启用。
+请在 **AstrBot 插件** 内使用本仓库地址下载安装本插件。
+
+安装后在插件管理中启用并配置插件。
 
 ## 配置
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `api_key` | MiMO API Key（必填） | - |
-| `api_base_url` | API 地址 | `https://open.bigmodel.cn/api/paas/v4` |
+| `api_base_url` | API 地址 | `https://api.xiaomimimo.com/v1` |
 | `model` | 模型名称 | `mimo-v2.5-tts` |
 | `default_voice` | 默认音色 | `mimo_default` |
 | `audio_format` | 输出格式(mp3/wav/ogg) | `mp3` |
