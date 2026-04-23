@@ -1,0 +1,178 @@
+{
+  "api_key": {
+    "type": "string",
+    "description": "MiMO API Key",
+    "hint": "从 MiMO 开放平台获取",
+    "default": ""
+  },
+  "api_base_url": {
+    "type": "string",
+    "description": "API Base URL",
+    "hint": "默认 https://api.xiaomimimo.com/v1",
+    "default": "https://api.xiaomimimo.com/v1"
+  },
+  "model": {
+    "type": "string",
+    "description": "模型选择",
+    "hint": "当前仅支持 mimo-v2.5-tts",
+    "default": "mimo-v2.5-tts"
+  },
+  "default_voice": {
+    "type": "string",
+    "description": "默认音色",
+    "hint": "如 XiaoIce、mimo_default 等，用 /voices 查看全部",
+    "default": "mimo_default"
+  },
+  "probability": {
+    "type": "float",
+    "description": "自动 TTS 触发概率",
+    "hint": "0.0 = 不触发，0.5 = 50%，1.0 = 每次都触发",
+    "default": 0.8
+  },
+  "auto_tts": {
+    "type": "bool",
+    "description": "自动 TTS（拦截 LLM 回复生成语音）",
+    "default": true
+  },
+  "auto_tts_in_group": {
+    "type": "bool",
+    "description": "群聊中也自动 TTS",
+    "default": true
+  },
+  "emotion_override": {
+    "type": "string",
+    "description": "默认情感覆盖",
+    "hint": "留空=自动检测，或填 happy/sad/angry/neutral/whisper 等",
+    "default": ""
+  },
+  "default_speed": {
+    "type": "float",
+    "description": "默认语速",
+    "hint": "0.5~2.0，1.0 为正常语速",
+    "default": 1.0
+  },
+  "default_pitch": {
+    "type": "int",
+    "description": "默认音高",
+    "hint": "-12~+12，0 为原始音高",
+    "default": 0
+  },
+    "style_hint": {
+    "type": "string",
+    "description": "🎛️ 全局风格提示",
+    "hint": "如：温柔甜美、活泼可爱、专业播音（嵌入 prompt 控制声音风格）",
+    "default": ""
+  },
+  "breath_enabled": {
+    "type": "bool",
+    "description": "🎛️ 呼吸声",
+    "hint": "启用自然呼吸声，增强真实感",
+    "default": false
+  },
+  "stress_enabled": {
+    "type": "bool",
+    "description": "🎛️ 重音模式",
+    "hint": "强调重音节奏，适合播音/朗读",
+    "default": false
+  },
+  "laughter_enabled": {
+    "type": "bool",
+    "description": "🎛️ 笑声",
+    "hint": "允许自然笑声融入语音",
+    "default": false
+  },
+  "pause_enabled": {
+    "type": "bool",
+    "description": "🎛️ 停顿模式",
+    "hint": "增加句间停顿，适合有感情的朗读",
+    "default": false
+  },
+  "singing_mode": {
+    "type": "bool",
+    "description": "🎛️ 唱歌模式",
+    "hint": "将文本以唱歌方式演绎",
+    "default": false
+  },
+  "clone_enabled": {
+    "type": "bool",
+    "description": "🔊 启用声音克隆",
+    "hint": "通过参考音频克隆特定声音",
+    "default": false
+  },
+  "clone_voice_id": {
+    "type": "string",
+    "description": "🔊 克隆音色 ID",
+    "hint": "先用 /voiceclone <ID> <音频路径> 创建",
+    "default": ""
+  },
+  "design_enabled": {
+    "type": "bool",
+    "description": "🔊 启用声音设计",
+    "hint": "通过文字描述自动生成全新音色",
+    "default": false
+  },
+  "design_voice_id": {
+    "type": "string",
+    "description": "🔊 设计音色 ID",
+    "hint": "先用 /voicegen <ID> <描述> 创建",
+    "default": ""
+  },
+  "preset_gentle_female": {
+    "type": "string",
+    "description": "🎨 预设·温柔女生",
+    "hint": "声音描述词",
+    "default": "温柔的女生音色，轻柔细腻"
+  },
+  "preset_serious_male": {
+    "type": "string",
+    "description": "🎨 预设·严肃男声",
+    "hint": "声音描述词",
+    "default": "成熟男声，严肃有力"
+  },
+  "preset_cute_girl": {
+    "type": "string",
+    "description": "🎨 预设·可爱女孩",
+    "hint": "声音描述词",
+    "default": "年轻女孩的声音，活泼甜美"
+  },
+  "preset_storyteller": {
+    "type": "string",
+    "description": "🎨 预设·讲故事",
+    "hint": "声音描述词",
+    "default": "温和的讲述者声音，抑扬顿挫"
+  },
+  "preset_news_anchor": {
+    "type": "string",
+    "description": "🎨 预设·新闻播报",
+    "hint": "声音描述词",
+    "default": "标准普通话，字正腔圆，专业权威"
+  },
+  "audio_format": {
+    "type": "string",
+    "description": "音频输出格式",
+    "hint": "mp3（推荐）/ wav / ogg",
+    "default": "mp3"
+  },
+  "min_text_length": {
+    "type": "int",
+    "description": "最小文本长度",
+    "hint": "低于此字数不触发自动 TTS",
+    "default": 5
+  },
+  "max_text_length": {
+    "type": "int",
+    "description": "最大文本长度",
+    "hint": "超过此字数截断（MiMO 单次上限约 5000）",
+    "default": 500
+  },
+  "timeout": {
+    "type": "int",
+    "description": "API 请求超时（秒）",
+    "default": 60
+  },
+  "max_retries": {
+    "type": "int",
+    "description": "失败重试次数",
+    "default": 2
+  }
+}
