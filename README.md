@@ -1,22 +1,22 @@
 # MiMO TTS Plugin (Enhanced)
 
-> **⚠️ 免责声明：本项目全程使用同期发布的MiMO-V2.5生成，代码发布时个人只对插件需要生成的内容与报错对其进行指正。**
+> **⚠️ 免责声明：本项目全程使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正。**
 
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
 
 ## 核心特性
 
-- 自动语音合成：LLM 回复自动生成语音
-- 20 种情感：happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy
-- 9 种内置音色（含中英文）
-- 8 个预设：一键切换风格
-- 方言支持：四川话、粤语、东北话等
-- 唱歌模式：用唱歌的方式演绎
-- 笑声 / 停顿 / 呼吸声 / 重音模式
-- 音量控制：轻声/正常/大声
-- 语速/音高：0.5-2.0x 语速，-12-+12 音高
-- 声音克隆 & 设计：自定义音色
-- 多用户独立：每人独立设置，互不干扰
+- [x]自动语音合成：LLM 回复自动生成语音
+- [x]20 种情感：happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy
+- [x]9 种内置音色（含中英文）
+- [x]8 个预设：一键切换风格
+- [x]方言支持：四川话、粤语、东北话等
+- [ ]唱歌模式：用唱歌的方式演绎（仍在测试）
+- [x]笑声 / 停顿 / 呼吸声 / 重音模式
+- [x]音量控制：轻声/正常/大声
+- [x]语速/音高：0.5-2.0x 语速，-12-+12 音高
+- [ ]声音克隆 & 设计：自定义音色
+- [ ]多用户独立：每人独立设置，互不干扰
 
 ## 安装
 
@@ -182,6 +182,10 @@
 - 控制指令放在 `user` role，待合成文本放在 `assistant` role
 - 支持 mp3/wav/ogg 音频格式
 - 每用户独立设置，支持内联参数覆盖
+
+## 更新日志
+
+- 2025年4月24日，初版发布，**TTS**基本功能可以使用。目前尚未测试**VoiceDesign**与**VoiceClone**功能。
 
 ## License
 
