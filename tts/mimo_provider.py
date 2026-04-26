@@ -7,11 +7,11 @@ import asyncio
 import base64
 import io
 import logging
-from urllib.parse import urlparse
 import wave
+from mimetypes import guess_type
 from pathlib import Path
 from typing import Optional
-from mimetypes import guess_type
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -94,7 +94,9 @@ class MiMOProvider:
 
     @staticmethod
     def _looks_like_mp3(data: bytes) -> bool:
-        return data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
+        return data.startswith(b"ID3") or (
+            len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
+        )
 
     @staticmethod
     def _wrap_pcm_as_wav(audio_bytes: bytes) -> bytes:
@@ -106,7 +108,9 @@ class MiMOProvider:
             wav_file.writeframes(audio_bytes)
         return buf.getvalue()
 
-    def _normalize_audio_bytes(self, audio_bytes: bytes, requested_format: str) -> tuple[bytes, str]:
+    def _normalize_audio_bytes(
+        self, audio_bytes: bytes, requested_format: str
+    ) -> tuple[bytes, str]:
         """尽量将接口返回的音频整理为 AstrBot 可稳定发送的格式。"""
         if audio_bytes.startswith(b"RIFF"):
             return audio_bytes, "wav"
@@ -236,7 +240,9 @@ class MiMOProvider:
         }
         if self._is_voice_clone_model(model_name):
             try:
-                payload["audio"]["voice"] = self._build_voice_clone_data_url(clone_audio_path or "")
+                payload["audio"]["voice"] = self._build_voice_clone_data_url(
+                    clone_audio_path or ""
+                )
             except Exception as e:
                 self._set_last_error(str(e))
                 logger.error("MiMO TTS voiceclone payload build failed: %s", e)
@@ -253,7 +259,9 @@ class MiMOProvider:
             self._is_voice_clone_model(model_name),
             self._is_voice_design_model(model_name),
             fmt,
-            "<data-url>" if self._is_voice_clone_model(model_name) else (voice_id or ""),
+            "<data-url>"
+            if self._is_voice_clone_model(model_name)
+            else (voice_id or ""),
             bool(system_prompt),
         )
 
@@ -268,13 +276,23 @@ class MiMOProvider:
                             audio_b64 = data["choices"][0]["message"]["audio"]["data"]
                         except (KeyError, IndexError, TypeError):
                             # Fallback: try alternate structures
-                            audio_b64 = data.get("audio", {}).get("data") if isinstance(data.get("audio"), dict) else data.get("audio")
+                            audio_b64 = (
+                                data.get("audio", {}).get("data")
+                                if isinstance(data.get("audio"), dict)
+                                else data.get("audio")
+                            )
                         if not audio_b64:
-                            self._set_last_error(f"接口返回中未找到音频数据，响应键：{list(data.keys())}")
-                            logger.error(f"MiMO TTS: no audio in response. Keys: {list(data.keys())}")
+                            self._set_last_error(
+                                f"接口返回中未找到音频数据，响应键：{list(data.keys())}"
+                            )
+                            logger.error(
+                                f"MiMO TTS: no audio in response. Keys: {list(data.keys())}"
+                            )
                             return None
                         audio_bytes = base64.b64decode(audio_b64)
-                        normalized_bytes, actual_format = self._normalize_audio_bytes(audio_bytes, fmt)
+                        normalized_bytes, actual_format = self._normalize_audio_bytes(
+                            audio_bytes, fmt
+                        )
                         self._last_output_format = actual_format
                         logger.info(
                             f"MiMO TTS: synthesized {len(text)} chars -> {len(normalized_bytes)} bytes "
@@ -297,7 +315,13 @@ class MiMOProvider:
                 raise
             except Exception as e:
                 self._set_last_error(f"请求异常 @ {url} [model={model_name}]: {e}")
-                logger.warning("MiMO TTS attempt %s failed @ %s [model=%s]: %s", attempt, url, model_name, e)
+                logger.warning(
+                    "MiMO TTS attempt %s failed @ %s [model=%s]: %s",
+                    attempt,
+                    url,
+                    model_name,
+                    e,
+                )
 
             if attempt <= self.max_retries:
                 await asyncio.sleep(min(backoff, 10))
@@ -328,7 +352,9 @@ class MiMOProvider:
             logger.error("Voice clone validation error: %s", e)
             return False
 
-    async def design_voice(self, voice_id: str, description: str, model: str = "mimo-v2.5-tts-voicedesign") -> bool:
+    async def design_voice(
+        self, voice_id: str, description: str, model: str = "mimo-v2.5-tts-voicedesign"
+    ) -> bool:
         """Validate a local voice design profile.
 
         Args:

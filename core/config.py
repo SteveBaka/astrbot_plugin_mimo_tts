@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .constants import PLUGIN_ID
-
 
 class ConfigManager:
     """Plugin configuration manager that reads settings from _conf_schema.json.
@@ -30,19 +28,16 @@ class ConfigManager:
         "auto_tts": True,
         "auto_tts_in_group": True,
         "send_text_with_tts": True,
-
         # Emotion / prosody
         "emotion_override": "",
         "default_speed": 1.0,
         "default_pitch": 0,
-
         # Voice features
         "style_hint": "",
         "breath_enabled": False,
         "stress_enabled": False,
         "laughter_enabled": False,
         "pause_enabled": False,
-
         # Voice clone / design
         "clone_enabled": False,
         "clone_model": "mimo-v2.5-tts-voiceclone",
@@ -53,14 +48,12 @@ class ConfigManager:
         "design_model": "mimo-v2.5-tts-voicedesign",
         "tts_output_mode": "default",
         "design_voice_description": "",
-
         # Voice presets
         "preset_gentle_female": "温柔的女生音色，轻柔细腻",
         "preset_serious_male": "成熟男声，严肃有力",
         "preset_cute_girl": "年轻女孩的声音，活泼甜美",
         "preset_storyteller": "温和的讲述者声音，抑扬顿挫",
         "preset_news_anchor": "标准普通话，字正腔圆，专业权威",
-
         # Output
         "audio_format": "mp3",
         "min_text_length": 5,

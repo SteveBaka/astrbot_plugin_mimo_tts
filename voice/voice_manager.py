@@ -27,23 +27,35 @@ class VoiceManager:
     ):
         self.plugin_dir = Path(__file__).resolve().parent.parent
 
-        default_data_dir = self.plugin_dir.parent / "data" / "plugin_data" / "astrbot_plugin_mimo_tts"
+        default_data_dir = (
+            self.plugin_dir.parent / "data" / "plugin_data" / "astrbot_plugin_mimo_tts"
+        )
         if get_astrbot_data_path is not None:
             try:
-                default_data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "astrbot_plugin_mimo_tts"
+                default_data_dir = (
+                    Path(get_astrbot_data_path())
+                    / "plugin_data"
+                    / "astrbot_plugin_mimo_tts"
+                )
             except Exception:
                 pass
 
         self.data_dir = Path(data_dir) if data_dir else default_data_dir
-        self.voice_cache_dir = Path(voice_cache_dir) if voice_cache_dir else (self.data_dir / "voice")
-        self.clone_audio_dir = Path(clone_audio_dir) if clone_audio_dir else (self.data_dir / "clone")
+        self.voice_cache_dir = (
+            Path(voice_cache_dir) if voice_cache_dir else (self.data_dir / "voice")
+        )
+        self.clone_audio_dir = (
+            Path(clone_audio_dir) if clone_audio_dir else (self.data_dir / "clone")
+        )
         self.voice_cache_dir.mkdir(parents=True, exist_ok=True)
         self.clone_audio_dir.mkdir(parents=True, exist_ok=True)
 
         # Registry file for clones
         self.registry_file = self.voice_cache_dir / "voice_registry.json"
         self.legacy_registry_file = Path("voice") / "voice_registry.json"
-        self.legacy_plugin_registry_file = self.plugin_dir / "voice" / "voice_registry.json"
+        self.legacy_plugin_registry_file = (
+            self.plugin_dir / "voice" / "voice_registry.json"
+        )
         self.legacy_plugin_clone_dir = self.plugin_dir / "clone"
         self._voices: dict[str, dict] = self._load_registry()
 
@@ -59,7 +71,9 @@ class VoiceManager:
             try:
                 with open(self.legacy_registry_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                logger.info("Loaded legacy voice registry from: %s", self.legacy_registry_file)
+                logger.info(
+                    "Loaded legacy voice registry from: %s", self.legacy_registry_file
+                )
                 return data if isinstance(data, dict) else {}
             except Exception:
                 return {}
@@ -68,7 +82,10 @@ class VoiceManager:
             try:
                 with open(self.legacy_plugin_registry_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                logger.info("Loaded legacy plugin voice registry from: %s", self.legacy_plugin_registry_file)
+                logger.info(
+                    "Loaded legacy plugin voice registry from: %s",
+                    self.legacy_plugin_registry_file,
+                )
                 return data if isinstance(data, dict) else {}
             except Exception:
                 return {}
@@ -79,7 +96,9 @@ class VoiceManager:
         with open(self.registry_file, "w", encoding="utf-8") as f:
             json.dump(self._voices, f, ensure_ascii=False, indent=2)
 
-    def register_voice(self, voice_id: str, name: str = "", model: str = "voiceclone", **kwargs) -> None:
+    def register_voice(
+        self, voice_id: str, name: str = "", model: str = "voiceclone", **kwargs
+    ) -> None:
         """Register a voice (clone or generated) in the local registry."""
         normalized_kwargs = dict(kwargs)
         audio_path = normalized_kwargs.get("audio_path")
@@ -95,7 +114,9 @@ class VoiceManager:
                         if clone_candidate.exists():
                             path_obj = clone_candidate
                         else:
-                            legacy_clone_candidate = self.legacy_plugin_clone_dir / path_obj.name
+                            legacy_clone_candidate = (
+                                self.legacy_plugin_clone_dir / path_obj.name
+                            )
                             if legacy_clone_candidate.exists():
                                 path_obj = legacy_clone_candidate
                 normalized_kwargs["audio_path"] = str(path_obj.resolve())

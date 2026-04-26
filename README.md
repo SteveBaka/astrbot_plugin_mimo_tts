@@ -209,10 +209,11 @@ AstrBot/
 ### 其他
 ```
 /ttsformat <mp3|wav|ogg>   # 设置音频格式
+/tts_help                  # 快速查看常用指令
 /ttsconfig                  # 查看配置
 /ttsconfig reset            # 重置个人设置
-/tts_off                    # 关闭当前对话自动 TTS
-/tts_on                     # 重新开启当前对话自动 TTS
+/tts_restore               # 将当前对话配置恢复为插件默认设置
+/tts_<on/off>              # 关闭或重新开启当前对话自动 TTS
 /text <on|off>              # 当前对话内控制自动 TTS 是否同步发送文字
 /ttsinfo                    # 插件信息
 /ttsraw <文本>              # 纯文本合成（不带情感）

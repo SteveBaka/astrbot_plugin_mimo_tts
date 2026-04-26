@@ -9,42 +9,45 @@ MiMO TTS Plugin for AstrBot - Enhanced Edition
 使用方式：
   - 自动拦截：AI 说话时自动转语音
   - /mimo_say <文本> [选项]：即时语音合成
-  - /tts_off：关闭当前对话自动 TTS
-  - /sing <歌词>：唱歌模式
-  - /voice [音色名]：查看/切换音色
-  - /emotion [情感名]：查看/设置情感
-  - /speed [数值]：查看/设置语速
-  - /pitch [数值]：查看/设置音高
-  - /breath [on|off]：呼吸声开关
-  - /stress [on|off]：重音模式开关
-  - /dialect [方言名]：设置方言口音
-  - /volume [轻声|正常|大声]：设置音量
-  - /laughter [on|off]：笑声开关
-  - /pause [on|off]：停顿开关
-  - /preset [预设名]：查看/应用预设
+  - /sing <歌词>：单次唱歌合成
+  - /tts_<on/off>：开启或关闭当前对话自动 TTS
+  - /text <on/off>：设置当前对话是否同步发送文字
+  - /tts_help：快速查看常用指令
+  - /tts_restore：将当前会话配置恢复为插件默认设置
+  - /ttsswitch <default|design|clone>：切换输出模式
+  - /voice [音色名]：查看或切换音色
+  - /emotion <情感名|auto|off>：设置情感
+  - /speed <0.5~2.0>：设置语速
+  - /pitch <-12~+12>：设置音高
+  - /breath <on/off>：呼吸声开关
+  - /stress <on/off>：重音模式开关
+  - /dialect <方言名|off>：设置方言口音
+  - /volume <轻声|正常|大声|off>：设置音量
+  - /laughter <on/off>：笑声开关
+  - /pause <on/off>：停顿开关
+  - /preset [预设名]：查看或应用预设
   - /presetlist：列出所有预设
   - /emotions：列出所有情感
   - /voices：列出所有音色
-  - /ttsformat [格式]：设置音频格式
+  - /ttsformat <mp3|wav|ogg>：设置音频格式
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import random
 import re
 import time
-import traceback
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, StarTools
+from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
+from astrbot.api.star import Context, Star
 from astrbot.core.message.components import Plain, Record
+
 try:
     from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 except Exception:  # pragma: no cover - 兼容低版本 AstrBot
@@ -52,20 +55,18 @@ except Exception:  # pragma: no cover - 兼容低版本 AstrBot
 
 from .core.config import ConfigManager
 from .core.constants import (
-    PLUGIN_ID,
-    PLUGIN_NAME,
-    CONFIG_FILE,
-    MIMO_VOICE_LIST,
-    SUPPORTED_EMOTIONS,
-    SUPPORTED_AUDIO_FORMATS,
-    TTS_PRESETS,
-    SKIP_PATTERNS,
     AUDIO_MIN_VALID_SIZE,
     AUDIO_VALID_EXTENSIONS,
+    MIMO_VOICE_LIST,
+    PLUGIN_ID,
+    SKIP_PATTERNS,
+    SUPPORTED_AUDIO_FORMATS,
+    SUPPORTED_EMOTIONS,
+    TTS_PRESETS,
 )
+from .emotion.emotion_detector import EmotionDetector
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
-from .emotion.emotion_detector import EmotionDetector
 from .voice.voice_manager import VoiceManager
 
 
@@ -149,12 +150,16 @@ class MiMoTTSPlugin(Star):
         data/plugin_data/<plugin_id>，避免把持久化数据继续写回插件自身目录。
         """
         candidates: list[Path] = []
-        plugin_storage_name = str(getattr(self, "name", "") or PLUGIN_ID).strip() or PLUGIN_ID
+        plugin_storage_name = (
+            str(getattr(self, "name", "") or PLUGIN_ID).strip() or PLUGIN_ID
+        )
 
         if get_astrbot_data_path is not None:
             try:
                 astrbot_data_path = Path(get_astrbot_data_path()).expanduser()
-                candidates.append(astrbot_data_path / "plugin_data" / plugin_storage_name)
+                candidates.append(
+                    astrbot_data_path / "plugin_data" / plugin_storage_name
+                )
                 if plugin_storage_name != PLUGIN_ID:
                     candidates.append(astrbot_data_path / "plugin_data" / PLUGIN_ID)
             except Exception:
@@ -193,12 +198,14 @@ class MiMoTTSPlugin(Star):
         plugin_dir = self._plugin_dir
         parents = [plugin_dir, *plugin_dir.parents]
         for base in parents:
-            candidates.extend([
-                base / "data" / "plugin_data" / plugin_storage_name,
-                base / "data" / "plugin_data" / PLUGIN_ID,
-                base / "data" / "plugins" / PLUGIN_ID,
-                base / "data" / PLUGIN_ID,
-            ])
+            candidates.extend(
+                [
+                    base / "data" / "plugin_data" / plugin_storage_name,
+                    base / "data" / "plugin_data" / PLUGIN_ID,
+                    base / "data" / "plugins" / PLUGIN_ID,
+                    base / "data" / PLUGIN_ID,
+                ]
+            )
 
         seen: set[str] = set()
         for candidate in candidates:
@@ -265,8 +272,12 @@ class MiMoTTSPlugin(Star):
             return
         try:
             payload = json.loads(self._state_file.read_text(encoding="utf-8"))
-            user_settings = payload.get("user_settings", {}) if isinstance(payload, dict) else {}
-            user_format = payload.get("user_format", {}) if isinstance(payload, dict) else {}
+            user_settings = (
+                payload.get("user_settings", {}) if isinstance(payload, dict) else {}
+            )
+            user_format = (
+                payload.get("user_format", {}) if isinstance(payload, dict) else {}
+            )
 
             if isinstance(user_settings, dict):
                 self._user_settings = {
@@ -278,11 +289,18 @@ class MiMoTTSPlugin(Star):
                 self._user_format = {
                     str(uid): str(fmt).lower()
                     for uid, fmt in user_format.items()
-                    if isinstance(uid, str) and str(fmt).lower() in SUPPORTED_AUDIO_FORMATS
+                    if isinstance(uid, str)
+                    and str(fmt).lower() in SUPPORTED_AUDIO_FORMATS
                 }
-            logger.info("MiMO TTS: loaded persistent user state from %s", self._state_file)
+            logger.info(
+                "MiMO TTS: loaded persistent user state from %s", self._state_file
+            )
         except Exception:
-            logger.warning("MiMO TTS: failed to load persistent user state from %s", self._state_file, exc_info=True)
+            logger.warning(
+                "MiMO TTS: failed to load persistent user state from %s",
+                self._state_file,
+                exc_info=True,
+            )
 
     def _save_user_state(self) -> None:
         try:
@@ -293,7 +311,8 @@ class MiMoTTSPlugin(Star):
                     for uid, settings in self._user_settings.items()
                 },
                 "user_format": {
-                    uid: fmt for uid, fmt in self._user_format.items()
+                    uid: fmt
+                    for uid, fmt in self._user_format.items()
                     if fmt in SUPPORTED_AUDIO_FORMATS
                 },
             }
@@ -302,7 +321,11 @@ class MiMoTTSPlugin(Star):
                 encoding="utf-8",
             )
         except Exception:
-            logger.warning("MiMO TTS: failed to save persistent user state to %s", self._state_file, exc_info=True)
+            logger.warning(
+                "MiMO TTS: failed to save persistent user state to %s",
+                self._state_file,
+                exc_info=True,
+            )
 
     def _persist_current_state(self) -> None:
         self._save_user_state()
@@ -320,7 +343,11 @@ class MiMoTTSPlugin(Star):
             if self._state_file.exists():
                 self._state_file.unlink()
         except Exception:
-            logger.warning("MiMO TTS: failed to remove persistent state file %s", self._state_file, exc_info=True)
+            logger.warning(
+                "MiMO TTS: failed to remove persistent state file %s",
+                self._state_file,
+                exc_info=True,
+            )
 
     def _get_user_settings(self, uid: str) -> dict:
         if uid not in self._user_settings:
@@ -386,7 +413,9 @@ class MiMoTTSPlugin(Star):
         if session_id:
             return f"session:{session_id}"
 
-        conversation_id = self._safe_event_value(event, "get_conversation_id", "conversation_id")
+        conversation_id = self._safe_event_value(
+            event, "get_conversation_id", "conversation_id"
+        )
         if conversation_id:
             return f"conversation:{conversation_id}"
 
@@ -403,10 +432,20 @@ class MiMoTTSPlugin(Star):
         scope_key = self._get_user_scope_key(event)
         legacy_sender_key = self._safe_event_value(event, "get_sender_id", "sender_id")
 
-        if scope_key not in self._user_settings and legacy_sender_key and legacy_sender_key in self._user_settings:
-            self._user_settings[scope_key] = dict(self._user_settings[legacy_sender_key])
+        if (
+            scope_key not in self._user_settings
+            and legacy_sender_key
+            and legacy_sender_key in self._user_settings
+        ):
+            self._user_settings[scope_key] = dict(
+                self._user_settings[legacy_sender_key]
+            )
             self._persist_current_state()
-        if scope_key not in self._user_format and legacy_sender_key and legacy_sender_key in self._user_format:
+        if (
+            scope_key not in self._user_format
+            and legacy_sender_key
+            and legacy_sender_key in self._user_format
+        ):
             self._user_format[scope_key] = self._user_format[legacy_sender_key]
             self._persist_current_state()
 
@@ -511,7 +550,9 @@ class MiMoTTSPlugin(Star):
 
         return self.config.design_voice_description.strip()
 
-    def _resolve_synthesis_target(self, uid: str) -> tuple[str, Optional[str], str, Optional[str]]:
+    def _resolve_synthesis_target(
+        self, uid: str
+    ) -> tuple[str, Optional[str], str, Optional[str]]:
         """根据当前输出模式解析最终音色、模型与克隆参考音频。"""
         uset = self._get_user_settings(uid)
         mode = self._resolve_tts_mode(uid)
@@ -521,14 +562,30 @@ class MiMoTTSPlugin(Star):
         if mode == "clone":
             clone_voice_id = self.config.clone_voice_id.strip()
             if clone_voice_id:
-                clone_audio_path = self._voice_manager.get_clone_audio_path(clone_voice_id)
+                clone_audio_path = self._voice_manager.get_clone_audio_path(
+                    clone_voice_id
+                )
                 if clone_audio_path:
-                    return clone_voice_id, self.config.clone_model, mode, clone_audio_path
+                    return (
+                        clone_voice_id,
+                        self.config.clone_model,
+                        mode,
+                        clone_audio_path,
+                    )
             if str(current_voice_info.get("model", "")).lower() == "voiceclone":
-                clone_audio_path = self._voice_manager.get_clone_audio_path(current_voice)
+                clone_audio_path = self._voice_manager.get_clone_audio_path(
+                    current_voice
+                )
                 if clone_audio_path:
-                    return current_voice, self.config.clone_model, mode, clone_audio_path
-            raise RuntimeError("当前已切换到“克隆”输出，但未找到可用的本地参考音频。请先执行 /voiceclone <ID> <音频路径>。")
+                    return (
+                        current_voice,
+                        self.config.clone_model,
+                        mode,
+                        clone_audio_path,
+                    )
+            raise RuntimeError(
+                "当前已切换到“克隆”输出，但未找到可用的本地参考音频。请先执行 /voiceclone <ID> <音频路径>。"
+            )
 
         if mode == "design":
             description = self._resolve_design_description(uid)
@@ -536,7 +593,9 @@ class MiMoTTSPlugin(Star):
                 # 按官方文档，VoiceDesign 直接使用 user 消息中的描述文本生成目标音色，
                 # 并不依赖普通 TTS 的 audio.voice 预置音色参数。
                 return "", self.config.design_model, mode, None
-            raise RuntimeError("当前已切换到“设计”输出，但未配置 design_voice_description，也未选中带描述的设计音色。")
+            raise RuntimeError(
+                "当前已切换到“设计”输出，但未配置 design_voice_description，也未选中带描述的设计音色。"
+            )
 
         if self._voice_manager.get_voice(current_voice):
             return self.config.default_voice, None, mode, None
@@ -553,8 +612,7 @@ class MiMoTTSPlugin(Star):
     def _cleanup_recent_files(self) -> None:
         now = time.time()
         self._recent_files = [
-            (t, p) for t, p in self._recent_files
-            if (now - t) < 2 * 3600 and p.exists()
+            (t, p) for t, p in self._recent_files if (now - t) < 2 * 3600 and p.exists()
         ]
         for _, p in self._recent_files:
             try:
@@ -595,14 +653,16 @@ class MiMoTTSPlugin(Star):
         if raw.is_absolute():
             candidates.append(raw)
         else:
-            candidates.extend([
-                raw,
-                data_clone_dir / raw,
-                data_clone_dir / raw.name,
-                plugin_dir / raw,
-                legacy_clone_dir / raw,
-                legacy_clone_dir / raw.name,
-            ])
+            candidates.extend(
+                [
+                    raw,
+                    data_clone_dir / raw,
+                    data_clone_dir / raw.name,
+                    plugin_dir / raw,
+                    legacy_clone_dir / raw,
+                    legacy_clone_dir / raw.name,
+                ]
+            )
 
         for candidate in candidates:
             try:
@@ -743,12 +803,17 @@ class MiMoTTSPlugin(Star):
             r"(?:请扮演|你的任务是|你的人设是|必须遵循以下规则)",
             r"(?:do not reveal|hidden prompt|internal use only)",
         )
-        return any(re.search(pattern, head, re.IGNORECASE) for pattern in suspicious_patterns)
+        return any(
+            re.search(pattern, head, re.IGNORECASE) for pattern in suspicious_patterns
+        )
 
     # ── TTS command (reusable for auto TTS too) ──
 
     async def _do_tts(
-        self, text: str, uid: str, format_override: Optional[str] = None,
+        self,
+        text: str,
+        uid: str,
+        format_override: Optional[str] = None,
     ) -> Optional[Path]:
         """Run TTS and return the audio file path."""
         provider = self._ensure_provider()
@@ -765,7 +830,9 @@ class MiMoTTSPlugin(Star):
 
         self._log_tts_text(uid, self._resolve_tts_mode(uid), uset["sing"], final_text)
 
-        voice_id, model_override, mode, clone_audio_path = self._resolve_synthesis_target(uid)
+        voice_id, model_override, mode, clone_audio_path = (
+            self._resolve_synthesis_target(uid)
+        )
         if mode == "clone":
             prompt = self._build_clone_prompt(prompt)
         elif mode == "design":
@@ -812,7 +879,9 @@ class MiMoTTSPlugin(Star):
 
         if not self._should_tts(uid):
             return
-        if not event.is_private_chat() and not self.config.get("auto_tts_in_group", True):
+        if not event.is_private_chat() and not self.config.get(
+            "auto_tts_in_group", True
+        ):
             return
 
         result = event.get_result()
@@ -832,7 +901,9 @@ class MiMoTTSPlugin(Star):
         if self._should_skip(plain):
             return
         if self._looks_like_hidden_prompt_or_reasoning(plain):
-            logger.warning("MiMO TTS: skip auto TTS because result looks like leaked persona/skill prompt")
+            logger.warning(
+                "MiMO TTS: skip auto TTS because result looks like leaked persona/skill prompt"
+            )
             return
 
         if plain.startswith("/"):
@@ -852,7 +923,9 @@ class MiMoTTSPlugin(Star):
                 if self._should_send_text_with_tts(uid):
                     result.chain.append(audio_comp)
                 else:
-                    result.chain = self._build_audio_only_chain(chain, plain, audio_comp)
+                    result.chain = self._build_audio_only_chain(
+                        chain, plain, audio_comp
+                    )
         except Exception as e:
             result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
         finally:
@@ -863,11 +936,23 @@ class MiMoTTSPlugin(Star):
         /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
                         [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
         """
-        raw = event.message_str.strip()
-        prefix = f"/{command_name}"
-        text = raw[len(prefix):].strip() if raw.startswith(prefix) else raw
+        raw = str(event.message_str or "").strip()
+        first, sep, remainder = raw.partition(" ")
+        normalized_first = first.lstrip("/").split("@", 1)[0].strip().lower()
+        if normalized_first == command_name.lower():
+            text = remainder.strip()
+        else:
+            text = re.sub(
+                rf"^/?{re.escape(command_name)}(?:@[^\s]+)?\s*",
+                "",
+                raw,
+                count=1,
+                flags=re.IGNORECASE,
+            ).strip()
         if not text:
-            yield MessageEventResult().message("用法: /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色] [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]")
+            yield MessageEventResult().message(
+                "用法: /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色] [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]"
+            )
             return
 
         uid, uset = self._get_event_settings(event)
@@ -955,12 +1040,14 @@ class MiMoTTSPlugin(Star):
     async def cmd_text(self, event: AstrMessageEvent):
         """/text [on|off] — 设置当前对话自动 TTS 是否同步发送文字"""
         raw = event.message_str.strip()
-        arg = raw[len("/text"):].strip().lower()
+        arg = raw[len("/text") :].strip().lower()
         _, uset = self._get_event_settings(event)
 
         if not arg:
             current = uset.get("text_enabled", None)
-            current_state = self.config.send_text_with_tts if current is None else bool(current)
+            current_state = (
+                self.config.send_text_with_tts if current is None else bool(current)
+            )
             source = "当前对话" if current is not None else "插件全局默认"
             yield MessageEventResult().message(
                 f"当前对话文字同步: {'开' if current_state else '关'}\n"
@@ -980,18 +1067,17 @@ class MiMoTTSPlugin(Star):
             "仅影响当前聊天的自动 TTS，不会修改插件配置面板中的 send_text_with_tts。"
         )
 
-    @filter.command("tts-help")
+    @filter.command("tts_help")
     async def cmd_tts_help(self, event: AstrMessageEvent):
-        """/tts-help — 快速查看常用 TTS 指令"""
+        """/tts_help — 快速查看常用 TTS 指令"""
         lines = [
             "MiMO TTS 常用指令:",
             "",
             "/mimo_say <文本>  - 即时合成语音",
             "/sing <歌词>  - 单次唱歌合成",
             "/ttsconfig  - 查看当前会话配置",
-            "/tts-restore  - 将当前会话配置恢复为插件默认设置",
-            "/tts_off  - 关闭当前对话自动 TTS",
-            "/tts_on  - 开启当前对话自动 TTS",
+            "/tts_restore  - 将当前会话配置恢复为插件默认设置",
+            "/tts_<on/off>  - 开启或关闭当前对话自动 TTS",
             "/text <on|off>  - 设置当前对话是否同步发送文字",
             "/ttsswitch <default|design|clone>  - 切换输出模式",
             "/voice [音色ID]  - 查看/切换音色",
@@ -1000,21 +1086,21 @@ class MiMoTTSPlugin(Star):
         ]
         yield MessageEventResult().message("\n".join(lines))
 
-    @filter.command("tts-restore")
+    @filter.command("tts_restore")
     async def cmd_tts_restore(self, event: AstrMessageEvent):
-        """/tts-restore — 恢复当前会话配置为插件默认值"""
+        """/tts_restore — 恢复当前会话配置为插件默认值"""
         uid, _ = self._get_event_settings(event)
         self._restore_user_state(uid)
         yield MessageEventResult().message(
             "[✓] 已将当前对话的 TTS 配置恢复为插件默认设置。\n"
-            "可使用 /ttsconfig 查看当前生效结果，或用 /tts-help 快速查看常用指令。"
+            "可使用 /ttsconfig 查看当前生效结果，或用 /tts_help 快速查看常用指令。"
         )
 
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
-        """ /sing <歌词> """
+        """/sing <歌词>"""
         raw = event.message_str.strip()
-        text = raw[len("/sing"):].strip()
+        text = raw[len("/sing") :].strip()
         if not text:
             yield MessageEventResult().message("用法: /sing <歌词>")
             return
@@ -1039,16 +1125,18 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("voice")
     async def cmd_voice(self, event: AstrMessageEvent):
-        """ /voice [音色名] """
+        """/voice [音色名]"""
         raw = event.message_str.strip()
-        arg = raw[len("/voice"):].strip()
+        arg = raw[len("/voice") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
             lines = [f"当前音色: {uset['voice']}", "", "内置音色:"]
             for v in MIMO_VOICE_LIST:
-                lines.append(f"  {v['id']:10s} {v['name']}  ({v['gender']}声 {v['style']})")
+                lines.append(
+                    f"  {v['id']:10s} {v['name']}  ({v['gender']}声 {v['style']})"
+                )
             lines.append("")
             lines.append("用法: /voice <音色ID>")
             yield MessageEventResult().message("\n".join(lines))
@@ -1061,9 +1149,9 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("ttsswitch")
     async def cmd_ttsswitch(self, event: AstrMessageEvent):
-        """ /ttsswitch [default|design|clone] — 切换 TTS 输出来源模式 """
+        """/ttsswitch [default|design|clone] — 切换 TTS 输出来源模式"""
         raw = event.message_str.strip()
-        arg = raw[len("/ttsswitch"):].strip()
+        arg = raw[len("/ttsswitch") :].strip()
         uid, uset = self._get_event_settings(event)
 
         if not arg:
@@ -1090,9 +1178,9 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("emotion")
     async def cmd_emotion(self, event: AstrMessageEvent):
-        """ /emotion [情感名|auto|off] """
+        """/emotion [情感名|auto|off]"""
         raw = event.message_str.strip()
-        arg = raw[len("/emotion"):].strip()
+        arg = raw[len("/emotion") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1119,7 +1207,9 @@ class MiMoTTSPlugin(Star):
             self._persist_current_state()
             yield MessageEventResult().message(f"[u2713] 情感已设置为: {arg}")
         else:
-            yield MessageEventResult().message(f"[X] 不支持的情感: {arg}\n可用: {', '.join(SUPPORTED_EMOTIONS)}")
+            yield MessageEventResult().message(
+                f"[X] 不支持的情感: {arg}\n可用: {', '.join(SUPPORTED_EMOTIONS)}"
+            )
 
     @filter.command("emotions")
     async def cmd_emotions(self, event: AstrMessageEvent):
@@ -1132,14 +1222,16 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("speed")
     async def cmd_speed(self, event: AstrMessageEvent):
-        """ /speed [0.5~2.0] """
+        """/speed [0.5~2.0]"""
         raw = event.message_str.strip()
-        arg = raw[len("/speed"):].strip()
+        arg = raw[len("/speed") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
-            yield MessageEventResult().message(f"当前语速: {uset['speed']}\n用法: /speed <0.5~2.0>")
+            yield MessageEventResult().message(
+                f"当前语速: {uset['speed']}\n用法: /speed <0.5~2.0>"
+            )
             return
 
         try:
@@ -1152,14 +1244,16 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("pitch")
     async def cmd_pitch(self, event: AstrMessageEvent):
-        """ /pitch [-12~+12] """
+        """/pitch [-12~+12]"""
         raw = event.message_str.strip()
-        arg = raw[len("/pitch"):].strip()
+        arg = raw[len("/pitch") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
-            yield MessageEventResult().message(f"当前音高: {uset['pitch']}\n用法: /pitch <-12~+12>")
+            yield MessageEventResult().message(
+                f"当前音高: {uset['pitch']}\n用法: /pitch <-12~+12>"
+            )
             return
 
         try:
@@ -1172,45 +1266,53 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("breath")
     async def cmd_breath(self, event: AstrMessageEvent):
-        """ /breath [on|off] """
+        """/breath [on|off]"""
         raw = event.message_str.strip()
-        arg = raw[len("/breath"):].strip()
+        arg = raw[len("/breath") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
             state = "开" if uset["breath"] else "关"
-            yield MessageEventResult().message(f"呼吸声: {state}\n用法: /breath <on|off>")
+            yield MessageEventResult().message(
+                f"呼吸声: {state}\n用法: /breath <on|off>"
+            )
             return
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["breath"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(f"[u2713] 呼吸声已{'开启' if val else '关闭'}")
+        yield MessageEventResult().message(
+            f"[u2713] 呼吸声已{'开启' if val else '关闭'}"
+        )
 
     @filter.command("stress")
     async def cmd_stress(self, event: AstrMessageEvent):
-        """ /stress [on|off] """
+        """/stress [on|off]"""
         raw = event.message_str.strip()
-        arg = raw[len("/stress"):].strip()
+        arg = raw[len("/stress") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
             state = "开" if uset["stress"] else "关"
-            yield MessageEventResult().message(f"重音模式: {state}\n用法: /stress <on|off>")
+            yield MessageEventResult().message(
+                f"重音模式: {state}\n用法: /stress <on|off>"
+            )
             return
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["stress"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(f"[u2713] 重音模式已{'开启' if val else '关闭'}")
+        yield MessageEventResult().message(
+            f"[u2713] 重音模式已{'开启' if val else '关闭'}"
+        )
 
     @filter.command("dialect")
     async def cmd_dialect(self, event: AstrMessageEvent):
-        """ /dialect [方言名|off] — 设置方言口音，如 四川话、粤语、东北话 """
+        """/dialect [方言名|off] — 设置方言口音，如 四川话、粤语、东北话"""
         raw = event.message_str.strip()
-        arg = raw[len("/dialect"):].strip()
+        arg = raw[len("/dialect") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1234,17 +1336,16 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("volume")
     async def cmd_volume(self, event: AstrMessageEvent):
-        """ /volume [轻声|正常|大声|off] """
+        """/volume [轻声|正常|大声|off]"""
         raw = event.message_str.strip()
-        arg = raw[len("/volume"):].strip()
+        arg = raw[len("/volume") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
             cur = uset["volume"] or "(正常)"
             yield MessageEventResult().message(
-                f"当前音量: {cur}\n"
-                "用法: /volume <轻声|正常|大声|off>"
+                f"当前音量: {cur}\n用法: /volume <轻声|正常|大声|off>"
             )
             return
 
@@ -1259,15 +1360,17 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("laughter")
     async def cmd_laughter(self, event: AstrMessageEvent):
-        """ /laughter [on|off] — 允许自然笑声"""
+        """/laughter [on|off] — 允许自然笑声"""
         raw = event.message_str.strip()
-        arg = raw[len("/laughter"):].strip()
+        arg = raw[len("/laughter") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
             state = "开" if uset["laughter"] else "关"
-            yield MessageEventResult().message(f"笑声: {state}\n用法: /laughter <on|off>")
+            yield MessageEventResult().message(
+                f"笑声: {state}\n用法: /laughter <on|off>"
+            )
             return
 
         val = arg.lower() in ("on", "true", "1", "开")
@@ -1277,40 +1380,48 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("pause")
     async def cmd_pause(self, event: AstrMessageEvent):
-        """ /pause [on|off] — 增加句间停顿"""
+        """/pause [on|off] — 增加句间停顿"""
         raw = event.message_str.strip()
-        arg = raw[len("/pause"):].strip()
+        arg = raw[len("/pause") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
             state = "开" if uset["pause"] else "关"
-            yield MessageEventResult().message(f"停顿模式: {state}\n用法: /pause <on|off>")
+            yield MessageEventResult().message(
+                f"停顿模式: {state}\n用法: /pause <on|off>"
+            )
             return
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["pause"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(f"[u2713] 停顿模式已{'开启' if val else '关闭'}")
+        yield MessageEventResult().message(
+            f"[u2713] 停顿模式已{'开启' if val else '关闭'}"
+        )
 
     @filter.command("preset")
     async def cmd_preset(self, event: AstrMessageEvent):
-        """ /preset [预设名] — 查看/应用预设"""
+        """/preset [预设名] — 查看/应用预设"""
         raw = event.message_str.strip()
-        arg = raw[len("/preset"):].strip()
+        arg = raw[len("/preset") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
             lines = ["预设列表:", ""]
             for name, p in TTS_PRESETS.items():
-                lines.append(f"  {name:18s}  情感={p['emotion']:10s}  语速={p['speed']}  音高={p['pitch']:+d}  音色={p['voice']}")
+                lines.append(
+                    f"  {name:18s}  情感={p['emotion']:10s}  语速={p['speed']}  音高={p['pitch']:+d}  音色={p['voice']}"
+                )
             lines.append("")
             lines.append("用法: /preset <预设名>  （如 /preset bedtime_story）")
             yield MessageEventResult().message("\n".join(lines))
             return
 
         if arg not in TTS_PRESETS:
-            yield MessageEventResult().message(f"[X] 未知预设: {arg}\n用 /presetlist 查看所有预设")
+            yield MessageEventResult().message(
+                f"[X] 未知预设: {arg}\n用 /presetlist 查看所有预设"
+            )
             return
 
         preset = TTS_PRESETS[arg]
@@ -1335,8 +1446,10 @@ class MiMoTTSPlugin(Star):
         lines = ["所有预设:", ""]
         for name, p in TTS_PRESETS.items():
             lines.append(f"  {name}")
-            lines.append(f"    情感={p['emotion']}  语速={p['speed']}  音高={p['pitch']:+d}  音色={p['voice']}  呼吸={'✓' if p['breath'] else '✗'}  重音={'✓' if p['stress'] else '✗'}")
-        lines.append(f"\n用法: /preset <预设名> 应用预设")
+            lines.append(
+                f"    情感={p['emotion']}  语速={p['speed']}  音高={p['pitch']:+d}  音色={p['voice']}  呼吸={'✓' if p['breath'] else '✗'}  重音={'✓' if p['stress'] else '✗'}"
+            )
+        lines.append("\n用法: /preset <预设名> 应用预设")
         yield MessageEventResult().message("\n".join(lines))
 
     @filter.command("voices")
@@ -1344,15 +1457,17 @@ class MiMoTTSPlugin(Star):
         """List all built-in voices."""
         lines = ["MiMO 内置音色:", ""]
         for v in MIMO_VOICE_LIST:
-            lines.append(f"  {v['id']:10s} {v['name']}  ({v['gender']}声 · {v['style']})")
+            lines.append(
+                f"  {v['id']:10s} {v['name']}  ({v['gender']}声 · {v['style']})"
+            )
         lines.append(f"\n共 {len(MIMO_VOICE_LIST)} 种  |  用法: /voice <音色ID>")
         yield MessageEventResult().message("\n".join(lines))
 
     @filter.command("voiceclone")
     async def cmd_voiceclone(self, event: AstrMessageEvent):
-        """ /voiceclone <ID> <音频路径> — 克隆参考音频的声音"""
+        """/voiceclone <ID> <音频路径> — 克隆参考音频的声音"""
         raw = event.message_str.strip()
-        arg = raw[len("/voiceclone"):].strip()
+        arg = raw[len("/voiceclone") :].strip()
         if not arg:
             yield MessageEventResult().message(
                 "用法: /voiceclone <ID> <参考音频路径>\n"
@@ -1408,7 +1523,9 @@ class MiMoTTSPlugin(Star):
 
         ok = await provider.register_voice(vid, str(audio_file))
         if ok:
-            self._voice_manager.register_voice(vid, name=vid, model="voiceclone", audio_path=str(audio_file))
+            self._voice_manager.register_voice(
+                vid, name=vid, model="voiceclone", audio_path=str(audio_file)
+            )
             # 同步到配置面板
             self.config._cfg["clone_enabled"] = True
             self.config._cfg["clone_voice_id"] = vid
@@ -1428,13 +1545,13 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("voicegen")
     async def cmd_voicegen(self, event: AstrMessageEvent):
-        """ /voicegen <ID> <描述文本> — 用文字描述生成全新音色"""
+        """/voicegen <ID> <描述文本> — 用文字描述生成全新音色"""
         raw = event.message_str.strip()
-        arg = raw[len("/voicegen"):].strip()
+        arg = raw[len("/voicegen") :].strip()
         if not arg:
             yield MessageEventResult().message(
                 "用法: /voicegen <ID> <音色描述>\n"
-                "示例: /voicegen my_voice \"温柔甜美的年轻女声，语速适中\""
+                '示例: /voicegen my_voice "温柔甜美的年轻女声，语速适中"'
             )
             return
 
@@ -1454,7 +1571,9 @@ class MiMoTTSPlugin(Star):
 
         ok = await provider.design_voice(vid, desc, model=self.config.design_model)
         if ok:
-            self._voice_manager.register_voice(vid, name=vid, model="voicedesign", description=desc)
+            self._voice_manager.register_voice(
+                vid, name=vid, model="voicedesign", description=desc
+            )
             # 仅同步可展示的配置项；design_voice_id 改为内部状态，避免出现在插件设置面板。
             self.config._cfg["design_enabled"] = True
             self.config.design_voice_id = vid
@@ -1486,14 +1605,16 @@ class MiMoTTSPlugin(Star):
                 extra = f"  -> {v.get('audio_path')}"
             elif v.get("model") == "voicedesign" and v.get("description"):
                 extra = f"  -> {v.get('description')}"
-            lines.append(f"  {v['voice_id']:20s}  {v.get('name', '')}  [{v.get('model', '')}]{extra}")
+            lines.append(
+                f"  {v['voice_id']:20s}  {v.get('name', '')}  [{v.get('model', '')}]{extra}"
+            )
         yield MessageEventResult().message("\n".join(lines))
 
     @filter.command("ttsformat")
     async def cmd_ttsformat(self, event: AstrMessageEvent):
-        """ /ttsformat [mp3|wav|ogg] — 设置音频输出格式"""
+        """/ttsformat [mp3|wav|ogg] — 设置音频输出格式"""
         raw = event.message_str.strip()
-        arg = raw[len("/ttsformat"):].strip()
+        arg = raw[len("/ttsformat") :].strip()
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1508,7 +1629,9 @@ class MiMoTTSPlugin(Star):
             return
 
         if arg.lower() not in SUPPORTED_AUDIO_FORMATS:
-            yield MessageEventResult().message(f"[X] 不支持的格式: {arg}\n支持: {', '.join(SUPPORTED_AUDIO_FORMATS)}")
+            yield MessageEventResult().message(
+                f"[X] 不支持的格式: {arg}\n支持: {', '.join(SUPPORTED_AUDIO_FORMATS)}"
+            )
             return
 
         self._user_format[uid] = arg.lower()
@@ -1518,7 +1641,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("ttsconfig")
     async def cmd_ttsconfig(self, event: AstrMessageEvent):
         raw = event.message_str.strip()
-        arg = raw[len("/ttsconfig"):].strip()
+        arg = raw[len("/ttsconfig") :].strip()
 
         if arg == "reset":
             self._reset_persistent_state()
@@ -1536,8 +1659,8 @@ class MiMoTTSPlugin(Star):
             f"模型: {self.config.get('model', 'mimo-v2.5-tts')}",
             f"API: {self.config.get('api_base_url', 'https://api.xiaomimimo.com/v1')[:80]}",
             f"持久化文件: {self._state_file}",
-            f"",
-            f"── 你的当前设置 ──",
+            "",
+            "── 你的当前设置 ──",
             f"情感: {uset['emotion'] or '(自动)'}",
             f"语速: {uset['speed']}  音高: {uset['pitch']:+d}",
             f"呼吸: {'开' if uset['breath'] else '关'}  重音: {'开' if uset['stress'] else '关'}",
@@ -1548,17 +1671,17 @@ class MiMoTTSPlugin(Star):
             f"音色: {uset['voice']}",
             f"输出模式: {self._tts_mode_label(self._resolve_tts_mode(uid))} ({self._resolve_tts_mode(uid)})",
             f"格式: {self._get_effective_audio_format(uid)}",
-            f"",
-            f"用 /preset <预设名> 快速切换风格",
-            f"用 /tts-help 快速查看指令",
+            "",
+            "用 /preset <预设名> 快速切换风格",
+            "用 /tts_help 快速查看指令",
         ]
         yield MessageEventResult().message("\n".join(lines))
 
     @filter.command("ttsraw")
     async def cmd_ttsraw(self, event: AstrMessageEvent):
-        """ /ttsraw <文本> — 不带情感的纯文本合成"""
+        """/ttsraw <文本> — 不带情感的纯文本合成"""
         raw = event.message_str.strip()
-        text = raw[len("/ttsraw"):].strip()
+        text = raw[len("/ttsraw") :].strip()
         if not text:
             yield MessageEventResult().message("用法: /ttsraw <文本>")
             return
@@ -1590,7 +1713,7 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("ttsinfo")
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
-        """ /ttsinfo — 查看插件信息"""
+        """/ttsinfo — 查看插件信息"""
         lines = [
             "MiMO TTS Plugin v1.2.3",
             "",
@@ -1599,7 +1722,7 @@ class MiMoTTSPlugin(Star):
             f"支持情感: {len(SUPPORTED_EMOTIONS)} 种",
             f"内置音色: {len(MIMO_VOICE_LIST)} 种",
             f"内置预设: {len(TTS_PRESETS)} 个",
-            f"控制维度: 情感 语速 音高 呼吸声 重音 方言 音量 笑声 停顿（唱歌仅 /sing）",
+            "控制维度: 情感 语速 音高 呼吸声 重音 方言 音量 笑声 停顿（唱歌仅 /sing）",
             "",
             "主要命令:",
             "  /mimo_say <文本>  - 即时合成",
