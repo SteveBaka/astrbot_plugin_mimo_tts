@@ -750,6 +750,14 @@ class MiMoTTSPlugin(Star):
         fmt = "wav"
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
+        logger.info(
+            "MiMO TTS: synthesize text uid=%s mode=%s sing=%s text=%r",
+            uid,
+            self._resolve_tts_mode(uid),
+            uset["sing"],
+            final_text,
+        )
+
         voice_id, model_override, mode, clone_audio_path = self._resolve_synthesis_target(uid)
         if mode == "clone":
             prompt = self._build_clone_prompt(prompt)
