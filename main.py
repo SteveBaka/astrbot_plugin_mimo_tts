@@ -237,6 +237,7 @@ class MiMoTTSPlugin(Star):
             "volume": "",
             "tts_mode": "default",
             "tts_enabled": True,
+            "text_enabled": None,
         }
         cleaned = dict(defaults)
         if isinstance(data, dict):
@@ -255,6 +256,8 @@ class MiMoTTSPlugin(Star):
         cleaned["style_hint"] = str(cleaned.get("style_hint", "") or "")
         cleaned["tts_mode"] = str(cleaned.get("tts_mode", "default") or "default")
         cleaned["tts_enabled"] = bool(cleaned.get("tts_enabled", True))
+        text_enabled = cleaned.get("text_enabled", None)
+        cleaned["text_enabled"] = None if text_enabled is None else bool(text_enabled)
         return cleaned
 
     def _load_user_state(self) -> None:
@@ -331,8 +334,27 @@ class MiMoTTSPlugin(Star):
                 "volume": "",
                 "tts_mode": self._normalize_tts_mode(self.config.tts_output_mode),
                 "tts_enabled": True,
+                "text_enabled": None,
             }
         return self._user_settings[uid]
+
+    def _should_send_text_with_tts(self, uid: str) -> bool:
+        text_enabled = self._get_user_settings(uid).get("text_enabled", None)
+        if text_enabled is None:
+            return self.config.send_text_with_tts
+        return bool(text_enabled)
+
+    def _get_effective_audio_format(self, uid: str) -> str:
+        """返回当前会话实际生效的音频格式：优先当前对话覆盖，否则回退插件配置。"""
+        user_fmt = str(self._user_format.get(uid, "") or "").lower()
+        if user_fmt in SUPPORTED_AUDIO_FORMATS:
+            return user_fmt
+
+        config_fmt = str(self.config.audio_format or "").lower()
+        if config_fmt in SUPPORTED_AUDIO_FORMATS:
+            return config_fmt
+
+        return "mp3"
 
     @staticmethod
     def _safe_event_value(event: AstrMessageEvent, *names: str) -> str:
@@ -722,7 +744,7 @@ class MiMoTTSPlugin(Star):
 
         prompt = self._build_prompt(uid)
         uset = self._get_user_settings(uid)
-        requested_fmt = format_override or self._user_format.get(uid, "mp3")
+        requested_fmt = format_override or self._get_effective_audio_format(uid)
         # AstrBot 的 Record 组件在当前版本下对 RIFF/WAV 兼容性最稳定，
         # 因此这里统一向上游请求 wav，避免 mp3/ogg/pcm 落地后再次被按 RIFF 解析时报错。
         fmt = "wav"
@@ -812,7 +834,7 @@ class MiMoTTSPlugin(Star):
             audio_path = await self._do_tts(plain, uid)
             if audio_path:
                 audio_comp = Record.fromFileSystem(str(audio_path))
-                if self.config.send_text_with_tts:
+                if self._should_send_text_with_tts(uid):
                     result.chain.append(audio_comp)
                 else:
                     result.chain = self._build_audio_only_chain(chain, plain, audio_comp)
@@ -912,6 +934,35 @@ class MiMoTTSPlugin(Star):
         yield MessageEventResult().message(
             "[✓] 已开启当前对话的自动 TTS。\n"
             "仅恢复当前对话的自动朗读，不会修改插件配置面板中的全局自动 TTS 开关。"
+        )
+
+    @filter.command("text")
+    async def cmd_text(self, event: AstrMessageEvent):
+        """/text [on|off] — 设置当前对话自动 TTS 是否同步发送文字"""
+        raw = event.message_str.strip()
+        arg = raw[len("/text"):].strip().lower()
+        _, uset = self._get_event_settings(event)
+
+        if not arg:
+            current = uset.get("text_enabled", None)
+            current_state = self.config.send_text_with_tts if current is None else bool(current)
+            source = "当前对话" if current is not None else "插件全局默认"
+            yield MessageEventResult().message(
+                f"当前对话文字同步: {'开' if current_state else '关'}\n"
+                f"当前生效来源: {source}\n"
+                "用法: /text <on|off>"
+            )
+            return
+
+        if arg not in ("on", "off"):
+            yield MessageEventResult().message("用法: /text <on|off>")
+            return
+
+        uset["text_enabled"] = arg == "on"
+        self._persist_current_state()
+        yield MessageEventResult().message(
+            f"[✓] 已将当前对话的文字同步设置为: {'开' if uset['text_enabled'] else '关'}\n"
+            "仅影响当前聊天的自动 TTS，不会修改插件配置面板中的 send_text_with_tts。"
         )
 
     @filter.command("sing")
@@ -1401,9 +1452,11 @@ class MiMoTTSPlugin(Star):
         uid, _ = self._get_event_settings(event)
 
         if not arg:
-            cur = self._user_format.get(uid, "mp3")
+            cur = self._get_effective_audio_format(uid)
+            source = "当前对话" if uid in self._user_format else "插件全局默认"
             yield MessageEventResult().message(
                 f"当前格式: {cur}\n"
+                f"当前生效来源: {source}\n"
                 f"支持的格式: {', '.join(SUPPORTED_AUDIO_FORMATS)}\n"
                 f"用法: /ttsformat <格式>"
             )
@@ -1446,9 +1499,10 @@ class MiMoTTSPlugin(Star):
             f"方言: {uset['dialect'] or '(无)'}  音量: {uset['volume'] or '(正常)'}",
             f"笑声: {'开' if uset['laughter'] else '关'}  停顿: {'开' if uset['pause'] else '关'}",
             f"当前对话自动 TTS: {'开' if uset.get('tts_enabled', True) else '关'}",
+            f"当前对话文字同步: {'开' if self._should_send_text_with_tts(uid) else '关'}",
             f"音色: {uset['voice']}",
             f"输出模式: {self._tts_mode_label(self._resolve_tts_mode(uid))} ({self._resolve_tts_mode(uid)})",
-            f"格式: {self._user_format.get(uid, 'mp3')}",
+            f"格式: {self._get_effective_audio_format(uid)}",
             f"",
             f"用 /preset <预设名> 快速切换风格",
         ]
@@ -1504,6 +1558,7 @@ class MiMoTTSPlugin(Star):
             "主要命令:",
             "  /mimo_say <文本>  - 即时合成",
             "  /tts_off  - 关闭当前对话自动 TTS",
+            "  /text on|off  - 切换当前对话文字同步",
             "  /sing <歌词>  - 唱歌模式",
             "  /preset <名>  - 应用预设",
             "  /ttsconfig  - 查看配置",
