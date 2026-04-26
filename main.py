@@ -43,6 +43,10 @@ logger = logging.getLogger(__name__)
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.message.components import Plain, Record
+try:
+    from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+except Exception:  # pragma: no cover - 兼容低版本 AstrBot
+    get_astrbot_data_path = None
 
 from .core.config import ConfigManager
 from .core.constants import (
@@ -138,10 +142,21 @@ class MiMoTTSPlugin(Star):
     def _resolve_data_dir(self) -> Path:
         """Best-effort resolve AstrBot persistent data dir.
 
-        优先尝试 AstrBot 运行时可能提供的 data/plugin_data 路径；若不可用，则退化到
-        插件目录外侧的 data/plugins/<plugin_id>，避免把持久化数据继续写回插件自身目录。
+        优先尝试 AstrBot 官方推荐的 data/plugin_data/<plugin_name> 路径；若不可用，
+        再尝试运行时可能提供的 data/plugin_data 路径；最后退化到插件目录外侧的
+        data/plugin_data/<plugin_id>，避免把持久化数据继续写回插件自身目录。
         """
         candidates: list[Path] = []
+        plugin_storage_name = str(getattr(self, "name", "") or PLUGIN_ID).strip() or PLUGIN_ID
+
+        if get_astrbot_data_path is not None:
+            try:
+                astrbot_data_path = Path(get_astrbot_data_path()).expanduser()
+                candidates.append(astrbot_data_path / "plugin_data" / plugin_storage_name)
+                if plugin_storage_name != PLUGIN_ID:
+                    candidates.append(astrbot_data_path / "plugin_data" / PLUGIN_ID)
+            except Exception:
+                pass
 
         def _collect_from(obj) -> None:
             if not obj:
@@ -157,10 +172,16 @@ class MiMoTTSPlugin(Star):
                     value = value() if callable(value) else value
                     if value:
                         path = Path(str(value)).expanduser()
-                        if path.name == PLUGIN_ID:
+                        if path.name in {plugin_storage_name, PLUGIN_ID}:
                             candidates.append(path)
+                        elif path.name == "plugin_data":
+                            candidates.append(path / plugin_storage_name)
+                            if plugin_storage_name != PLUGIN_ID:
+                                candidates.append(path / PLUGIN_ID)
                         else:
-                            candidates.append(path / PLUGIN_ID)
+                            candidates.append(path / plugin_storage_name)
+                            if plugin_storage_name != PLUGIN_ID:
+                                candidates.append(path / PLUGIN_ID)
                 except Exception:
                     continue
 
@@ -171,6 +192,8 @@ class MiMoTTSPlugin(Star):
         parents = [plugin_dir, *plugin_dir.parents]
         for base in parents:
             candidates.extend([
+                base / "data" / "plugin_data" / plugin_storage_name,
+                base / "data" / "plugin_data" / PLUGIN_ID,
                 base / "data" / "plugins" / PLUGIN_ID,
                 base / "data" / PLUGIN_ID,
             ])
@@ -191,7 +214,7 @@ class MiMoTTSPlugin(Star):
             except Exception:
                 continue
 
-        fallback = plugin_dir.parent / "data" / "plugins" / PLUGIN_ID
+        fallback = plugin_dir.parent / "data" / "plugin_data" / PLUGIN_ID
         fallback.mkdir(parents=True, exist_ok=True)
         return fallback
 
@@ -511,8 +534,9 @@ class MiMoTTSPlugin(Star):
         支持：
         1. 绝对路径
         2. 相对当前工作目录的路径
-        3. 相对插件根目录的路径
-        4. 仅文件名时，自动尝试插件下的 clone/ 目录
+        3. 相对 AstrBot data/plugin_data/<plugin_name>/clone 的路径
+        4. 相对插件根目录的路径（兼容旧行为）
+        5. 仅文件名时，自动尝试 data/plugin_data 下的 clone/ 目录，再回退插件下 clone/ 目录
         """
         text = str(raw_path or "").strip().strip('"').strip("'")
         if not text:
@@ -520,7 +544,8 @@ class MiMoTTSPlugin(Star):
 
         raw = Path(text)
         plugin_dir = Path(__file__).parent
-        clone_dir = plugin_dir / "clone"
+        data_clone_dir = self._data_dir / "clone"
+        legacy_clone_dir = plugin_dir / "clone"
         candidates: list[Path] = []
 
         if raw.is_absolute():
@@ -528,9 +553,11 @@ class MiMoTTSPlugin(Star):
         else:
             candidates.extend([
                 raw,
+                data_clone_dir / raw,
+                data_clone_dir / raw.name,
                 plugin_dir / raw,
-                clone_dir / raw,
-                clone_dir / raw.name,
+                legacy_clone_dir / raw,
+                legacy_clone_dir / raw.name,
             ])
 
         for candidate in candidates:
@@ -541,7 +568,7 @@ class MiMoTTSPlugin(Star):
                 continue
 
         # 找不到时，仍返回一个最适合提示给用户的候选路径
-        fallback = raw if raw.is_absolute() else (clone_dir / raw.name)
+        fallback = raw if raw.is_absolute() else (data_clone_dir / raw.name)
         return fallback
 
     @staticmethod
@@ -1167,7 +1194,7 @@ class MiMoTTSPlugin(Star):
                 "用法: /voiceclone <ID> <参考音频路径>\n"
                 "示例1: /voiceclone my_clone /path/to/sample.wav\n"
                 "示例2: /voiceclone my_clone clone/sample.wav\n"
-                "说明: 推荐将参考音频放到插件目录下的 clone/ 文件夹"
+                f"说明: 推荐将参考音频放到 AstrBot 数据目录下: {self._data_dir / 'clone'}"
             )
             return
 
@@ -1183,10 +1210,10 @@ class MiMoTTSPlugin(Star):
         audio_file = self._resolve_clone_audio_path(audio_path)
 
         if not audio_file.exists():
-            plugin_audio_dir = Path(__file__).parent / "clone"
+            plugin_audio_dir = self._data_dir / "clone"
             yield MessageEventResult().message(
                 f"[X] 音频文件不存在: {audio_path}\n"
-                f"可将参考音频放到插件目录下: {plugin_audio_dir}\n"
+                f"可将参考音频放到 AstrBot 数据目录下: {plugin_audio_dir}\n"
                 f"然后使用: /voiceclone {vid} clone/文件名"
             )
             return

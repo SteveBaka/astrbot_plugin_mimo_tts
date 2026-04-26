@@ -8,6 +8,11 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+try:
+    from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+except Exception:  # pragma: no cover - 兼容低版本 AstrBot
+    get_astrbot_data_path = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,9 +26,17 @@ class VoiceManager:
         clone_audio_dir: Path | None = None,
     ):
         self.plugin_dir = Path(__file__).resolve().parent.parent
-        self.data_dir = Path(data_dir) if data_dir else (self.plugin_dir.parent / "data" / "plugins" / "astrbot_plugin_mimo_tts")
+
+        default_data_dir = self.plugin_dir.parent / "data" / "plugin_data" / "astrbot_plugin_mimo_tts"
+        if get_astrbot_data_path is not None:
+            try:
+                default_data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "astrbot_plugin_mimo_tts"
+            except Exception:
+                pass
+
+        self.data_dir = Path(data_dir) if data_dir else default_data_dir
         self.voice_cache_dir = Path(voice_cache_dir) if voice_cache_dir else (self.data_dir / "voice")
-        self.clone_audio_dir = Path(clone_audio_dir) if clone_audio_dir else (self.plugin_dir / "clone")
+        self.clone_audio_dir = Path(clone_audio_dir) if clone_audio_dir else (self.data_dir / "clone")
         self.voice_cache_dir.mkdir(parents=True, exist_ok=True)
         self.clone_audio_dir.mkdir(parents=True, exist_ok=True)
 
@@ -31,6 +44,7 @@ class VoiceManager:
         self.registry_file = self.voice_cache_dir / "voice_registry.json"
         self.legacy_registry_file = Path("voice") / "voice_registry.json"
         self.legacy_plugin_registry_file = self.plugin_dir / "voice" / "voice_registry.json"
+        self.legacy_plugin_clone_dir = self.plugin_dir / "clone"
         self._voices: dict[str, dict] = self._load_registry()
 
     def _load_registry(self) -> dict:
@@ -80,6 +94,10 @@ class VoiceManager:
                         clone_candidate = self.clone_audio_dir / path_obj.name
                         if clone_candidate.exists():
                             path_obj = clone_candidate
+                        else:
+                            legacy_clone_candidate = self.legacy_plugin_clone_dir / path_obj.name
+                            if legacy_clone_candidate.exists():
+                                path_obj = legacy_clone_candidate
                 normalized_kwargs["audio_path"] = str(path_obj.resolve())
             except Exception:
                 normalized_kwargs["audio_path"] = str(audio_path)
@@ -116,6 +134,19 @@ class VoiceManager:
             self._voices[voice_id] = info
             self._save_registry()
             return str(fallback.resolve())
+
+        legacy_fallback = self.legacy_plugin_clone_dir / path_obj.name
+        if legacy_fallback.exists():
+            logger.warning(
+                "Clone audio path using legacy plugin clone dir: voice_id=%s old=%s new=%s",
+                voice_id,
+                raw_path,
+                legacy_fallback,
+            )
+            info["audio_path"] = str(legacy_fallback.resolve())
+            self._voices[voice_id] = info
+            self._save_registry()
+            return str(legacy_fallback.resolve())
 
         return ""
 

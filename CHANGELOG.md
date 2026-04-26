@@ -20,12 +20,12 @@
 - voiceclone 参考音频上传增加本地文件校验：存在性、是否为文件、后缀白名单、最小体积。
 - voiceclone 上传时的 MIME 类型改为根据文件后缀自动推断。
 - voiceclone 在 clone 模式下支持独立拼接自然语言风格控制与音频标签；若配置留空，则不注入额外控制文本，保留官方默认行为。
-- voiceclone 的本地参考音频目录约定调整为插件根目录下的 `clone/` 文件夹，并同步更新命令帮助、路径解析与错误提示。
-- `VoiceManager` 现在会自动创建并使用 `clone/` 目录，便于直接存放待克隆音频文件。
+- voiceclone 的本地参考音频目录已对齐 AstrBot 大文件存储规范，默认调整到 `data/plugin_data/astrbot_plugin_mimo_tts/clone/`，并同步更新命令帮助、路径解析与错误提示。
+- `VoiceManager` 现在会自动创建并使用 AstrBot 数据目录下的 `clone/` 目录，便于直接存放待克隆音频文件。
 - `/voiceclone` 的语义调整为“登记本地参考音频”，不再尝试调用不存在的远端预注册接口。
 - 自动 TTS 装饰阶段优先级已调整，使文本清理插件能够更早处理回复结果，再由本插件执行朗读。
 - 自定义音色注册表默认迁移到 AstrBot `data` 目录下保存，同时兼容读取旧版插件目录中的注册表文件。
-- README 已补充 VoiceClone 参考音频上传位置说明，推荐将音频放到插件根目录 `clone/` 文件夹，并使用 `/voiceclone <ID> clone/文件名` 进行登记。
+- README 已补充 VoiceClone 参考音频上传位置说明，推荐将音频放到 `data/plugin_data/astrbot_plugin_mimo_tts/clone/` 文件夹，并使用 `/voiceclone <ID> clone/文件名` 进行登记。
 
 ### 修复
 - 修复 `api_base_url` 的兼容问题：若用户误将配置填写为根域名 `https://api.xiaomimimo.com` 或完整接口地址 `.../chat/completions`，provider 现在会自动归一化，避免再次拼接 `chat/completions` 后触发 404。
@@ -38,3 +38,4 @@
 - 进一步增强运行态诊断：HTTP 错误信息现在会附带实际请求 URL 与模型名，便于确认 404 是来自接口地址配置错误还是运行中仍在加载旧版本代码。
 - 修复插件重载或更新后用户个人 TTS 配置丢失的问题。
 - 修复自动 TTS 误朗读 persona / skill / system prompt / reasoning 等提示词溢出文本的问题。
+- 修复 clone 大文件仍落在插件代码目录中的问题，改为优先使用 AstrBot 官方建议的 `data/plugin_data/{plugin_name}/` 存储位置，并保留旧路径兼容读取。
