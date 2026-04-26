@@ -222,6 +222,19 @@ class MiMoTTSPlugin(Star):
     def _resolve_tts_mode(self, uid: str) -> str:
         return self._normalize_tts_mode(self._get_user_settings(uid).get("tts_mode"))
 
+    def _resolve_design_description(self, uid: str) -> str:
+        """解析 design 模式下应使用的音色描述。"""
+        uset = self._get_user_settings(uid)
+        current_voice = self._resolve_voice(uset["voice"])
+        current_voice_info = self._voice_manager.get_voice(current_voice) or {}
+
+        if str(current_voice_info.get("model", "")).lower() == "voicedesign":
+            desc = str(current_voice_info.get("description", "")).strip()
+            if desc:
+                return desc
+
+        return self.config.design_voice_description.strip()
+
     def _resolve_synthesis_target(self, uid: str) -> tuple[str, Optional[str], str]:
         """根据当前输出模式解析最终音色与模型。"""
         uset = self._get_user_settings(uid)
@@ -238,14 +251,12 @@ class MiMoTTSPlugin(Star):
             raise RuntimeError("当前已切换到“克隆”输出，但未配置 clone_voice_id，也未选中可用的克隆音色。")
 
         if mode == "design":
-            design_voice_id = self.config.design_voice_id.strip()
-            if design_voice_id:
-                # VoiceDesign 仅用于“生成音色”，实际 TTS 合成阶段应回到常规 TTS 模型
-                # 并显式使用生成后的 voice_id；否则会出现描述未生效、输出音色跑偏。
-                return design_voice_id, None, mode
-            if str(current_voice_info.get("model", "")).lower() == "voicedesign":
-                return current_voice, None, mode
-            return self.config.default_voice, None, mode
+            description = self._resolve_design_description(uid)
+            if description:
+                # 按官方文档，VoiceDesign 直接使用 user 消息中的描述文本生成目标音色，
+                # 并不依赖普通 TTS 的 audio.voice 预置音色参数。
+                return "", self.config.design_model, mode
+            raise RuntimeError("当前已切换到“设计”输出，但未配置 design_voice_description，也未选中带描述的设计音色。")
 
         if self._voice_manager.get_voice(current_voice):
             return self.config.default_voice, None, mode
@@ -374,10 +385,13 @@ class MiMoTTSPlugin(Star):
         voice_id, model_override, mode = self._resolve_synthesis_target(uid)
         if mode == "clone":
             prompt = self._build_clone_prompt(prompt)
+        elif mode == "design":
+            design_description = self._resolve_design_description(uid)
+            prompt = self._merge_prompt_parts(design_description, prompt)
 
         raw = await provider.synthesize(
             text=final_text,
-            voice=voice_id,
+            voice=voice_id or None,
             system_prompt=prompt if prompt else None,
             audio_format=fmt,
             model=model_override,
@@ -938,14 +952,15 @@ class MiMoTTSPlugin(Star):
 
         ok = await provider.design_voice(vid, desc, model=self.config.design_model)
         if ok:
-            self._voice_manager.register_voice(vid, name=vid, model="voicedesign")
+            self._voice_manager.register_voice(vid, name=vid, model="voicedesign", description=desc)
             # 仅同步可展示的配置项；design_voice_id 改为内部状态，避免出现在插件设置面板。
             self.config._cfg["design_enabled"] = True
             self.config.design_voice_id = vid
             self.config._cfg["design_voice_description"] = desc
             yield MessageEventResult().message(
                 f"[✓] 声音设计完成: {vid}\n"
-                f"  用 /voice {vid} 切换使用\n"
+                f"  可用 /ttsswitch design 切换到设计模式\n"
+                f"  也可用 /voice {vid} 将这条描述设为当前设计音色\n"
                 f"  配置面板已同步更新描述信息"
             )
         else:

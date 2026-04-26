@@ -144,9 +144,9 @@
 - 当前按官方能力接入 `mimo-v2.5-tts-voicedesign` 模型。
 - 插件配置中的“设计音色描述”用于全局控制设计音色风格。
 - 使用 `/voicegen <ID> <描述>` 可生成新的设计音色，并同步更新配置中的设计音色信息。
-- `mimo-v2.5-tts-voicedesign` 的职责是“生成音色”，不作为最终朗读模型直接使用。
-- 当输出模式切换为 `design` 时，插件会优先使用已生成的 `design_voice_id` 进行合成，实际朗读阶段回到常规 TTS 模型，并显式携带该 `voice_id`。
-- 这样可避免把 VoiceDesign 误当成直接朗读模型，减少“生成后的声音与填写描述不一致”或音色跑偏的问题。
+- `mimo-v2.5-tts-voicedesign` 会直接读取 `user` 消息中的音色描述文本来生成定制音色，不依赖普通 TTS 的预置 `audio.voice`。
+- 当输出模式切换为 `design` 时，插件会改用 `design_model` 发起合成，并优先采用当前设计音色描述或配置中的 `design_voice_description`。
+- 若使用 `/voicegen <ID> <描述>`，插件会记录这条描述，之后切到 `design` 模式时可继续按该描述进行设计音色朗读。
 
 #### 声音克隆（VoiceClone）
 
@@ -238,8 +238,8 @@
   - 增加 **/ttsswitch**，支持在 **默认 / 设计 / 克隆** 三种输出模式之间切换；
   - 调整唱歌逻辑为仅允许 **/sing** 单次触发；
   - 完善 **VoiceDesign** 与 **VoiceClone** 的模型接入与配置说明；
-  - 修正 **design** 模式的实际合成逻辑：`VoiceDesign` 仅用于生成音色，正式朗读改为使用普通 TTS 模型配合生成后的 `voice_id`；
-  - 修正 **VoiceDesign** 请求参数，避免对 `mimo-v2.5-tts-voicedesign` 传入不支持的 `audio.voice`；
+  - 修正 **design** 模式的实际合成逻辑：切换到该模式后改为直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本放入 `user` 消息中参与合成；
+  - 修正 **VoiceDesign** 请求参数，避免对 `mimo-v2.5-tts-voicedesign` 传入不支持的 `audio.voice`，也避免错误使用无效占位音色 ID；
   - 新增克隆音色的自然语言风格控制、音频标签控制；
   - 接口失败时可直接输出更具体的报错原因；
   - 本版本使用GPT-5.4进行更新。
