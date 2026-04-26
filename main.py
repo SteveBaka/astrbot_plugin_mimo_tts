@@ -147,6 +147,54 @@ class MiMoTTSPlugin(Star):
             }
         return self._user_settings[uid]
 
+    @staticmethod
+    def _safe_event_value(event: AstrMessageEvent, *names: str) -> str:
+        """Best-effort read event identifiers across AstrBot versions."""
+        for name in names:
+            try:
+                attr = getattr(event, name, None)
+                value = attr() if callable(attr) else attr
+                text = str(value or "").strip()
+                if text:
+                    return text
+            except Exception:
+                continue
+        return ""
+
+    def _get_user_scope_key(self, event: AstrMessageEvent) -> str:
+        """Resolve a stable settings key shared by commands and auto-TTS callbacks.
+
+        优先使用会话/会话上下文 ID，避免某些阶段的 sender_id 不一致，
+        导致 `/ttsswitch` 反馈成功但实际合成仍读取另一份默认设置。
+        """
+        session_id = self._safe_event_value(event, "get_session_id", "session_id")
+        if session_id:
+            return f"session:{session_id}"
+
+        conversation_id = self._safe_event_value(event, "get_conversation_id", "conversation_id")
+        if conversation_id:
+            return f"conversation:{conversation_id}"
+
+        group_id = self._safe_event_value(event, "get_group_id", "group_id")
+        sender_id = self._safe_event_value(event, "get_sender_id", "sender_id")
+        if group_id and sender_id:
+            return f"group:{group_id}:user:{sender_id}"
+        if sender_id:
+            return f"user:{sender_id}"
+        return "user:default"
+
+    def _get_event_settings(self, event: AstrMessageEvent) -> tuple[str, dict]:
+        """Get settings dict for current event and migrate legacy sender-id keys if needed."""
+        scope_key = self._get_user_scope_key(event)
+        legacy_sender_key = self._safe_event_value(event, "get_sender_id", "sender_id")
+
+        if scope_key not in self._user_settings and legacy_sender_key and legacy_sender_key in self._user_settings:
+            self._user_settings[scope_key] = dict(self._user_settings[legacy_sender_key])
+        if scope_key not in self._user_format and legacy_sender_key and legacy_sender_key in self._user_format:
+            self._user_format[scope_key] = self._user_format[legacy_sender_key]
+
+        return scope_key, self._get_user_settings(scope_key)
+
     def _should_tts(self, uid: str) -> bool:
         return self.config.get("auto_tts", True)
 
@@ -468,7 +516,9 @@ class MiMoTTSPlugin(Star):
     @filter.on_decorating_result(priority=9999)
     async def on_decorating_result(self, event: AstrMessageEvent):
         """Auto TTS: intercept LLM output and generate voice reply."""
-        if not self._should_tts(event.get_sender_id()):
+        uid, uset = self._get_event_settings(event)
+
+        if not self._should_tts(uid):
             return
         if not event.is_private_chat() and not self.config.get("auto_tts_in_group", True):
             return
@@ -493,12 +543,10 @@ class MiMoTTSPlugin(Star):
             logger.warning("MiMO TTS: skip auto TTS because result looks like leaked persona/skill prompt")
             return
 
-        uid = event.get_sender_id()
         if plain.startswith("/"):
             return
 
         # If emotion is auto, detect from text
-        uset = self._get_user_settings(uid)
         orig_emotion = uset["emotion"]
         if not orig_emotion or orig_emotion == "auto":
             detected = detect_emotion(plain)
@@ -526,8 +574,7 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message("用法: /tts <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色] [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]")
             return
 
-        uid = event.get_sender_id()
-        uset = self._get_user_settings(uid)
+        uid, uset = self._get_event_settings(event)
 
         # Parse inline options
         text, emo = self._parse_opt(text, "-emotion")
@@ -591,7 +638,7 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message("用法: /sing <歌词>")
             return
 
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
         uset = self._get_user_settings(uid)
         orig = uset.copy()
         uset["sing"] = True
@@ -614,7 +661,7 @@ class MiMoTTSPlugin(Star):
         """ /voice [音色名] """
         raw = event.message_str.strip()
         arg = raw[len("/voice"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -635,8 +682,7 @@ class MiMoTTSPlugin(Star):
         """ /ttsswitch [default|design|clone] — 切换 TTS 输出来源模式 """
         raw = event.message_str.strip()
         arg = raw[len("/ttsswitch"):].strip()
-        uid = event.get_sender_id()
-        uset = self._get_user_settings(uid)
+        uid, uset = self._get_event_settings(event)
 
         if not arg:
             mode = self._resolve_tts_mode(uid)
@@ -664,7 +710,7 @@ class MiMoTTSPlugin(Star):
         """ /emotion [情感名|auto|off] """
         raw = event.message_str.strip()
         arg = raw[len("/emotion"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -703,7 +749,7 @@ class MiMoTTSPlugin(Star):
         """ /speed [0.5~2.0] """
         raw = event.message_str.strip()
         arg = raw[len("/speed"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -722,7 +768,7 @@ class MiMoTTSPlugin(Star):
         """ /pitch [-12~+12] """
         raw = event.message_str.strip()
         arg = raw[len("/pitch"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -741,7 +787,7 @@ class MiMoTTSPlugin(Star):
         """ /breath [on|off] """
         raw = event.message_str.strip()
         arg = raw[len("/breath"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -758,7 +804,7 @@ class MiMoTTSPlugin(Star):
         """ /stress [on|off] """
         raw = event.message_str.strip()
         arg = raw[len("/stress"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -775,7 +821,7 @@ class MiMoTTSPlugin(Star):
         """ /dialect [方言名|off] — 设置方言口音，如 四川话、粤语、东北话 """
         raw = event.message_str.strip()
         arg = raw[len("/dialect"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -799,7 +845,7 @@ class MiMoTTSPlugin(Star):
         """ /volume [轻声|正常|大声|off] """
         raw = event.message_str.strip()
         arg = raw[len("/volume"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -822,7 +868,7 @@ class MiMoTTSPlugin(Star):
         """ /laughter [on|off] — 允许自然笑声"""
         raw = event.message_str.strip()
         arg = raw[len("/laughter"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -839,7 +885,7 @@ class MiMoTTSPlugin(Star):
         """ /pause [on|off] — 增加句间停顿"""
         raw = event.message_str.strip()
         arg = raw[len("/pause"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             uset = self._get_user_settings(uid)
@@ -856,7 +902,7 @@ class MiMoTTSPlugin(Star):
         """ /preset [预设名] — 查看/应用预设"""
         raw = event.message_str.strip()
         arg = raw[len("/preset"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             lines = ["预设列表:", ""]
@@ -969,7 +1015,8 @@ class MiMoTTSPlugin(Star):
             # 同步到配置面板
             self.config._cfg["clone_enabled"] = True
             self.config._cfg["clone_voice_id"] = vid
-            self._get_user_settings(event.get_sender_id())["voice"] = vid
+            uid, _ = self._get_event_settings(event)
+            self._get_user_settings(uid)["voice"] = vid
             yield MessageEventResult().message(
                 f"[✓] 已登记克隆音色: {vid}\n"
                 f"  参考音频: {audio_file}\n"
@@ -1015,7 +1062,8 @@ class MiMoTTSPlugin(Star):
             self.config._cfg["design_enabled"] = True
             self.config.design_voice_id = vid
             self.config._cfg["design_voice_description"] = desc
-            self._get_user_settings(event.get_sender_id())["voice"] = vid
+            uid, _ = self._get_event_settings(event)
+            self._get_user_settings(uid)["voice"] = vid
             yield MessageEventResult().message(
                 f"[✓] 已登记设计音色: {vid}\n"
                 f"  可用 /ttsswitch design 切换到设计模式\n"
@@ -1048,7 +1096,7 @@ class MiMoTTSPlugin(Star):
         """ /ttsformat [mp3|wav|ogg] — 设置音频输出格式"""
         raw = event.message_str.strip()
         arg = raw[len("/ttsformat"):].strip()
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
 
         if not arg:
             cur = self._user_format.get(uid, "mp3")
@@ -1080,7 +1128,7 @@ class MiMoTTSPlugin(Star):
         provider = self._ensure_provider()
         status = "[u2713] 正常" if provider else "[X] 未配置"
 
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
         uset = self._get_user_settings(uid)
 
         lines = [
@@ -1110,8 +1158,7 @@ class MiMoTTSPlugin(Star):
         if not text:
             yield MessageEventResult().message("用法: /ttsraw <文本>")
             return
-
-        uid = event.get_sender_id()
+        uid, _ = self._get_event_settings(event)
         try:
             provider = self._ensure_provider()
             if not provider:

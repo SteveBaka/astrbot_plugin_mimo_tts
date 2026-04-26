@@ -1,6 +1,6 @@
 # MiMO TTS Plugin (Enhanced)
 
-> **⚠️ 免责声明：本项目初版v1.1.0使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正，后期更换其他大模型会在下方更新日志中指出。**
+> **⚠️ 免责声明：本项目初版v1.1.0使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正，后期若更换其他大模型会在下方更新日志中指出。**
 
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
 
@@ -247,11 +247,11 @@
   - 修正 **design** 模式的实际合成逻辑：切换到该模式后改为直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本放入 `user` 消息中参与合成；
   - 修正 **VoiceDesign** 请求参数，避免对 `mimo-v2.5-tts-voicedesign` 传入不支持的 `audio.voice`，也避免错误使用无效占位音色 ID；
   - 新增克隆音色的自然语言风格控制、音频标签控制；
-  - 接口失败时可直接输出更具体的报错原因；
-  - 本版本使用GPT-5.4进行更新。
+  - 接口失败时可直接输出更具体的报错原因。
 - 2025年4月26日，v1.2.1更新：
   - 修正 `api_base_url` 的兼容处理：现在即使误填为 `https://api.xiaomimimo.com` 或完整的 `.../v1/chat/completions`，插件也会自动归一化到正确的基础地址，避免拼接后出现 404；
   - 为 TTS / VoiceClone / VoiceDesign 请求增加更明确的运行日志，失败时会直接带出实际请求 URL 与模型名，便于确认是否命中新逻辑、是否仍在使用错误地址。
+- v1.2.0及v1.2.1均使用GPT-5.4进行生成。
 ## License
 
 MIT
