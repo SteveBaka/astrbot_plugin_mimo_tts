@@ -243,7 +243,7 @@ class MiMoTTSPlugin(Star):
                 return design_voice_id, self.config.design_model, mode
             if str(current_voice_info.get("model", "")).lower() == "voicedesign":
                 return current_voice, self.config.design_model, mode
-            raise RuntimeError("当前已切换到“设计”输出，但未生成 design_voice_id，也未选中可用的设计音色。")
+            return "1", self.config.design_model, mode
 
         if self._voice_manager.get_voice(current_voice):
             return self.config.default_voice, None, mode
@@ -361,7 +361,9 @@ class MiMoTTSPlugin(Star):
 
         plain = ""
         for comp in chain:
-            if hasattr(comp, "text") and comp.text:
+            # 仅提取最终可见的 Plain 文本，避免把其它插件写入 chain 的内部提示词、
+            # 调试信息或非最终展示文本一并拼进自动 TTS，造成“提示词溢出”。
+            if isinstance(comp, Plain) and comp.text:
                 plain += comp.text
         plain = plain.strip()
         if self._should_skip(plain):

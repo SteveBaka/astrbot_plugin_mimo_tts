@@ -294,7 +294,7 @@ class MiMOProvider:
         url = f"{self.base_url}/audio/voice/design"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
+            "api-key": self.api_key,
         }
 
         payload = {

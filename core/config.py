@@ -74,7 +74,8 @@ class ConfigManager:
         raw_cfg.pop("singing_mode", None)
 
         # design_voice_id 仍用于运行时回退与兼容旧配置，但不再注入插件设置面板。
-        self._design_voice_id: str = str(raw_cfg.pop("design_voice_id", ""))
+        # 这里保留一个内部占位值“1”，避免切到 design 模式时直接因空值报本地错误。
+        self._design_voice_id: str = str(raw_cfg.pop("design_voice_id", "1"))
 
         self._cfg: dict = raw_cfg
         # Ensure all schema keys exist with their defaults
@@ -184,7 +185,7 @@ class ConfigManager:
 
     @design_voice_id.setter
     def design_voice_id(self, value: str) -> None:
-        self._design_voice_id = str(value or "")
+        self._design_voice_id = str(value or "1")
 
     @property
     def voice_presets(self) -> dict[str, str]:
