@@ -7,6 +7,7 @@ import asyncio
 import base64
 import io
 import logging
+from urllib.parse import urlparse
 import wave
 from pathlib import Path
 from typing import Optional
@@ -43,7 +44,7 @@ class MiMOProvider:
         max_retries: int = 2,
     ):
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        self.base_url = self._normalize_base_url(base_url)
         self._model = model
         self._voice = voice
         self._audio_format = audio_format
@@ -63,6 +64,33 @@ class MiMOProvider:
 
     def _set_last_error(self, message: str) -> None:
         self._last_error = str(message or "").strip()
+
+    @staticmethod
+    def _normalize_base_url(base_url: str) -> str:
+        """Normalize configured API base URL for MiMO chat completions.
+
+        Supports the following user inputs:
+        - https://api.xiaomimimo.com/v1
+        - https://api.xiaomimimo.com
+        - https://api.xiaomimimo.com/v1/chat/completions
+        """
+        text = str(base_url or "").strip().rstrip("/")
+        if not text:
+            return ""
+
+        if text.endswith("/chat/completions"):
+            text = text[: -len("/chat/completions")].rstrip("/")
+
+        parsed = urlparse(text)
+        host = (parsed.netloc or "").lower().strip()
+        path = (parsed.path or "").rstrip("/")
+        if host == "api.xiaomimimo.com" and path == "":
+            return f"{text}/v1"
+        return text
+
+    def _build_chat_completions_url(self) -> str:
+        normalized = self._normalize_base_url(self.base_url)
+        return f"{normalized}/chat/completions"
 
     @staticmethod
     def _looks_like_mp3(data: bytes) -> bool:
@@ -180,7 +208,7 @@ class MiMOProvider:
 
         voice_id = voice or self._voice
         fmt = audio_format or self._audio_format
-        url = f"{self.base_url}/chat/completions"
+        url = self._build_chat_completions_url()
 
         # Official MiMO auth header format
         headers = {
@@ -218,6 +246,16 @@ class MiMOProvider:
 
         backoff = 1.0
         self._set_last_error("")
+        logger.info(
+            "MiMO TTS request prepared: url=%s model=%s clone=%s design=%s format=%s voice=%s has_user_prompt=%s",
+            url,
+            model_name,
+            self._is_voice_clone_model(model_name),
+            self._is_voice_design_model(model_name),
+            fmt,
+            "<data-url>" if self._is_voice_clone_model(model_name) else (voice_id or ""),
+            bool(system_prompt),
+        )
 
         for attempt in range(1, self.max_retries + 2):
             try:
@@ -245,13 +283,21 @@ class MiMOProvider:
                         return normalized_bytes
                     else:
                         body = await resp.text()
-                        self._set_last_error(f"HTTP {resp.status}: {body[:300]}")
-                        logger.warning(f"MiMO TTS HTTP {resp.status}: {body[:300]}")
+                        self._set_last_error(
+                            f"HTTP {resp.status} @ {url} [model={model_name}]: {body[:300]}"
+                        )
+                        logger.warning(
+                            "MiMO TTS HTTP %s @ %s [model=%s]: %s",
+                            resp.status,
+                            url,
+                            model_name,
+                            body[:300],
+                        )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self._set_last_error(f"请求异常: {e}")
-                logger.warning(f"MiMO TTS attempt {attempt} failed: {e}")
+                self._set_last_error(f"请求异常 @ {url} [model={model_name}]: {e}")
+                logger.warning("MiMO TTS attempt %s failed @ %s [model=%s]: %s", attempt, url, model_name, e)
 
             if attempt <= self.max_retries:
                 await asyncio.sleep(min(backoff, 10))

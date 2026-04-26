@@ -1086,7 +1086,7 @@ class MiMoTTSPlugin(Star):
         lines = [
             f"MiMO TTS 配置状态: {status}",
             f"模型: {self.config.get('model', 'mimo-v2.5-tts')}",
-            f"API: {self.config.get('api_base_url', 'https://open.bigmodel.cn/api/paas/v4')[:50]}",
+            f"API: {self.config.get('api_base_url', 'https://api.xiaomimimo.com/v1')[:80]}",
             f"",
             f"── 你的当前设置 ──",
             f"情感: {uset['emotion'] or '(自动)'}",
@@ -1141,7 +1141,7 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
         """ /ttsinfo — 查看插件信息"""
         lines = [
-            "MiMO TTS Plugin v1.2.0",
+            "MiMO TTS Plugin v1.2.1",
             "",
             "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
             "",

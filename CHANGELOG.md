@@ -24,9 +24,11 @@
 - `/voiceclone` 的语义调整为“登记本地参考音频”，不再尝试调用不存在的远端预注册接口。
 
 ### 修复
+- 修复 `api_base_url` 的兼容问题：若用户误将配置填写为根域名 `https://api.xiaomimimo.com` 或完整接口地址 `.../chat/completions`，provider 现在会自动归一化，避免再次拼接 `chat/completions` 后触发 404。
 - provider 在接口调用失败时，现会记录并透出更明确的错误原因，便于 `/tts`、`/voiceclone`、`/voicegen`、`/ttsraw` 等命令直接反馈失败详情。
 - voicedesign 调用已支持显式传入模型名。
 - 修复 voicedesign 请求参数错误：调用 `mimo-v2.5-tts-voicedesign` 时不再传入不支持的 `audio.voice`，避免出现 `audio.voice is not supported for voice design model` 的 400 报错。
 - 修复 design 模式错误使用占位音色 ID 的问题：移除内部默认值 `1`，避免触发 `Unknown voice: 1` 的 400 报错。
 - 修复 design 输出模式下的模型使用逻辑：切换到该模式后直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本作为 `user` 消息传入，使最终朗读更符合设计描述。
 - 修复 `/voiceclone` 的 404 问题：改为在实际合成时通过 `POST /chat/completions` 调用 `mimo-v2.5-tts-voiceclone`，并将本地参考音频编码成 `data:{MIME_TYPE};base64,...` 填入 `audio.voice`。
+- 进一步增强运行态诊断：HTTP 错误信息现在会附带实际请求 URL 与模型名，便于确认 404 是来自接口地址配置错误还是运行中仍在加载旧版本代码。
