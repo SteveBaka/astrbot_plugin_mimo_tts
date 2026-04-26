@@ -19,6 +19,11 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_PCM_SAMPLE_RATE = 24000
+DEFAULT_PCM_CHANNELS = 1
+DEFAULT_PCM_SAMPLE_WIDTH = 2
+
+
 class MiMOProvider:
     """Async client for MiMO-V2.5-TTS API.
 
@@ -48,13 +53,52 @@ class MiMOProvider:
         self.max_retries = max_retries
         self._session: Optional[aiohttp.ClientSession] = None
         self._last_error: str = ""
+        self._last_output_format: str = audio_format
 
     @property
     def last_error(self) -> str:
         return self._last_error
 
+    @property
+    def last_output_format(self) -> str:
+        return self._last_output_format
+
     def _set_last_error(self, message: str) -> None:
         self._last_error = str(message or "").strip()
+
+    @staticmethod
+    def _looks_like_mp3(data: bytes) -> bool:
+        return data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
+
+    @staticmethod
+    def _wrap_pcm_as_wav(audio_bytes: bytes) -> bytes:
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wav_file:
+            wav_file.setnchannels(DEFAULT_PCM_CHANNELS)
+            wav_file.setsampwidth(DEFAULT_PCM_SAMPLE_WIDTH)
+            wav_file.setframerate(DEFAULT_PCM_SAMPLE_RATE)
+            wav_file.writeframes(audio_bytes)
+        return buf.getvalue()
+
+    def _normalize_audio_bytes(self, audio_bytes: bytes, requested_format: str) -> tuple[bytes, str]:
+        """尽量将接口返回的音频整理为 AstrBot 可稳定发送的格式。"""
+        if audio_bytes.startswith(b"RIFF"):
+            return audio_bytes, "wav"
+        if audio_bytes.startswith(b"OggS"):
+            return audio_bytes, "ogg"
+        if self._looks_like_mp3(audio_bytes):
+            return audio_bytes, "mp3"
+
+        normalized = requested_format.lower().strip()
+        if normalized in {"wav", "pcm"}:
+            logger.info("MiMO TTS: received raw PCM bytes, wrapping into WAV container")
+            return self._wrap_pcm_as_wav(audio_bytes), "wav"
+
+        logger.warning(
+            "MiMO TTS: requested format '%s' but response header is unknown; wrapping as WAV for compatibility",
+            normalized,
+        )
+        return self._wrap_pcm_as_wav(audio_bytes), "wav"
 
     async def close(self):
         if self._session and not self._session.closed:
@@ -146,8 +190,13 @@ class MiMOProvider:
                             logger.error(f"MiMO TTS: no audio in response. Keys: {list(data.keys())}")
                             return None
                         audio_bytes = base64.b64decode(audio_b64)
-                        logger.info(f"MiMO TTS: synthesized {len(text)} chars -> {len(audio_bytes)} bytes ({fmt})")
-                        return audio_bytes
+                        normalized_bytes, actual_format = self._normalize_audio_bytes(audio_bytes, fmt)
+                        self._last_output_format = actual_format
+                        logger.info(
+                            f"MiMO TTS: synthesized {len(text)} chars -> {len(normalized_bytes)} bytes "
+                            f"(requested={fmt}, actual={actual_format})"
+                        )
+                        return normalized_bytes
                     else:
                         body = await resp.text()
                         self._set_last_error(f"HTTP {resp.status}: {body[:300]}")

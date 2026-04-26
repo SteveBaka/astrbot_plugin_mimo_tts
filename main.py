@@ -321,11 +321,13 @@ class MiMoTTSPlugin(Star):
         if not raw:
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")
 
+        actual_fmt = str(provider.last_output_format or fmt or "mp3").lower()
+
         # Write temp file
         tmp_dir = Path(__file__).parent / "temp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         ts = int(time.time() * 1000)
-        out = tmp_dir / f"mimo_{ts}.{fmt}"
+        out = tmp_dir / f"mimo_{ts}.{actual_fmt}"
         out.write_bytes(raw)
         self._recent_files.append((time.time(), out))
         self._cleanup_recent_files()
@@ -858,14 +860,14 @@ class MiMoTTSPlugin(Star):
         ok = await provider.design_voice(vid, desc, model=self.config.design_model)
         if ok:
             self._voice_manager.register_voice(vid, name=vid, model="voicedesign")
-            # 同步到配置面板
+            # 仅同步可展示的配置项；design_voice_id 改为内部状态，避免出现在插件设置面板。
             self.config._cfg["design_enabled"] = True
-            self.config._cfg["design_voice_id"] = vid
+            self.config.design_voice_id = vid
             self.config._cfg["design_voice_description"] = desc
             yield MessageEventResult().message(
                 f"[✓] 声音设计完成: {vid}\n"
                 f"  用 /voice {vid} 切换使用\n"
-                f"  配置面板已同步更新"
+                f"  配置面板已同步更新描述信息"
             )
         else:
             yield MessageEventResult().message(
@@ -962,9 +964,11 @@ class MiMoTTSPlugin(Star):
             if not raw_audio:
                 raise RuntimeError(provider.last_error or "TTS 合成失败。")
 
+            actual_fmt = str(provider.last_output_format or fmt or "mp3").lower()
+
             tmp_dir = Path(__file__).parent / "temp"
             tmp_dir.mkdir(parents=True, exist_ok=True)
-            out = tmp_dir / f"mimo_raw_{int(time.time() * 1000)}.{fmt}"
+            out = tmp_dir / f"mimo_raw_{int(time.time() * 1000)}.{actual_fmt}"
             out.write_bytes(raw_audio)
             self._recent_files.append((time.time(), out))
             self._cleanup_recent_files()

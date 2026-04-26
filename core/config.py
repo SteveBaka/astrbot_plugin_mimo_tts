@@ -41,8 +41,6 @@ class ConfigManager:
         "stress_enabled": False,
         "laughter_enabled": False,
         "pause_enabled": False,
-        # 兼容旧配置保留该字段，但运行时已不再作为全局唱歌开关使用。
-        "singing_mode": False,
 
         # Voice clone / design
         "clone_enabled": False,
@@ -54,8 +52,6 @@ class ConfigManager:
         "design_model": "mimo-v2.5-tts-voicedesign",
         "tts_output_mode": "default",
         "design_voice_description": "",
-        # 兼容旧配置保留，当前配置面板已改为 design_voice_description。
-        "design_voice_id": "",
 
         # Voice presets
         "preset_gentle_female": "温柔的女生音色，轻柔细腻",
@@ -73,7 +69,14 @@ class ConfigManager:
     }
 
     def __init__(self, config: dict):
-        self._cfg: dict = config or {}
+        raw_cfg = dict(config or {})
+        # 清理不应继续出现在插件设置面板中的历史字段。
+        raw_cfg.pop("singing_mode", None)
+
+        # design_voice_id 仍用于运行时回退与兼容旧配置，但不再注入插件设置面板。
+        self._design_voice_id: str = str(raw_cfg.pop("design_voice_id", ""))
+
+        self._cfg: dict = raw_cfg
         # Ensure all schema keys exist with their defaults
         for key, default_val in self._SCHEMA_DEFAULTS.items():
             if key not in self._cfg:
@@ -177,7 +180,11 @@ class ConfigManager:
 
     @property
     def design_voice_id(self) -> str:
-        return str(self._cfg.get("design_voice_id", ""))
+        return self._design_voice_id
+
+    @design_voice_id.setter
+    def design_voice_id(self, value: str) -> None:
+        self._design_voice_id = str(value or "")
 
     @property
     def voice_presets(self) -> dict[str, str]:
