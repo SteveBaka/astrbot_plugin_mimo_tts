@@ -87,22 +87,34 @@
     "hint": "增加句间停顿，适合有感情的朗读",
     "default": false
   },
-  "singing_mode": {
-    "type": "bool",
-    "description": "🎛️ 唱歌模式",
-    "hint": "将文本以唱歌方式演绎",
-    "default": false
-  },
   "clone_enabled": {
     "type": "bool",
     "description": "🔊 启用声音克隆",
     "hint": "通过参考音频克隆特定声音",
     "default": false
   },
+  "clone_model": {
+    "type": "string",
+    "description": "🔊 克隆模型名称",
+    "hint": "当前仅支持 mimo-v2.5-tts-voiceclone",
+    "default": "mimo-v2.5-tts-voiceclone"
+  },
   "clone_voice_id": {
     "type": "string",
     "description": "🔊 克隆音色 ID",
     "hint": "先用 /voiceclone <ID> <音频路径> 创建",
+    "default": ""
+  },
+  "clone_style_prompt": {
+    "type": "string",
+    "description": "🔊 克隆音色自然语言风格控制",
+    "hint": "留空则按官方 API 默认方式处理；可填如：温柔、成熟、带故事感地朗读",
+    "default": ""
+  },
+  "clone_audio_tags": {
+    "type": "string",
+    "description": "🔊 克隆音色音频标签控制",
+    "hint": "留空则按官方 API 默认方式处理；可填标签，多个标签建议用空格/逗号分隔",
     "default": ""
   },
   "design_enabled": {
@@ -111,10 +123,22 @@
     "hint": "通过文字描述自动生成全新音色",
     "default": false
   },
-  "design_voice_id": {
+  "design_model": {
     "type": "string",
-    "description": "🔊 设计音色 ID",
-    "hint": "先用 /voicegen <ID> <描述> 创建",
+    "description": "🔊 设计模型名称",
+    "hint": "当前仅支持 mimo-v2.5-tts-voicedesign",
+    "default": "mimo-v2.5-tts-voicedesign"
+  },
+  "tts_output_mode": {
+    "type": "string",
+    "description": "🔊 TTS 输出音色来源",
+    "hint": "可填 default / design / clone，分别表示默认 / 设计 / 克隆",
+    "default": "default"
+  },
+  "design_voice_description": {
+    "type": "string",
+    "description": "🔊 设计音色描述",
+    "hint": "用于全局音色控制的描述文本，如：温柔甜美的年轻女声，语速适中",
     "default": ""
   },
   "preset_gentle_female": {

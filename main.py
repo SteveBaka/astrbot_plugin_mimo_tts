@@ -136,12 +136,14 @@ class MiMoTTSPlugin(Star):
                 "voice": self.config.default_voice,
                 "breath": self.config.breath_enabled,
                 "stress": self.config.stress_enabled,
-                "sing": self.config.singing_mode,
+                # 唱歌模式仅允许由 /sing 命令临时触发，避免污染普通 /tts 与自动 TTS。
+                "sing": False,
                 "laughter": self.config.laughter_enabled,
                 "pause": self.config.pause_enabled,
                 "style_hint": self.config.style_hint,
                 "dialect": "",
                 "volume": "",
+                "tts_mode": self._normalize_tts_mode(self.config.tts_output_mode),
             }
         return self._user_settings[uid]
 
@@ -179,6 +181,82 @@ class MiMoTTSPlugin(Star):
             style_hint=style or None,
         )
 
+    @staticmethod
+    def _merge_prompt_parts(*parts: Optional[str]) -> str:
+        merged: list[str] = []
+        for part in parts:
+            text = str(part or "").strip().strip("，,")
+            if text:
+                merged.append(text)
+        return "，".join(merged)
+
+    def _build_clone_prompt(self, base_prompt: str) -> str:
+        """为 voiceclone 单独追加自然语言风格控制与音频标签控制。"""
+        style_prompt = self.config.clone_style_prompt.strip()
+        audio_tags = self.config.clone_audio_tags.strip()
+
+        tag_prompt = ""
+        if audio_tags:
+            normalized_tags = re.sub(r"[，、]+", " ", audio_tags)
+            normalized_tags = re.sub(r"\s+", " ", normalized_tags).strip()
+            if normalized_tags:
+                tag_prompt = f"音频标签：{normalized_tags}"
+
+        return self._merge_prompt_parts(base_prompt, style_prompt, tag_prompt)
+
+    @staticmethod
+    def _normalize_tts_mode(mode: Optional[str]) -> str:
+        mapping = {
+            "default": "default",
+            "默认": "default",
+            "normal": "default",
+            "design": "design",
+            "设计": "design",
+            "voicedesign": "design",
+            "clone": "clone",
+            "克隆": "clone",
+            "voiceclone": "clone",
+        }
+        return mapping.get(str(mode or "").strip().lower(), "default")
+
+    def _resolve_tts_mode(self, uid: str) -> str:
+        return self._normalize_tts_mode(self._get_user_settings(uid).get("tts_mode"))
+
+    def _resolve_synthesis_target(self, uid: str) -> tuple[str, Optional[str], str]:
+        """根据当前输出模式解析最终音色与模型。"""
+        uset = self._get_user_settings(uid)
+        mode = self._resolve_tts_mode(uid)
+        current_voice = self._resolve_voice(uset["voice"])
+        current_voice_info = self._voice_manager.get_voice(current_voice) or {}
+
+        if mode == "clone":
+            clone_voice_id = self.config.clone_voice_id.strip()
+            if clone_voice_id:
+                return clone_voice_id, self.config.clone_model, mode
+            if str(current_voice_info.get("model", "")).lower() == "voiceclone":
+                return current_voice, self.config.clone_model, mode
+            raise RuntimeError("当前已切换到“克隆”输出，但未配置 clone_voice_id，也未选中可用的克隆音色。")
+
+        if mode == "design":
+            design_voice_id = self.config.design_voice_id.strip()
+            if design_voice_id:
+                return design_voice_id, self.config.design_model, mode
+            if str(current_voice_info.get("model", "")).lower() == "voicedesign":
+                return current_voice, self.config.design_model, mode
+            raise RuntimeError("当前已切换到“设计”输出，但未生成 design_voice_id，也未选中可用的设计音色。")
+
+        if self._voice_manager.get_voice(current_voice):
+            return self.config.default_voice, None, mode
+        return current_voice, None, mode
+
+    @staticmethod
+    def _tts_mode_label(mode: str) -> str:
+        return {
+            "default": "默认",
+            "design": "设计",
+            "clone": "克隆",
+        }.get(mode, "默认")
+
     def _cleanup_recent_files(self) -> None:
         now = time.time()
         self._recent_files = [
@@ -201,6 +279,19 @@ class MiMoTTSPlugin(Star):
                 return voice_id
         return self.config.get("default_voice", "mimo_default")
 
+    @staticmethod
+    def _apply_singing_tag(text: str) -> str:
+        """为唱歌模式补齐官方建议的起始 tag。"""
+        stripped = text.lstrip()
+        if not stripped:
+            return text
+
+        # 官方文档建议在目标文本最开头加入 (唱歌)/(sing)/(singing)
+        # 若用户已经自行提供，则不重复添加。
+        if re.match(r"^[\(\[（](?:唱歌|sing|singing)[\)\]）]", stripped, re.IGNORECASE):
+            return stripped
+        return f"(唱歌){stripped}"
+
     # ── TTS command (reusable for auto TTS too) ──
 
     async def _do_tts(
@@ -214,19 +305,21 @@ class MiMoTTSPlugin(Star):
         prompt = self._build_prompt(uid)
         uset = self._get_user_settings(uid)
         fmt = format_override or self._user_format.get(uid, "mp3")
+        final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
-        # Check voice registry for custom clone
-        voice_info = self._voice_manager.get_voice(uset["voice"])
-        voice_id = uset["voice"]
+        voice_id, model_override, mode = self._resolve_synthesis_target(uid)
+        if mode == "clone":
+            prompt = self._build_clone_prompt(prompt)
 
         raw = await provider.synthesize(
-            text=text,
+            text=final_text,
             voice=voice_id,
             system_prompt=prompt if prompt else None,
             audio_format=fmt,
+            model=model_override,
         )
         if not raw:
-            raise RuntimeError("MiMO TTS 合成失败，请查看日志。")
+            raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")
 
         # Write temp file
         tmp_dir = Path(__file__).parent / "temp"
@@ -397,6 +490,35 @@ class MiMoTTSPlugin(Star):
         resolved = self._resolve_voice(arg)
         self._get_user_settings(uid)["voice"] = resolved
         yield MessageEventResult().message(f"[u2713] 音色已切换为: {resolved}")
+
+    @filter.command("ttsswitch")
+    async def cmd_ttsswitch(self, event: AstrMessageEvent):
+        """ /ttsswitch [default|design|clone] — 切换 TTS 输出来源模式 """
+        raw = event.message_str.strip()
+        arg = raw[len("/ttsswitch"):].strip()
+        uid = event.get_sender_id()
+        uset = self._get_user_settings(uid)
+
+        if not arg:
+            mode = self._resolve_tts_mode(uid)
+            lines = [
+                f"当前输出模式: {self._tts_mode_label(mode)} ({mode})",
+                f"配置默认模式: {self._tts_mode_label(self._normalize_tts_mode(self.config.tts_output_mode))}",
+                f"默认音色: {self.config.default_voice}",
+                f"设计音色ID: {self.config.design_voice_id or '(未配置)'}",
+                f"克隆音色ID: {self.config.clone_voice_id or '(未配置)'}",
+                "",
+                "用法: /ttsswitch <default|design|clone>",
+                "也支持中文: /ttsswitch 默认 /设计 /克隆",
+            ]
+            yield MessageEventResult().message("\n".join(lines))
+            return
+
+        mode = self._normalize_tts_mode(arg)
+        uset["tts_mode"] = mode
+        yield MessageEventResult().message(
+            f"[✓] TTS 输出模式已切换为: {self._tts_mode_label(mode)} ({mode})"
+        )
 
     @filter.command("emotion")
     async def cmd_emotion(self, event: AstrMessageEvent):
@@ -662,8 +784,26 @@ class MiMoTTSPlugin(Star):
             return
 
         vid, audio_path = parts[0], parts[1]
-        if not Path(audio_path).exists():
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
             yield MessageEventResult().message(f"[X] 音频文件不存在: {audio_path}")
+            return
+
+        if not audio_file.is_file():
+            yield MessageEventResult().message(f"[X] 不是有效文件: {audio_path}")
+            return
+
+        if audio_file.suffix.lower() not in AUDIO_VALID_EXTENSIONS:
+            yield MessageEventResult().message(
+                f"[X] 不支持的音频格式: {audio_file.suffix or '(无后缀)'}\n"
+                f"支持: {', '.join(AUDIO_VALID_EXTENSIONS)}"
+            )
+            return
+
+        if audio_file.stat().st_size < AUDIO_MIN_VALID_SIZE:
+            yield MessageEventResult().message(
+                f"[X] 音频文件过小，无法用于克隆（至少 {AUDIO_MIN_VALID_SIZE} 字节）"
+            )
             return
 
         provider = self._ensure_provider()
@@ -673,7 +813,7 @@ class MiMoTTSPlugin(Star):
 
         yield MessageEventResult().message("⏳ 正在克隆声音…")
 
-        ok = await provider.register_voice(vid, audio_path)
+        ok = await provider.register_voice(vid, str(audio_file))
         if ok:
             self._voice_manager.register_voice(vid, name=vid, model="voiceclone")
             # 同步到配置面板
@@ -685,7 +825,9 @@ class MiMoTTSPlugin(Star):
                 f"  配置面板已同步更新"
             )
         else:
-            yield MessageEventResult().message("[X] 声音克隆失败，请查看日志。")
+            yield MessageEventResult().message(
+                f"[X] 声音克隆失败：{provider.last_error or '请查看日志。'}"
+            )
 
     @filter.command("voicegen")
     async def cmd_voicegen(self, event: AstrMessageEvent):
@@ -713,19 +855,22 @@ class MiMoTTSPlugin(Star):
 
         yield MessageEventResult().message("⏳ 正在设计声音…")
 
-        ok = await provider.design_voice(vid, desc)
+        ok = await provider.design_voice(vid, desc, model=self.config.design_model)
         if ok:
             self._voice_manager.register_voice(vid, name=vid, model="voicedesign")
             # 同步到配置面板
             self.config._cfg["design_enabled"] = True
             self.config._cfg["design_voice_id"] = vid
+            self.config._cfg["design_voice_description"] = desc
             yield MessageEventResult().message(
                 f"[✓] 声音设计完成: {vid}\n"
                 f"  用 /voice {vid} 切换使用\n"
                 f"  配置面板已同步更新"
             )
         else:
-            yield MessageEventResult().message("[X] 声音设计失败，请查看日志。")
+            yield MessageEventResult().message(
+                f"[X] 声音设计失败：{provider.last_error or '请查看日志。'}"
+            )
 
     @filter.command("voiceclonelist")
     async def cmd_voiceclonelist(self, event: AstrMessageEvent):
@@ -790,6 +935,7 @@ class MiMoTTSPlugin(Star):
             f"方言: {uset['dialect'] or '(无)'}  音量: {uset['volume'] or '(正常)'}",
             f"笑声: {'开' if uset['laughter'] else '关'}  停顿: {'开' if uset['pause'] else '关'}",
             f"音色: {uset['voice']}",
+            f"输出模式: {self._tts_mode_label(self._resolve_tts_mode(uid))} ({self._resolve_tts_mode(uid)})",
             f"格式: {self._user_format.get(uid, 'mp3')}",
             f"",
             f"用 /preset <预设名> 快速切换风格",
@@ -814,7 +960,7 @@ class MiMoTTSPlugin(Star):
             fmt = self._user_format.get(uid, "mp3")
             raw_audio = await provider.synthesize(text=text, audio_format=fmt)
             if not raw_audio:
-                raise RuntimeError("TTS 合成失败。")
+                raise RuntimeError(provider.last_error or "TTS 合成失败。")
 
             tmp_dir = Path(__file__).parent / "temp"
             tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -833,14 +979,14 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
         """ /ttsinfo — 查看插件信息"""
         lines = [
-            "MiMO TTS Plugin v1.1.0",
+            "MiMO TTS Plugin v1.2.0",
             "",
             "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
             "",
             f"支持情感: {len(SUPPORTED_EMOTIONS)} 种",
             f"内置音色: {len(MIMO_VOICE_LIST)} 种",
             f"内置预设: {len(TTS_PRESETS)} 个",
-            f"控制维度: 情感 语速 音高 呼吸声 重音 唱歌 方言 音量 笑声 停顿",
+            f"控制维度: 情感 语速 音高 呼吸声 重音 方言 音量 笑声 停顿（唱歌仅 /sing）",
             "",
             "主要命令:",
             "  /tts <文本>  - 即时合成",

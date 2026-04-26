@@ -12,6 +12,7 @@ import struct
 import wave
 from pathlib import Path
 from typing import Optional
+from mimetypes import guess_type
 
 import aiohttp
 
@@ -46,6 +47,14 @@ class MiMOProvider:
         self.timeout = timeout
         self.max_retries = max_retries
         self._session: Optional[aiohttp.ClientSession] = None
+        self._last_error: str = ""
+
+    @property
+    def last_error(self) -> str:
+        return self._last_error
+
+    def _set_last_error(self, message: str) -> None:
+        self._last_error = str(message or "").strip()
 
     async def close(self):
         if self._session and not self._session.closed:
@@ -64,6 +73,7 @@ class MiMOProvider:
         voice: Optional[str] = None,
         system_prompt: Optional[str] = None,
         audio_format: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Optional[bytes]:
         """Synthesize text to audio bytes.
 
@@ -77,11 +87,13 @@ class MiMOProvider:
             voice: Voice ID override (uses self._voice if None).
             system_prompt: Control instructions for emotion/style.
             audio_format: Override audio format (mp3/wav/ogg/pcm).
+            model: Override synthesis model.
 
         Returns:
             Audio bytes, or None on failure.
         """
         if not self.api_key:
+            self._set_last_error("缺少 API Key 配置")
             logger.error("MiMO TTS: missing api_key")
             return None
 
@@ -98,20 +110,24 @@ class MiMOProvider:
         # MiMO message format:
         #   assistant role = text to speak
         #   user role = control instructions (emotion, speed, etc.)
+        # 官方示例中 user 在前、assistant 在后，这里按文档顺序构造。
         messages = []
-        messages.append({"role": "assistant", "content": text})
         if system_prompt:
             messages.append({"role": "user", "content": system_prompt})
+        messages.append({"role": "assistant", "content": text})
 
         payload = {
-            "model": self._model,
+            "model": model or self._model,
             "messages": messages,
-            "voice": voice_id,
-            "audio_format": fmt,
+            "audio": {
+                "voice": voice_id,
+                "format": fmt,
+            },
             "stream": False,
         }
 
         backoff = 1.0
+        self._set_last_error("")
 
         for attempt in range(1, self.max_retries + 2):
             try:
@@ -126,6 +142,7 @@ class MiMOProvider:
                             # Fallback: try alternate structures
                             audio_b64 = data.get("audio", {}).get("data") if isinstance(data.get("audio"), dict) else data.get("audio")
                         if not audio_b64:
+                            self._set_last_error(f"接口返回中未找到音频数据，响应键：{list(data.keys())}")
                             logger.error(f"MiMO TTS: no audio in response. Keys: {list(data.keys())}")
                             return None
                         audio_bytes = base64.b64decode(audio_b64)
@@ -133,16 +150,20 @@ class MiMOProvider:
                         return audio_bytes
                     else:
                         body = await resp.text()
+                        self._set_last_error(f"HTTP {resp.status}: {body[:300]}")
                         logger.warning(f"MiMO TTS HTTP {resp.status}: {body[:300]}")
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                self._set_last_error(f"请求异常: {e}")
                 logger.warning(f"MiMO TTS attempt {attempt} failed: {e}")
 
             if attempt <= self.max_retries:
                 await asyncio.sleep(min(backoff, 10))
                 backoff *= 2
 
+        if not self.last_error:
+            self._set_last_error(f"请求失败，已重试 {self.max_retries + 1} 次")
         logger.error(f"MiMO TTS: all {self.max_retries + 1} attempts failed")
         return None
 
@@ -157,23 +178,28 @@ class MiMOProvider:
             True if successful.
         """
         if not self.api_key:
+            self._set_last_error("缺少 API Key 配置")
             logger.error("MiMO TTS: missing api_key for voice registration")
             return False
 
         url = f"{self.base_url}/audio/voice/clone"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "api-key": self.api_key,
         }
 
         try:
+            self._set_last_error("")
             # Read and encode audio file
             audio_file = Path(audio_path)
             if not audio_file.exists():
+                self._set_last_error(f"音频文件不存在: {audio_path}")
                 logger.error(f"Audio file not found: {audio_path}")
                 return False
 
             with open(audio_file, "rb") as f:
                 audio_data = f.read()
+
+            guessed_content_type = guess_type(audio_file.name)[0] or "application/octet-stream"
 
             # Build multipart form data
             data = aiohttp.FormData()
@@ -182,7 +208,7 @@ class MiMOProvider:
                 "file",
                 audio_data,
                 filename=audio_file.name,
-                content_type="audio/wav",
+                content_type=guessed_content_type,
             )
 
             session = self._get_session()
@@ -192,23 +218,27 @@ class MiMOProvider:
                     return True
                 else:
                     body = await resp.text()
+                    self._set_last_error(f"HTTP {resp.status}: {body[:300]}")
                     logger.error(f"Voice clone failed ({resp.status}): {body[:200]}")
                     return False
         except Exception as e:
+            self._set_last_error(f"请求异常: {e}")
             logger.error(f"Voice clone error: {e}")
             return False
 
-    async def design_voice(self, voice_id: str, description: str) -> bool:
+    async def design_voice(self, voice_id: str, description: str, model: str = "mimo-v2.5-tts-voicedesign") -> bool:
         """Generate a voice using the voice design model.
 
         Args:
             voice_id: The voice ID to create.
             description: Text description of the desired voice.
+            model: Voice design model name.
 
         Returns:
             True if successful.
         """
         if not self.api_key:
+            self._set_last_error("缺少 API Key 配置")
             logger.error("MiMO TTS: missing api_key for voice design")
             return False
 
@@ -219,11 +249,13 @@ class MiMOProvider:
         }
 
         payload = {
+            "model": model,
             "voice_id": voice_id,
             "description": description,
         }
 
         try:
+            self._set_last_error("")
             session = self._get_session()
             async with session.post(url, headers=headers, json=payload) as resp:
                 if 200 <= resp.status < 300:
@@ -231,8 +263,10 @@ class MiMOProvider:
                     return True
                 else:
                     body = await resp.text()
+                    self._set_last_error(f"HTTP {resp.status}: {body[:300]}")
                     logger.error(f"Voice design failed ({resp.status}): {body[:200]}")
                     return False
         except Exception as e:
+            self._set_last_error(f"请求异常: {e}")
             logger.error(f"Voice design error: {e}")
             return False

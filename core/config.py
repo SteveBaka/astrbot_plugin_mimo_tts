@@ -41,12 +41,20 @@ class ConfigManager:
         "stress_enabled": False,
         "laughter_enabled": False,
         "pause_enabled": False,
+        # 兼容旧配置保留该字段，但运行时已不再作为全局唱歌开关使用。
         "singing_mode": False,
 
         # Voice clone / design
         "clone_enabled": False,
+        "clone_model": "mimo-v2.5-tts-voiceclone",
         "clone_voice_id": "",
+        "clone_style_prompt": "",
+        "clone_audio_tags": "",
         "design_enabled": False,
+        "design_model": "mimo-v2.5-tts-voicedesign",
+        "tts_output_mode": "default",
+        "design_voice_description": "",
+        # 兼容旧配置保留，当前配置面板已改为 design_voice_description。
         "design_voice_id": "",
 
         # Voice presets
@@ -132,20 +140,40 @@ class ConfigManager:
         return bool(self._cfg.get("pause_enabled", False))
 
     @property
-    def singing_mode(self) -> bool:
-        return bool(self._cfg.get("singing_mode", False))
-
-    @property
     def clone_enabled(self) -> bool:
         return bool(self._cfg.get("clone_enabled", False))
+
+    @property
+    def clone_model(self) -> str:
+        return str(self._cfg.get("clone_model", "mimo-v2.5-tts-voiceclone"))
 
     @property
     def clone_voice_id(self) -> str:
         return str(self._cfg.get("clone_voice_id", ""))
 
     @property
+    def clone_style_prompt(self) -> str:
+        return str(self._cfg.get("clone_style_prompt", ""))
+
+    @property
+    def clone_audio_tags(self) -> str:
+        return str(self._cfg.get("clone_audio_tags", ""))
+
+    @property
     def design_enabled(self) -> bool:
         return bool(self._cfg.get("design_enabled", False))
+
+    @property
+    def design_model(self) -> str:
+        return str(self._cfg.get("design_model", "mimo-v2.5-tts-voicedesign"))
+
+    @property
+    def tts_output_mode(self) -> str:
+        return str(self._cfg.get("tts_output_mode", "default"))
+
+    @property
+    def design_voice_description(self) -> str:
+        return str(self._cfg.get("design_voice_description", ""))
 
     @property
     def design_voice_id(self) -> str:

@@ -1,22 +1,26 @@
 # MiMO TTS Plugin (Enhanced)
 
-> **⚠️ 免责声明：本项目全程使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正。**
+> **⚠️ 免责声明：本项目初版v1.1.0使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正，后期更换其他大模型会在下方更新日志中指出。**
 
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
 
 ## 核心特性
 
 - [x]自动语音合成：LLM 回复自动生成语音
-- [x]20 种情感：happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy
+- [x]20 种情感：开心、悲伤、愤怒、平静、耳语、惊讶、兴奋、温柔、严肃、浪漫、害怕、厌恶、讽刺、怀旧、俏皮、冷静、焦虑、自豪、柔情、慵懒
 - [x]9 种内置音色（含中英文）
 - [x]8 个预设：一键切换风格
 - [x]方言支持：四川话、粤语、东北话等
-- [ ]唱歌模式：用唱歌的方式演绎（仍在测试）
+- [x]唱歌模式：仅支持 `/sing` 临时触发，避免影响普通 TTS
 - [x]笑声 / 停顿 / 呼吸声 / 重音模式
 - [x]音量控制：轻声/正常/大声
 - [x]语速/音高：0.5-2.0x 语速，-12-+12 音高
-- [ ]声音克隆 & 设计：自定义音色
-- [ ]多用户独立：每人独立设置，互不干扰
+- [x]声音克隆 & 设计：支持自定义音色生成与调用
+- [x]输出模式切换：支持 默认 / 设计 / 克隆 三种 TTS 输出来源
+- [x]错误原因透出：接口失败时直接返回具体报错原因
+- [x]多用户独立：每人独立设置，互不干扰
+
+[安装](#安装) · [命令列表](#命令列表) · [更新日志](#更新日志)
 
 ## 安装
 
@@ -39,6 +43,21 @@
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
 | `emotion_override` | 情感覆盖(auto=自动) | - |
+| `tts_output_mode` | TTS 输出来源模式（default/design/clone） | `default` |
+| `design_model` | 音色设计模型 | `mimo-v2.5-tts-voicedesign` |
+| `design_voice_description` | 设计音色描述 | - |
+| `clone_model` | 音色克隆模型 | `mimo-v2.5-tts-voiceclone` |
+| `clone_voice_id` | 克隆音色 ID | - |
+| `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
+| `clone_audio_tags` | 克隆音色音频标签控制 | - |
+
+### 输出模式说明
+
+- `default`：使用插件默认音色或当前选中的普通内置音色。
+- `design`：优先使用 `design_voice_id` / 已生成的设计音色进行合成。
+- `clone`：优先使用 `clone_voice_id` / 已注册的克隆音色进行合成。
+
+可通过命令 `/ttsswitch <default|design|clone>` 在运行时快速切换。
 
 ## 预置音色列表
 
@@ -69,13 +88,17 @@
 /sing <歌词>
 ```
 
+> 当前版本不再建议使用“全局唱歌开关”，唱歌模式仅由 `/sing` 单次触发，避免普通 `/tts` 与自动语音输出被持续污染。
+
 ### 20 种情感
 ```
 /emotion <情感名|auto|off>
 /emotions   # 列出所有情感
 ```
 
-**情感列表**: happy, sad, angry, neutral, whisper, surprised, excited, gentle, serious, romantic, fearful, disgusted, sarcastic, nostalgic, playful, calm, anxious, proud, tender, lazy
+**情感列表（简体中文）**：开心、悲伤、愤怒、平静、耳语、惊讶、兴奋、温柔、严肃、浪漫、害怕、厌恶、讽刺、怀旧、俏皮、冷静、焦虑、自豪、柔情、慵懒
+
+**对应参数值**：`happy`、`sad`、`angry`、`neutral`、`whisper`、`surprised`、`excited`、`gentle`、`serious`、`romantic`、`fearful`、`disgusted`、`sarcastic`、`nostalgic`、`playful`、`calm`、`anxious`、`proud`、`tender`、`lazy`
 
 ### 语速 / 音高
 ```
@@ -110,10 +133,27 @@
 ```
 /voice [音色ID]           # 查看/切换音色
 /voices                    # 列出所有内置音色
+/ttsswitch <模式>          # 切换 default / design / clone 输出模式
 /voiceclone <ID> <路径>    # 声音克隆
 /voicegen <ID> <描述>      # 声音设计
 /voiceclonelist            # 查看已注册自定义音色
 ```
+
+#### 声音设计（VoiceDesign）
+
+- 当前按官方能力接入 `mimo-v2.5-tts-voicedesign` 模型。
+- 插件配置中的“设计音色描述”用于全局控制设计音色风格。
+- 使用 `/voicegen <ID> <描述>` 可生成新的设计音色，并同步更新配置中的设计音色信息。
+
+#### 声音克隆（VoiceClone）
+
+- 当前按官方能力接入 `mimo-v2.5-tts-voiceclone` 模型。
+- 使用 `/voiceclone <ID> <本地音频路径>` 可注册克隆音色。
+- 已加入本地文件存在性、文件类型、最小体积校验。
+- 支持通过以下两个配置项细化克隆音色的输出风格：
+  - `clone_style_prompt`：自然语言风格控制
+  - `clone_audio_tags`：音频标签控制
+- 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
 
 ### 预设
 ```
@@ -141,6 +181,11 @@
 /ttsraw <文本>              # 纯文本合成（不带情感）
 ```
 
+### 报错说明
+
+- 当前版本已增强接口失败提示。
+- 当 TTS 合成、声音设计、声音克隆调用失败时，插件会尽量直接返回接口错误原因，便于排查配置、鉴权或请求参数问题。
+
 ## 使用示例
 
 ```bash
@@ -165,7 +210,7 @@
 
 | 维度 | 参数 | 范围 | 说明 |
 |------|------|------|------|
-| 情感 | `-emotion` | 20 种 | happy/sad/angry/whisper 等 |
+| 情感 | `-emotion` | 20 种 | 开心/悲伤/愤怒/耳语等 |
 | 语速 | `-speed` | 0.5~2.0 | 倍速 |
 | 音高 | `-pitch` | -12~+12 | 半音偏移 |
 | 呼吸声 | `-breath` | on/off | 自然呼吸音效 |
@@ -186,7 +231,13 @@
 ## 更新日志
 
 - 2025年4月24日，初版发布，**TTS**基本功能可以使用。目前尚未测试**VoiceDesign**与**VoiceClone**功能。
-
+- 2025年4月26日，v1.2.0更新：
+  - 增加 **/ttsswitch**，支持在 **默认 / 设计 / 克隆** 三种输出模式之间切换；
+  - 调整唱歌逻辑为仅允许 **/sing** 单次触发；
+  - 完善 **VoiceDesign** 与 **VoiceClone** 的模型接入与配置说明；
+  - 新增克隆音色的自然语言风格控制、音频标签控制；
+  - 接口失败时可直接输出更具体的报错原因；
+  - 本版本使用GPT-5.4进行更新。
 ## License
 
 MIT
