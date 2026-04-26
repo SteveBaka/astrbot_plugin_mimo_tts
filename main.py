@@ -292,6 +292,65 @@ class MiMoTTSPlugin(Star):
             return stripped
         return f"(唱歌){stripped}"
 
+    @staticmethod
+    def _extract_auto_tts_text(chain) -> str:
+        """尽量只提取最终回复里首段连续可见文本，避免把后续插件附加内容一并朗读。"""
+        chunks: list[str] = []
+        started = False
+
+        for comp in chain:
+            if isinstance(comp, Record):
+                break
+            if isinstance(comp, Plain) and comp.text:
+                chunks.append(comp.text)
+                started = True
+                continue
+            if started:
+                break
+
+        return "".join(chunks).strip()
+
+    @staticmethod
+    def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
+        """识别明显的人格/skill 内部提示词或推理腔文本，避免被自动 TTS 朗读。
+
+        AstrBot 的 on_decorating_result 运行在 ResultDecorateStage 中，若上游已将
+        persona/skill 的内部文本写入首段 Plain，这里拿到的就是“可见消息链”。
+        在无法从事件结构中稳定区分“主回复”和“泄漏提示词”的情况下，采用保守
+        规则：检测到典型英文自述式提示词/推理前缀时，直接跳过自动朗读。
+        """
+        normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not normalized:
+            return False
+
+        head = normalized[:240].lower()
+        suspicious_prefixes = (
+            "**considering ",
+            "considering ",
+            "thought:",
+            "reasoning:",
+            "internal monologue:",
+            "response style",
+            "i need to ",
+            "i should ",
+            "let me ",
+            "the user wants",
+        )
+        if head.startswith(suspicious_prefixes):
+            return True
+
+        suspicious_phrases = (
+            "considering a response style",
+            "need to provide a short answer",
+            "keeping it formal",
+            "using commas instead of periods",
+            "without punctuation",
+            "i need to provide",
+            "i should provide",
+        )
+        matched = sum(1 for phrase in suspicious_phrases if phrase in head)
+        return matched >= 2
+
     # ── TTS command (reusable for auto TTS too) ──
 
     async def _do_tts(
@@ -359,14 +418,19 @@ class MiMoTTSPlugin(Star):
         if not chain:
             return
 
-        plain = ""
-        for comp in chain:
-            # 仅提取最终可见的 Plain 文本，避免把其它插件写入 chain 的内部提示词、
-            # 调试信息或非最终展示文本一并拼进自动 TTS，造成“提示词溢出”。
-            if isinstance(comp, Plain) and comp.text:
-                plain += comp.text
-        plain = plain.strip()
+        # 仅处理真正的模型主回复，尽量避开其它插件/阶段写入的结果。
+        if hasattr(result, "is_llm_result") and callable(result.is_llm_result):
+            if not result.is_llm_result():
+                return
+
+        if any(isinstance(comp, Record) for comp in chain):
+            return
+
+        plain = self._extract_auto_tts_text(chain)
         if self._should_skip(plain):
+            return
+        if self._looks_like_hidden_prompt_or_reasoning(plain):
+            logger.warning("MiMO TTS: skip auto TTS because result looks like leaked persona/skill prompt")
             return
 
         uid = event.get_sender_id()

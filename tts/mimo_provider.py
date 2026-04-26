@@ -111,6 +111,10 @@ class MiMOProvider:
             self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
+    @staticmethod
+    def _is_voice_design_model(model_name: Optional[str]) -> bool:
+        return str(model_name or "").strip().lower() == "mimo-v2.5-tts-voicedesign"
+
     async def synthesize(
         self,
         text: str,
@@ -160,15 +164,17 @@ class MiMOProvider:
             messages.append({"role": "user", "content": system_prompt})
         messages.append({"role": "assistant", "content": text})
 
+        model_name = model or self._model
         payload = {
-            "model": model or self._model,
+            "model": model_name,
             "messages": messages,
             "audio": {
-                "voice": voice_id,
                 "format": fmt,
             },
             "stream": False,
         }
+        if not self._is_voice_design_model(model_name):
+            payload["audio"]["voice"] = voice_id
 
         backoff = 1.0
         self._set_last_error("")
