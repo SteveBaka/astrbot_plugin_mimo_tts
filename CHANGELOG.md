@@ -8,6 +8,7 @@
 - 新增 `clone_audio_tags` 配置，用于对 voiceclone 合成追加音频标签控制。
 - 新增 `design_model` 与 `clone_model` 配置，用于显式指定 voicedesign / voiceclone 所用模型。
 - 新增 `design_voice_description` 配置项，替代原先配置面板中的“设计音色ID”输入语义。
+- 新增用户状态持久化文件：插件会将每个用户的 TTS 设置保存到 AstrBot `data` 目录中的 `user_state.json`。
 
 ### 修改
 - 唱歌模式改为仅允许通过 `/sing` 临时触发，不再使用全局唱歌开关影响普通 `/tts` 与自动 TTS。
@@ -22,6 +23,9 @@
 - voiceclone 的本地参考音频目录约定调整为插件根目录下的 `clone/` 文件夹，并同步更新命令帮助、路径解析与错误提示。
 - `VoiceManager` 现在会自动创建并使用 `clone/` 目录，便于直接存放待克隆音频文件。
 - `/voiceclone` 的语义调整为“登记本地参考音频”，不再尝试调用不存在的远端预注册接口。
+- 自动 TTS 装饰阶段优先级已调整，使文本清理插件能够更早处理回复结果，再由本插件执行朗读。
+- 自定义音色注册表默认迁移到 AstrBot `data` 目录下保存，同时兼容读取旧版插件目录中的注册表文件。
+- README 已补充 VoiceClone 参考音频上传位置说明，推荐将音频放到插件根目录 `clone/` 文件夹，并使用 `/voiceclone <ID> clone/文件名` 进行登记。
 
 ### 修复
 - 修复 `api_base_url` 的兼容问题：若用户误将配置填写为根域名 `https://api.xiaomimimo.com` 或完整接口地址 `.../chat/completions`，provider 现在会自动归一化，避免再次拼接 `chat/completions` 后触发 404。
@@ -32,3 +36,5 @@
 - 修复 design 输出模式下的模型使用逻辑：切换到该模式后直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本作为 `user` 消息传入，使最终朗读更符合设计描述。
 - 修复 `/voiceclone` 的 404 问题：改为在实际合成时通过 `POST /chat/completions` 调用 `mimo-v2.5-tts-voiceclone`，并将本地参考音频编码成 `data:{MIME_TYPE};base64,...` 填入 `audio.voice`。
 - 进一步增强运行态诊断：HTTP 错误信息现在会附带实际请求 URL 与模型名，便于确认 404 是来自接口地址配置错误还是运行中仍在加载旧版本代码。
+- 修复插件重载或更新后用户个人 TTS 配置丢失的问题。
+- 修复自动 TTS 误朗读 persona / skill / system prompt / reasoning 等提示词溢出文本的问题。

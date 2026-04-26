@@ -152,8 +152,13 @@
 
 - 当前按官方能力接入 `mimo-v2.5-tts-voiceclone` 模型。
 - 使用 `/voiceclone <ID> <本地音频路径>` 可登记一个“本地参考音频音色”。
-- 推荐将参考音频放到插件根目录下的 `clone/` 文件夹，再执行如 `/voiceclone my_clone clone/sample.wav`。
+- **推荐上传位置：插件根目录下的 `clone/` 文件夹。**
 - 插件启动时会自动创建 `clone/` 目录，可直接把待克隆音频放进去使用。
+- 推荐流程如下：
+  1. 将参考音频上传/放入插件目录中的 `clone/` 文件夹；
+  2. 例如文件实际放置为 `astrbot_plugin_mimo_tts/clone/sample.wav`；
+  3. 然后执行 `/voiceclone my_clone clone/sample.wav` 完成登记；
+- 也支持绝对路径、相对当前工作目录路径、相对插件目录路径；但为了避免路径歧义，**最推荐始终使用 `clone/文件名` 的写法**。
 - 已加入本地文件存在性、文件类型、最小体积校验。
 - `/voiceclone` 不会再调用不存在的“预注册接口”；插件会在真正合成时，将参考音频转成 `data:{MIME_TYPE};base64,...` 后通过 `chat/completions` 的 `audio.voice` 传给官方 `mimo-v2.5-tts-voiceclone` 模型。
 - 执行 `/voiceclone` 后，插件会自动记录该参考音频路径，并可配合 `/ttsswitch clone` 进入克隆输出模式。
@@ -161,6 +166,22 @@
   - `clone_style_prompt`：自然语言风格控制
   - `clone_audio_tags`：音频标签控制
 - 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
+
+##### VoiceClone 快速示例
+
+```text
+插件目录/
+├─ main.py
+├─ README.md
+├─ clone/
+│  └─ sample.wav
+```
+
+```bash
+/voiceclone my_clone clone/sample.wav
+/ttsswitch clone
+/tts 这是一段使用克隆音色生成的测试语音
+```
 
 ### 预设
 ```
@@ -251,7 +272,14 @@
 - 2025年4月26日，v1.2.1更新：
   - 修正 `api_base_url` 的兼容处理：现在即使误填为 `https://api.xiaomimimo.com` 或完整的 `.../v1/chat/completions`，插件也会自动归一化到正确的基础地址，避免拼接后出现 404；
   - 为 TTS / VoiceClone / VoiceDesign 请求增加更明确的运行日志，失败时会直接带出实际请求 URL 与模型名，便于确认是否命中新逻辑、是否仍在使用错误地址。
-- v1.2.0及v1.2.1均使用GPT-5.4进行生成。
+- 2025年4月26日，v1.2.2更新：
+  - 新增用户设置持久化：插件重载、热更新后仍可保留每个用户自己的音色、模式、情感、语速、音高、输出格式等设置；
+  - 自动 TTS 的装饰阶段优先级已前移，使文本清理类插件可优先处理结果，减少异常文本被直接朗读；
+  - 增强提示词泄漏拦截，降低 persona / skill / reasoning / system prompt 等内部文本被自动 TTS 朗读的概率；
+  - 自定义音色注册表迁移到 AstrBot `data` 目录，减少插件更新覆盖导致的注册信息丢失；
+  - 明确 VoiceClone 参考音频的推荐上传位置为**插件根目录下的 `clone/` 文件夹**，推荐命令写法为 `/voiceclone <ID> clone/文件名`。
+- v1.2.0、v1.2.1以及v1.2.2均使用GPT-5.4进行生成。
+
 ## License
 
 MIT
