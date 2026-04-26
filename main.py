@@ -292,6 +292,45 @@ class MiMoTTSPlugin(Star):
                 return voice_id
         return self.config.get("default_voice", "mimo_default")
 
+    def _resolve_clone_audio_path(self, raw_path: str) -> Path:
+        """解析 /voiceclone 使用的参考音频路径。
+
+        支持：
+        1. 绝对路径
+        2. 相对当前工作目录的路径
+        3. 相对插件根目录的路径
+        4. 仅文件名时，自动尝试插件下的 clone/ 目录
+        """
+        text = str(raw_path or "").strip().strip('"').strip("'")
+        if not text:
+            return Path(text)
+
+        raw = Path(text)
+        plugin_dir = Path(__file__).parent
+        clone_dir = plugin_dir / "clone"
+        candidates: list[Path] = []
+
+        if raw.is_absolute():
+            candidates.append(raw)
+        else:
+            candidates.extend([
+                raw,
+                plugin_dir / raw,
+                clone_dir / raw,
+                clone_dir / raw.name,
+            ])
+
+        for candidate in candidates:
+            try:
+                if candidate.exists():
+                    return candidate.resolve()
+            except Exception:
+                continue
+
+        # 找不到时，仍返回一个最适合提示给用户的候选路径
+        fallback = raw if raw.is_absolute() else (clone_dir / raw.name)
+        return fallback
+
     @staticmethod
     def _apply_singing_tag(text: str) -> str:
         """为唱歌模式补齐官方建议的起始 tag。"""
@@ -869,19 +908,30 @@ class MiMoTTSPlugin(Star):
         if not arg:
             yield MessageEventResult().message(
                 "用法: /voiceclone <ID> <参考音频路径>\n"
-                "示例: /voiceclone my_clone /path/to/sample.wav"
+                "示例1: /voiceclone my_clone /path/to/sample.wav\n"
+                "示例2: /voiceclone my_clone clone/sample.wav\n"
+                "说明: 推荐将参考音频放到插件目录下的 clone/ 文件夹"
             )
             return
 
         parts = arg.split(maxsplit=1)
         if len(parts) < 2:
-            yield MessageEventResult().message("用法: /voiceclone <ID> <参考音频路径>")
+            yield MessageEventResult().message(
+                "用法: /voiceclone <ID> <参考音频路径>\n"
+                "例如: /voiceclone my_clone clone/sample.wav"
+            )
             return
 
         vid, audio_path = parts[0], parts[1]
-        audio_file = Path(audio_path)
+        audio_file = self._resolve_clone_audio_path(audio_path)
+
         if not audio_file.exists():
-            yield MessageEventResult().message(f"[X] 音频文件不存在: {audio_path}")
+            plugin_audio_dir = Path(__file__).parent / "clone"
+            yield MessageEventResult().message(
+                f"[X] 音频文件不存在: {audio_path}\n"
+                f"可将参考音频放到插件目录下: {plugin_audio_dir}\n"
+                f"然后使用: /voiceclone {vid} clone/文件名"
+            )
             return
 
         if not audio_file.is_file():
@@ -917,6 +967,7 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message(
                 f"[✓] 声音已注册: {vid}\n"
                 f"  用 /voice {vid} 切换使用\n"
+                f"  参考音频: {audio_file}\n"
                 f"  配置面板已同步更新"
             )
         else:

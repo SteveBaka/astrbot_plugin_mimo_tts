@@ -17,12 +17,12 @@ class VoiceManager:
     def __init__(
         self,
         voice_cache_dir: Path = Path("voice"),
-        audio_samples_dir: Path = Path("audio_samples"),
+        clone_audio_dir: Path = Path("clone"),
     ):
         self.voice_cache_dir = voice_cache_dir
-        self.audio_samples_dir = audio_samples_dir
+        self.clone_audio_dir = clone_audio_dir
         self.voice_cache_dir.mkdir(parents=True, exist_ok=True)
-        self.audio_samples_dir.mkdir(parents=True, exist_ok=True)
+        self.clone_audio_dir.mkdir(parents=True, exist_ok=True)
 
         # Registry file for clones
         self.registry_file = self.voice_cache_dir / "voice_registry.json"

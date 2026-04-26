@@ -152,6 +152,8 @@
 
 - 当前按官方能力接入 `mimo-v2.5-tts-voiceclone` 模型。
 - 使用 `/voiceclone <ID> <本地音频路径>` 可注册克隆音色。
+- 推荐将参考音频放到插件根目录下的 `clone/` 文件夹，再执行如 `/voiceclone my_clone clone/sample.wav`。
+- 插件启动时会自动创建 `clone/` 目录，可直接把待克隆音频放进去使用。
 - 已加入本地文件存在性、文件类型、最小体积校验。
 - 支持通过以下两个配置项细化克隆音色的输出风格：
   - `clone_style_prompt`：自然语言风格控制
@@ -238,6 +240,7 @@
   - 增加 **/ttsswitch**，支持在 **默认 / 设计 / 克隆** 三种输出模式之间切换；
   - 调整唱歌逻辑为仅允许 **/sing** 单次触发；
   - 完善 **VoiceDesign** 与 **VoiceClone** 的模型接入与配置说明；
+  - 将 **VoiceClone** 参考音频目录约定收敛为插件根目录下的 **clone/** 文件夹，并同步更新命令帮助与错误提示；
   - 修正 **design** 模式的实际合成逻辑：切换到该模式后改为直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本放入 `user` 消息中参与合成；
   - 修正 **VoiceDesign** 请求参数，避免对 `mimo-v2.5-tts-voicedesign` 传入不支持的 `audio.voice`，也避免错误使用无效占位音色 ID；
   - 新增克隆音色的自然语言风格控制、音频标签控制；
