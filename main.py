@@ -304,7 +304,10 @@ class MiMoTTSPlugin(Star):
 
         prompt = self._build_prompt(uid)
         uset = self._get_user_settings(uid)
-        fmt = format_override or self._user_format.get(uid, "mp3")
+        requested_fmt = format_override or self._user_format.get(uid, "mp3")
+        # AstrBot 的 Record 组件在当前版本下对 RIFF/WAV 兼容性最稳定，
+        # 因此这里统一向上游请求 wav，避免 mp3/ogg/pcm 落地后再次被按 RIFF 解析时报错。
+        fmt = "wav"
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
         voice_id, model_override, mode = self._resolve_synthesis_target(uid)
@@ -322,6 +325,12 @@ class MiMoTTSPlugin(Star):
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")
 
         actual_fmt = str(provider.last_output_format or fmt or "mp3").lower()
+        if actual_fmt != "wav":
+            logger.warning(
+                "MiMO TTS: Record 输出期望 wav，但接口返回了 %s（用户原设置=%s）",
+                actual_fmt,
+                requested_fmt,
+            )
 
         # Write temp file
         tmp_dir = Path(__file__).parent / "temp"
@@ -359,6 +368,8 @@ class MiMoTTSPlugin(Star):
             return
 
         uid = event.get_sender_id()
+        if plain.startswith("/"):
+            return
 
         # If emotion is auto, detect from text
         uset = self._get_user_settings(uid)
@@ -959,7 +970,7 @@ class MiMoTTSPlugin(Star):
             if not provider:
                 raise RuntimeError("API Key 未配置。")
 
-            fmt = self._user_format.get(uid, "mp3")
+            fmt = "wav"
             raw_audio = await provider.synthesize(text=text, audio_format=fmt)
             if not raw_audio:
                 raise RuntimeError(provider.last_error or "TTS 合成失败。")
