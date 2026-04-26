@@ -235,8 +235,8 @@ class MiMoTTSPlugin(Star):
 
         return self.config.design_voice_description.strip()
 
-    def _resolve_synthesis_target(self, uid: str) -> tuple[str, Optional[str], str]:
-        """根据当前输出模式解析最终音色与模型。"""
+    def _resolve_synthesis_target(self, uid: str) -> tuple[str, Optional[str], str, Optional[str]]:
+        """根据当前输出模式解析最终音色、模型与克隆参考音频。"""
         uset = self._get_user_settings(uid)
         mode = self._resolve_tts_mode(uid)
         current_voice = self._resolve_voice(uset["voice"])
@@ -245,22 +245,26 @@ class MiMoTTSPlugin(Star):
         if mode == "clone":
             clone_voice_id = self.config.clone_voice_id.strip()
             if clone_voice_id:
-                return clone_voice_id, self.config.clone_model, mode
+                clone_audio_path = self._voice_manager.get_clone_audio_path(clone_voice_id)
+                if clone_audio_path:
+                    return clone_voice_id, self.config.clone_model, mode, clone_audio_path
             if str(current_voice_info.get("model", "")).lower() == "voiceclone":
-                return current_voice, self.config.clone_model, mode
-            raise RuntimeError("当前已切换到“克隆”输出，但未配置 clone_voice_id，也未选中可用的克隆音色。")
+                clone_audio_path = self._voice_manager.get_clone_audio_path(current_voice)
+                if clone_audio_path:
+                    return current_voice, self.config.clone_model, mode, clone_audio_path
+            raise RuntimeError("当前已切换到“克隆”输出，但未找到可用的本地参考音频。请先执行 /voiceclone <ID> <音频路径>。")
 
         if mode == "design":
             description = self._resolve_design_description(uid)
             if description:
                 # 按官方文档，VoiceDesign 直接使用 user 消息中的描述文本生成目标音色，
                 # 并不依赖普通 TTS 的 audio.voice 预置音色参数。
-                return "", self.config.design_model, mode
+                return "", self.config.design_model, mode, None
             raise RuntimeError("当前已切换到“设计”输出，但未配置 design_voice_description，也未选中带描述的设计音色。")
 
         if self._voice_manager.get_voice(current_voice):
-            return self.config.default_voice, None, mode
-        return current_voice, None, mode
+            return self.config.default_voice, None, mode, None
+        return current_voice, None, mode, None
 
     @staticmethod
     def _tts_mode_label(mode: str) -> str:
@@ -421,7 +425,7 @@ class MiMoTTSPlugin(Star):
         fmt = "wav"
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
-        voice_id, model_override, mode = self._resolve_synthesis_target(uid)
+        voice_id, model_override, mode, clone_audio_path = self._resolve_synthesis_target(uid)
         if mode == "clone":
             prompt = self._build_clone_prompt(prompt)
         elif mode == "design":
@@ -434,6 +438,7 @@ class MiMoTTSPlugin(Star):
             system_prompt=prompt if prompt else None,
             audio_format=fmt,
             model=model_override,
+            clone_audio_path=clone_audio_path,
         )
         if not raw:
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")
@@ -956,23 +961,25 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message("API Key 未配置。")
             return
 
-        yield MessageEventResult().message("⏳ 正在克隆声音…")
+        yield MessageEventResult().message("⏳ 正在登记克隆参考音频…")
 
         ok = await provider.register_voice(vid, str(audio_file))
         if ok:
-            self._voice_manager.register_voice(vid, name=vid, model="voiceclone")
+            self._voice_manager.register_voice(vid, name=vid, model="voiceclone", audio_path=str(audio_file))
             # 同步到配置面板
             self.config._cfg["clone_enabled"] = True
             self.config._cfg["clone_voice_id"] = vid
+            self._get_user_settings(event.get_sender_id())["voice"] = vid
             yield MessageEventResult().message(
-                f"[✓] 声音已注册: {vid}\n"
-                f"  用 /voice {vid} 切换使用\n"
+                f"[✓] 已登记克隆音色: {vid}\n"
                 f"  参考音频: {audio_file}\n"
+                f"  已自动切换当前音色为: {vid}\n"
+                f"  可用 /ttsswitch clone 切到克隆输出模式\n"
                 f"  配置面板已同步更新"
             )
         else:
             yield MessageEventResult().message(
-                f"[X] 声音克隆失败：{provider.last_error or '请查看日志。'}"
+                f"[X] 克隆参考音频登记失败：{provider.last_error or '请查看日志。'}"
             )
 
     @filter.command("voicegen")
@@ -999,7 +1006,7 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message("API Key 未配置。")
             return
 
-        yield MessageEventResult().message("⏳ 正在设计声音…")
+        yield MessageEventResult().message("⏳ 正在登记设计音色描述…")
 
         ok = await provider.design_voice(vid, desc, model=self.config.design_model)
         if ok:
@@ -1008,15 +1015,16 @@ class MiMoTTSPlugin(Star):
             self.config._cfg["design_enabled"] = True
             self.config.design_voice_id = vid
             self.config._cfg["design_voice_description"] = desc
+            self._get_user_settings(event.get_sender_id())["voice"] = vid
             yield MessageEventResult().message(
-                f"[✓] 声音设计完成: {vid}\n"
+                f"[✓] 已登记设计音色: {vid}\n"
                 f"  可用 /ttsswitch design 切换到设计模式\n"
                 f"  也可用 /voice {vid} 将这条描述设为当前设计音色\n"
                 f"  配置面板已同步更新描述信息"
             )
         else:
             yield MessageEventResult().message(
-                f"[X] 声音设计失败：{provider.last_error or '请查看日志。'}"
+                f"[X] 设计音色登记失败：{provider.last_error or '请查看日志。'}"
             )
 
     @filter.command("voiceclonelist")
@@ -1027,7 +1035,12 @@ class MiMoTTSPlugin(Star):
             return
         lines = ["已注册的自定义音色:", ""]
         for v in voices:
-            lines.append(f"  {v['voice_id']:20s}  {v.get('name', '')}  [{v.get('model', '')}]")
+            extra = ""
+            if v.get("model") == "voiceclone" and v.get("audio_path"):
+                extra = f"  -> {v.get('audio_path')}"
+            elif v.get("model") == "voicedesign" and v.get("description"):
+                extra = f"  -> {v.get('description')}"
+            lines.append(f"  {v['voice_id']:20s}  {v.get('name', '')}  [{v.get('model', '')}]{extra}")
         yield MessageEventResult().message("\n".join(lines))
 
     @filter.command("ttsformat")

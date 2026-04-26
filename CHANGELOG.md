@@ -21,6 +21,7 @@
 - voiceclone 在 clone 模式下支持独立拼接自然语言风格控制与音频标签；若配置留空，则不注入额外控制文本，保留官方默认行为。
 - voiceclone 的本地参考音频目录约定调整为插件根目录下的 `clone/` 文件夹，并同步更新命令帮助、路径解析与错误提示。
 - `VoiceManager` 现在会自动创建并使用 `clone/` 目录，便于直接存放待克隆音频文件。
+- `/voiceclone` 的语义调整为“登记本地参考音频”，不再尝试调用不存在的远端预注册接口。
 
 ### 修复
 - provider 在接口调用失败时，现会记录并透出更明确的错误原因，便于 `/tts`、`/voiceclone`、`/voicegen`、`/ttsraw` 等命令直接反馈失败详情。
@@ -28,3 +29,4 @@
 - 修复 voicedesign 请求参数错误：调用 `mimo-v2.5-tts-voicedesign` 时不再传入不支持的 `audio.voice`，避免出现 `audio.voice is not supported for voice design model` 的 400 报错。
 - 修复 design 模式错误使用占位音色 ID 的问题：移除内部默认值 `1`，避免触发 `Unknown voice: 1` 的 400 报错。
 - 修复 design 输出模式下的模型使用逻辑：切换到该模式后直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本作为 `user` 消息传入，使最终朗读更符合设计描述。
+- 修复 `/voiceclone` 的 404 问题：改为在实际合成时通过 `POST /chat/completions` 调用 `mimo-v2.5-tts-voiceclone`，并将本地参考音频编码成 `data:{MIME_TYPE};base64,...` 填入 `audio.voice`。

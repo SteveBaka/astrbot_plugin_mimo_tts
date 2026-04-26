@@ -6,9 +6,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
-import json
 import logging
-import struct
 import wave
 from pathlib import Path
 from typing import Optional
@@ -115,6 +113,40 @@ class MiMOProvider:
     def _is_voice_design_model(model_name: Optional[str]) -> bool:
         return str(model_name or "").strip().lower() == "mimo-v2.5-tts-voicedesign"
 
+    @staticmethod
+    def _is_voice_clone_model(model_name: Optional[str]) -> bool:
+        return str(model_name or "").strip().lower() == "mimo-v2.5-tts-voiceclone"
+
+    @staticmethod
+    def _normalize_reference_audio_mime(audio_file: Path) -> str:
+        guessed = (guess_type(audio_file.name)[0] or "").lower().strip()
+        if guessed in {"audio/mpeg", "audio/mp3"}:
+            return "audio/mpeg"
+        if guessed in {"audio/wav", "audio/x-wav", "audio/wave"}:
+            return "audio/wav"
+
+        suffix = audio_file.suffix.lower()
+        if suffix == ".mp3":
+            return "audio/mpeg"
+        if suffix == ".wav":
+            return "audio/wav"
+        raise ValueError("VoiceClone 参考音频仅支持 mp3 或 wav 格式")
+
+    def _build_voice_clone_data_url(self, audio_path: str) -> str:
+        audio_file = Path(audio_path)
+        if not audio_file.exists() or not audio_file.is_file():
+            raise ValueError(f"参考音频不存在: {audio_path}")
+
+        mime_type = self._normalize_reference_audio_mime(audio_file)
+        audio_bytes = audio_file.read_bytes()
+        if not audio_bytes:
+            raise ValueError(f"参考音频为空文件: {audio_path}")
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        if len(audio_b64.encode("utf-8")) > 10 * 1024 * 1024:
+            raise ValueError("参考音频 Base64 编码后超过 10MB，无法用于 VoiceClone")
+        return f"data:{mime_type};base64,{audio_b64}"
+
     async def synthesize(
         self,
         text: str,
@@ -122,6 +154,7 @@ class MiMOProvider:
         system_prompt: Optional[str] = None,
         audio_format: Optional[str] = None,
         model: Optional[str] = None,
+        clone_audio_path: Optional[str] = None,
     ) -> Optional[bytes]:
         """Synthesize text to audio bytes.
 
@@ -173,7 +206,14 @@ class MiMOProvider:
             },
             "stream": False,
         }
-        if not self._is_voice_design_model(model_name):
+        if self._is_voice_clone_model(model_name):
+            try:
+                payload["audio"]["voice"] = self._build_voice_clone_data_url(clone_audio_path or "")
+            except Exception as e:
+                self._set_last_error(str(e))
+                logger.error("MiMO TTS voiceclone payload build failed: %s", e)
+                return None
+        elif not self._is_voice_design_model(model_name):
             payload["audio"]["voice"] = voice_id
 
         backoff = 1.0
@@ -223,105 +263,47 @@ class MiMOProvider:
         return None
 
     async def register_voice(self, voice_id: str, audio_path: str) -> bool:
-        """Register a voice clone with reference audio.
+        """Validate a local voice clone reference audio.
 
         Args:
-            voice_id: The voice ID to register.
+            voice_id: The voice ID to validate.
             audio_path: Path to the reference audio file.
 
         Returns:
-            True if successful.
+            True if the local reference audio can be used for VoiceClone.
         """
-        if not self.api_key:
-            self._set_last_error("缺少 API Key 配置")
-            logger.error("MiMO TTS: missing api_key for voice registration")
-            return False
-
-        url = f"{self.base_url}/audio/voice/clone"
-        headers = {
-            "api-key": self.api_key,
-        }
-
         try:
             self._set_last_error("")
-            # Read and encode audio file
-            audio_file = Path(audio_path)
-            if not audio_file.exists():
-                self._set_last_error(f"音频文件不存在: {audio_path}")
-                logger.error(f"Audio file not found: {audio_path}")
-                return False
-
-            with open(audio_file, "rb") as f:
-                audio_data = f.read()
-
-            guessed_content_type = guess_type(audio_file.name)[0] or "application/octet-stream"
-
-            # Build multipart form data
-            data = aiohttp.FormData()
-            data.add_field("voice_id", voice_id)
-            data.add_field(
-                "file",
-                audio_data,
-                filename=audio_file.name,
-                content_type=guessed_content_type,
-            )
-
-            session = self._get_session()
-            async with session.post(url, headers=headers, data=data) as resp:
-                if 200 <= resp.status < 300:
-                    logger.info(f"Voice clone registered: {voice_id}")
-                    return True
-                else:
-                    body = await resp.text()
-                    self._set_last_error(f"HTTP {resp.status}: {body[:300]}")
-                    logger.error(f"Voice clone failed ({resp.status}): {body[:200]}")
-                    return False
+            _ = self._build_voice_clone_data_url(audio_path)
+            logger.info("Voice clone reference validated: %s", voice_id)
+            return True
         except Exception as e:
-            self._set_last_error(f"请求异常: {e}")
-            logger.error(f"Voice clone error: {e}")
+            self._set_last_error(f"参考音频不可用: {e}")
+            logger.error("Voice clone validation error: %s", e)
             return False
 
     async def design_voice(self, voice_id: str, description: str, model: str = "mimo-v2.5-tts-voicedesign") -> bool:
-        """Generate a voice using the voice design model.
+        """Validate a local voice design profile.
 
         Args:
-            voice_id: The voice ID to create.
+            voice_id: The voice ID to store.
             description: Text description of the desired voice.
             model: Voice design model name.
 
         Returns:
-            True if successful.
+            True if the profile can be used during synthesis.
         """
-        if not self.api_key:
-            self._set_last_error("缺少 API Key 配置")
-            logger.error("MiMO TTS: missing api_key for voice design")
-            return False
-
-        url = f"{self.base_url}/audio/voice/design"
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": self.api_key,
-        }
-
-        payload = {
-            "model": model,
-            "voice_id": voice_id,
-            "description": description,
-        }
-
         try:
             self._set_last_error("")
-            session = self._get_session()
-            async with session.post(url, headers=headers, json=payload) as resp:
-                if 200 <= resp.status < 300:
-                    logger.info(f"Voice designed: {voice_id}")
-                    return True
-                else:
-                    body = await resp.text()
-                    self._set_last_error(f"HTTP {resp.status}: {body[:300]}")
-                    logger.error(f"Voice design failed ({resp.status}): {body[:200]}")
-                    return False
+            if not str(voice_id or "").strip():
+                raise ValueError("缺少 design 音色 ID")
+            if not str(description or "").strip():
+                raise ValueError("缺少 design 音色描述")
+            if not self._is_voice_design_model(model):
+                raise ValueError(f"不支持的 design 模型: {model}")
+            logger.info("Voice design profile validated: %s", voice_id)
+            return True
         except Exception as e:
-            self._set_last_error(f"请求异常: {e}")
-            logger.error(f"Voice design error: {e}")
+            self._set_last_error(f"设计音色配置无效: {e}")
+            logger.error("Voice design validation error: %s", e)
             return False

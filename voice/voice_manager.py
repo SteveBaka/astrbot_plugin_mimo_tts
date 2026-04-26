@@ -44,14 +44,27 @@ class VoiceManager:
 
     def register_voice(self, voice_id: str, name: str = "", model: str = "voiceclone", **kwargs) -> None:
         """Register a voice (clone or generated) in the local registry."""
+        normalized_kwargs = dict(kwargs)
+        audio_path = normalized_kwargs.get("audio_path")
+        if audio_path:
+            try:
+                normalized_kwargs["audio_path"] = str(Path(audio_path).resolve())
+            except Exception:
+                normalized_kwargs["audio_path"] = str(audio_path)
+
         self._voices[voice_id] = {
             "voice_id": voice_id,
             "name": name or voice_id,
             "model": model,
-            **kwargs,
+            **normalized_kwargs,
         }
         self._save_registry()
         logger.info(f"Voice registered: {voice_id} (model={model})")
+
+    def get_clone_audio_path(self, voice_id: str) -> str:
+        """Get local reference audio path for a clone voice."""
+        info = self.get_voice(voice_id) or {}
+        return str(info.get("audio_path", "") or "")
 
     def get_voice(self, voice_id: str) -> Optional[dict]:
         """Get voice info by ID."""

@@ -54,8 +54,8 @@
 ### 输出模式说明
 
 - `default`：使用插件默认音色或当前选中的普通内置音色。
-- `design`：优先使用 `design_voice_id` / 已生成的设计音色进行合成。
-- `clone`：优先使用 `clone_voice_id` / 已注册的克隆音色进行合成。
+- `design`：优先使用当前已登记的设计音色描述，或配置中的 `design_voice_description` 进行合成。
+- `clone`：优先使用 `clone_voice_id` 对应的本地参考音频，或当前选中的已登记克隆音色进行合成。
 
 可通过命令 `/ttsswitch <default|design|clone>` 在运行时快速切换。
 
@@ -151,10 +151,12 @@
 #### 声音克隆（VoiceClone）
 
 - 当前按官方能力接入 `mimo-v2.5-tts-voiceclone` 模型。
-- 使用 `/voiceclone <ID> <本地音频路径>` 可注册克隆音色。
+- 使用 `/voiceclone <ID> <本地音频路径>` 可登记一个“本地参考音频音色”。
 - 推荐将参考音频放到插件根目录下的 `clone/` 文件夹，再执行如 `/voiceclone my_clone clone/sample.wav`。
 - 插件启动时会自动创建 `clone/` 目录，可直接把待克隆音频放进去使用。
 - 已加入本地文件存在性、文件类型、最小体积校验。
+- `/voiceclone` 不会再调用不存在的“预注册接口”；插件会在真正合成时，将参考音频转成 `data:{MIME_TYPE};base64,...` 后通过 `chat/completions` 的 `audio.voice` 传给官方 `mimo-v2.5-tts-voiceclone` 模型。
+- 执行 `/voiceclone` 后，插件会自动记录该参考音频路径，并可配合 `/ttsswitch clone` 进入克隆输出模式。
 - 支持通过以下两个配置项细化克隆音色的输出风格：
   - `clone_style_prompt`：自然语言风格控制
   - `clone_audio_tags`：音频标签控制
@@ -241,6 +243,7 @@
   - 调整唱歌逻辑为仅允许 **/sing** 单次触发；
   - 完善 **VoiceDesign** 与 **VoiceClone** 的模型接入与配置说明；
   - 将 **VoiceClone** 参考音频目录约定收敛为插件根目录下的 **clone/** 文件夹，并同步更新命令帮助与错误提示；
+  - 修正 **VoiceClone** 调用方式：不再错误请求不存在的 `/audio/voice/clone` 路由，而是在实际合成时按官方文档改用 `chat/completions + audio.voice(data URL)`；
   - 修正 **design** 模式的实际合成逻辑：切换到该模式后改为直接使用 `mimo-v2.5-tts-voicedesign`，并将音色描述文本放入 `user` 消息中参与合成；
   - 修正 **VoiceDesign** 请求参数，避免对 `mimo-v2.5-tts-voicedesign` 传入不支持的 `audio.voice`，也避免错误使用无效占位音色 ID；
   - 新增克隆音色的自然语言风格控制、音频标签控制；
