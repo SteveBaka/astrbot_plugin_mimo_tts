@@ -307,6 +307,12 @@ class MiMoTTSPlugin(Star):
     def _persist_current_state(self) -> None:
         self._save_user_state()
 
+    def _restore_user_state(self, uid: str) -> None:
+        """将当前会话设置恢复为插件配置默认值。"""
+        self._user_settings.pop(uid, None)
+        self._user_format.pop(uid, None)
+        self._persist_current_state()
+
     def _reset_persistent_state(self) -> None:
         self._user_settings.clear()
         self._user_format.clear()
@@ -663,6 +669,13 @@ class MiMoTTSPlugin(Star):
         return new_chain
 
     @staticmethod
+    def _log_tts_text(uid: str, mode: str, sing: bool, text: str) -> None:
+        """同时写入插件 logger 与 AstrBot 常见根日志，便于排查 TTS 入参。"""
+        message = "MiMO TTS: synthesize text uid=%s mode=%s sing=%s text=%r"
+        logger.info(message, uid, mode, sing, text)
+        logging.info(message, uid, mode, sing, text)
+
+    @staticmethod
     def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
         """识别明显的人格/skill 内部提示词或推理腔文本，避免被自动 TTS 朗读。
 
@@ -750,13 +763,7 @@ class MiMoTTSPlugin(Star):
         fmt = "wav"
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
-        logger.info(
-            "MiMO TTS: synthesize text uid=%s mode=%s sing=%s text=%r",
-            uid,
-            self._resolve_tts_mode(uid),
-            uset["sing"],
-            final_text,
-        )
+        self._log_tts_text(uid, self._resolve_tts_mode(uid), uset["sing"], final_text)
 
         voice_id, model_override, mode, clone_audio_path = self._resolve_synthesis_target(uid)
         if mode == "clone":
@@ -798,7 +805,7 @@ class MiMoTTSPlugin(Star):
     #  Event Handlers
     # ═══════════════════════════════════════════════════════════
 
-    @filter.on_decorating_result(priority=1)
+    @filter.on_decorating_result(priority=100)
     async def on_decorating_result(self, event: AstrMessageEvent):
         """Auto TTS: intercept LLM output and generate voice reply."""
         uid, uset = self._get_event_settings(event)
@@ -971,6 +978,36 @@ class MiMoTTSPlugin(Star):
         yield MessageEventResult().message(
             f"[✓] 已将当前对话的文字同步设置为: {'开' if uset['text_enabled'] else '关'}\n"
             "仅影响当前聊天的自动 TTS，不会修改插件配置面板中的 send_text_with_tts。"
+        )
+
+    @filter.command("tts-help")
+    async def cmd_tts_help(self, event: AstrMessageEvent):
+        """/tts-help — 快速查看常用 TTS 指令"""
+        lines = [
+            "MiMO TTS 常用指令:",
+            "",
+            "/mimo_say <文本>  - 即时合成语音",
+            "/sing <歌词>  - 单次唱歌合成",
+            "/ttsconfig  - 查看当前会话配置",
+            "/tts-restore  - 将当前会话配置恢复为插件默认设置",
+            "/tts_off  - 关闭当前对话自动 TTS",
+            "/tts_on  - 开启当前对话自动 TTS",
+            "/text <on|off>  - 设置当前对话是否同步发送文字",
+            "/ttsswitch <default|design|clone>  - 切换输出模式",
+            "/voice [音色ID]  - 查看/切换音色",
+            "/emotion <情感名|auto|off>  - 设置情感",
+            "/ttsformat <mp3|wav|ogg>  - 设置当前格式",
+        ]
+        yield MessageEventResult().message("\n".join(lines))
+
+    @filter.command("tts-restore")
+    async def cmd_tts_restore(self, event: AstrMessageEvent):
+        """/tts-restore — 恢复当前会话配置为插件默认值"""
+        uid, _ = self._get_event_settings(event)
+        self._restore_user_state(uid)
+        yield MessageEventResult().message(
+            "[✓] 已将当前对话的 TTS 配置恢复为插件默认设置。\n"
+            "可使用 /ttsconfig 查看当前生效结果，或用 /tts-help 快速查看常用指令。"
         )
 
     @filter.command("sing")
@@ -1513,6 +1550,7 @@ class MiMoTTSPlugin(Star):
             f"格式: {self._get_effective_audio_format(uid)}",
             f"",
             f"用 /preset <预设名> 快速切换风格",
+            f"用 /tts-help 快速查看指令",
         ]
         yield MessageEventResult().message("\n".join(lines))
 
