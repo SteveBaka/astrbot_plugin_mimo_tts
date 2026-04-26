@@ -1,6 +1,6 @@
 name: astrbot_plugin_mimo_tts
 author: unsuited_
-version: 1.2.2
+version: 1.2.3
 desc: 基于 MiMO-V2.5-TTS 的精细化语音合成插件。自动拦截 LLM 输出生成语音，支持 20 种情感、语速、音高、呼吸声、重音、唱歌、方言、音量、笑声、停顿、声音克隆、声音设计、预设系统。
 repo: https://github.com/SteveBaka/astrbot_plugin_mimo_tts
 entry: main

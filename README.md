@@ -17,6 +17,7 @@
 - [x]语速/音高：0.5-2.0x 语速，-12-+12 音高
 - [x]声音克隆 & 设计：支持自定义音色生成与调用
 - [x]输出模式切换：支持 默认 / 设计 / 克隆 三种 TTS 输出来源
+- [x]文字同步开关：可控制自动 TTS 时是否同时保留文字消息
 - [x]错误原因透出：接口失败时直接返回具体报错原因
 - [x]多用户独立：每人独立设置，互不干扰
 
@@ -40,6 +41,7 @@
 | `audio_format` | 输出格式(mp3/wav/ogg) | `mp3` |
 | `auto_tts` | 自动拦截 LLM 输出 | `true` |
 | `auto_tts_in_group` | 群聊中自动 TTS | `true` |
+| `send_text_with_tts` | 自动 TTS 时是否同步发送文字 | `true` |
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
 | `emotion_override` | 情感覆盖(auto=自动) | - |
@@ -79,8 +81,8 @@
 
 ### 即时合成
 ```
-/tts <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
-           [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
+/mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
+                [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
 ```
 
 ### 唱歌
@@ -88,7 +90,7 @@
 /sing <歌词>
 ```
 
-> 当前版本不再建议使用“全局唱歌开关”，唱歌模式仅由 `/sing` 单次触发，避免普通 `/tts` 与自动语音输出被持续污染。
+> 当前版本不再建议使用“全局唱歌开关”，唱歌模式仅由 `/sing` 单次触发，避免普通即时合成与自动语音输出被持续污染。
 
 ### 20 种情感
 ```
@@ -182,7 +184,7 @@ AstrBot/
 ```bash
 /voiceclone my_clone clone/sample.wav
 /ttsswitch clone
-/tts 这是一段使用克隆音色生成的测试语音
+/mimo_say 这是一段使用克隆音色生成的测试语音
 ```
 
 ### 预设
@@ -207,9 +209,19 @@ AstrBot/
 /ttsformat <mp3|wav|ogg>   # 设置音频格式
 /ttsconfig                  # 查看配置
 /ttsconfig reset            # 重置个人设置
+/tts_off                    # 关闭当前对话自动 TTS
+/tts_on                     # 重新开启当前对话自动 TTS
 /ttsinfo                    # 插件信息
 /ttsraw <文本>              # 纯文本合成（不带情感）
 ```
+
+### 自动 TTS 文字同步说明
+
+- 插件配置项 `send_text_with_tts` 用于控制：自动 TTS 触发时，是否在发送语音的同时保留原始文字消息。
+- 开启时：保持原有行为，文本 + 语音同时发送。
+- 关闭时：插件会尽量只保留语音输出，以减少对话中消息过多的问题。
+- `/tts_off` 与 `/tts_on` 作用于**当前对话**，并会持久化保存该对话的自动 TTS 开关状态。
+- `/tts_on` 只会恢复当前对话的自动 TTS，不会改动插件配置面板中的全局 `auto_tts` 开关。
 
 ### 报错说明
 
@@ -220,20 +232,20 @@ AstrBot/
 
 ```bash
 # 开心地说一段话
-/tts 今天天气真好啊！ -emotion happy
+/mimo_say 今天天气真好啊！ -emotion happy
 
 # 用粤语低声说话
-/tts 你好呀 -dialect 粤语 -volume 轻声 -emotion whisper
+/mimo_say 你好呀 -dialect 粤语 -volume 轻声 -emotion whisper
 
 # 应用睡前故事预设
 /preset bedtime_story
-/tts 从前有一座山，山里有一座庙...
+/mimo_say 从前有一座山，山里有一座庙...
 
 # 唱歌模式
 /sing 小星星，亮晶晶，满天都是小星星
 
 # 快速切换参数
-/tts 滚！ -emotion angry -speed 1.3 -stress on
+/mimo_say 滚！ -emotion angry -speed 1.3 -stress on
 ```
 
 ## 控制维度总览
@@ -280,7 +292,16 @@ AstrBot/
   - 增强提示词泄漏拦截，降低 persona / skill / reasoning / system prompt 等内部文本被自动 TTS 朗读的概率；
   - 自定义音色注册表迁移到 AstrBot `data` 目录，减少插件更新覆盖导致的注册信息丢失；
   - 对齐 AstrBot 大文件存储规范：VoiceClone 参考音频的推荐上传位置调整为 **`data/plugin_data/astrbot_plugin_mimo_tts/clone/`**，推荐命令写法为 `/voiceclone <ID> clone/文件名`。
-- v1.2.0、v1.2.1以及v1.2.2均使用GPT-5.4进行生成。
+- 2025年4月26日，v1.2.3更新：
+  - 新增 `send_text_with_tts` 配置项，可控制自动 TTS 时是否同时保留文字输出；
+  - 新增 `/tts_off` 与 `/tts_on`，用于按当前对话关闭/恢复自动 TTS；
+  - 新增 `/mimo_say <文本>` 作为即时合成命令入口，并移除旧 `/tts <文本>`；
+  - `ttsconfig` 现会显示当前对话的自动 TTS 开关状态。
+- v1.2.0、v1.2.1、v1.2.2 以及 v1.2.3 均使用GPT-5.4进行生成。
+
+## 提示
+
+经过测试，在多次使用**voiceclone**以及**voicedesign**连续生成TTS后，可能会产生不一样的声音。可以等待几分钟或更改提示词后继续生成，基本上可以正常使用。
 
 ## License
 

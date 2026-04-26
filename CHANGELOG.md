@@ -4,14 +4,17 @@
 
 ### 新增
 - 新增 `tts_output_mode` 配置与 `/ttsswitch` 命令，用于在默认 / 设计 / 克隆三种 TTS 输出模式间切换。
+- 新增 `send_text_with_tts` 配置项，用于控制自动 TTS 输出时是否同时保留文字消息。
 - 新增 `clone_style_prompt` 配置，用于对 voiceclone 合成追加自然语言风格控制。
 - 新增 `clone_audio_tags` 配置，用于对 voiceclone 合成追加音频标签控制。
 - 新增 `design_model` 与 `clone_model` 配置，用于显式指定 voicedesign / voiceclone 所用模型。
 - 新增 `design_voice_description` 配置项，替代原先配置面板中的“设计音色ID”输入语义。
 - 新增用户状态持久化文件：插件会将每个用户的 TTS 设置保存到 AstrBot `data` 目录中的 `user_state.json`。
+- 新增 `/tts_off` 与 `/tts_on` 命令，用于按当前对话关闭 / 恢复自动 TTS。
+- 新增 `/mimo_say <文本>` 作为即时合成命令入口。
 
 ### 修改
-- 唱歌模式改为仅允许通过 `/sing` 临时触发，不再使用全局唱歌开关影响普通 `/tts` 与自动 TTS。
+- 唱歌模式改为仅允许通过 `/sing` 临时触发，不再使用全局唱歌开关影响普通即时合成与自动 TTS。
 - 唱歌合成时会自动在目标文本开头补齐官方建议的 `(唱歌)` 标签；若用户已手动填写则不重复追加。
 - TTS 主合成请求已调整为更符合 MiMO v2.5 文档的结构：
   - 使用 `audio.voice` / `audio.format`
@@ -26,6 +29,7 @@
 - 自动 TTS 装饰阶段优先级已调整，使文本清理插件能够更早处理回复结果，再由本插件执行朗读。
 - 自定义音色注册表默认迁移到 AstrBot `data` 目录下保存，同时兼容读取旧版插件目录中的注册表文件。
 - README 已补充 VoiceClone 参考音频上传位置说明，推荐将音频放到 `data/plugin_data/astrbot_plugin_mimo_tts/clone/` 文件夹，并使用 `/voiceclone <ID> clone/文件名` 进行登记。
+- README 与命令说明已同步更新为优先使用 `/mimo_say`，并补充当前对话级别自动 TTS 开关说明。
 
 ### 修复
 - 修复 `api_base_url` 的兼容问题：若用户误将配置填写为根域名 `https://api.xiaomimimo.com` 或完整接口地址 `.../chat/completions`，provider 现在会自动归一化，避免再次拼接 `chat/completions` 后触发 404。
@@ -39,3 +43,4 @@
 - 修复插件重载或更新后用户个人 TTS 配置丢失的问题。
 - 修复自动 TTS 误朗读 persona / skill / system prompt / reasoning 等提示词溢出文本的问题。
 - 修复 clone 大文件仍落在插件代码目录中的问题，改为优先使用 AstrBot 官方建议的 `data/plugin_data/{plugin_name}/` 存储位置，并保留旧路径兼容读取。
+- 修复“想只听语音却仍被文本刷屏”的问题：关闭 `send_text_with_tts` 后，自动 TTS 会尽量只保留语音输出。

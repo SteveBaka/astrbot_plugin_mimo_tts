@@ -37,7 +37,7 @@
   "probability": {
     "type": "float",
     "description": "自动 TTS 触发概率",
-    "hint": "0.0 = 不触发，0.5 = 50%，1.0 = 每次都触发",
+    "hint": "0 = 不触发，0.5 = 50%，1 = 每次都触发",
     "default": 0.8
   },
   "auto_tts": {
@@ -48,6 +48,12 @@
   "auto_tts_in_group": {
     "type": "bool",
     "description": "群聊中也自动 TTS",
+    "default": true
+  },
+  "send_text_with_tts": {
+    "type": "bool",
+    "description": "TTS 输出时是否同步发送文字",
+    "hint": "开启时保留原文本并附加语音；关闭时自动 TTS 将尽量只发送语音，减少消息占用",
     "default": true
   },
   "emotion_override": {

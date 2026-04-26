@@ -29,6 +29,7 @@ class ConfigManager:
         "probability": 0.8,
         "auto_tts": True,
         "auto_tts_in_group": True,
+        "send_text_with_tts": True,
 
         # Emotion / prosody
         "emotion_override": "",
@@ -112,8 +113,20 @@ class ConfigManager:
         return str(self._cfg.get("default_voice", "mimo_default"))
 
     @property
+    def probability(self) -> float:
+        try:
+            value = float(self._cfg.get("probability", 0.8))
+        except Exception:
+            value = 0.8
+        return max(0.0, min(1.0, value))
+
+    @property
     def default_speed(self) -> float:
         return float(self._cfg.get("default_speed", 1.0))
+
+    @property
+    def send_text_with_tts(self) -> bool:
+        return bool(self._cfg.get("send_text_with_tts", True))
 
     @property
     def default_pitch(self) -> int:

@@ -8,7 +8,8 @@ MiMO TTS Plugin for AstrBot - Enhanced Edition
 
 使用方式：
   - 自动拦截：AI 说话时自动转语音
-  - /tts <文本> [选项]：即时语音合成
+  - /mimo_say <文本> [选项]：即时语音合成
+  - /tts_off：关闭当前对话自动 TTS
   - /sing <歌词>：唱歌模式
   - /voice [音色名]：查看/切换音色
   - /emotion [情感名]：查看/设置情感
@@ -32,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 import time
 import traceback
@@ -234,6 +236,7 @@ class MiMoTTSPlugin(Star):
             "dialect": "",
             "volume": "",
             "tts_mode": "default",
+            "tts_enabled": True,
         }
         cleaned = dict(defaults)
         if isinstance(data, dict):
@@ -251,6 +254,7 @@ class MiMoTTSPlugin(Star):
         cleaned["emotion"] = str(cleaned.get("emotion", "") or "")
         cleaned["style_hint"] = str(cleaned.get("style_hint", "") or "")
         cleaned["tts_mode"] = str(cleaned.get("tts_mode", "default") or "default")
+        cleaned["tts_enabled"] = bool(cleaned.get("tts_enabled", True))
         return cleaned
 
     def _load_user_state(self) -> None:
@@ -318,7 +322,7 @@ class MiMoTTSPlugin(Star):
                 "voice": self.config.default_voice,
                 "breath": self.config.breath_enabled,
                 "stress": self.config.stress_enabled,
-                # 唱歌模式仅允许由 /sing 命令临时触发，避免污染普通 /tts 与自动 TTS。
+                # 唱歌模式仅允许由 /sing 命令临时触发，避免污染普通即时合成与自动 TTS。
                 "sing": False,
                 "laughter": self.config.laughter_enabled,
                 "pause": self.config.pause_enabled,
@@ -326,6 +330,7 @@ class MiMoTTSPlugin(Star):
                 "dialect": "",
                 "volume": "",
                 "tts_mode": self._normalize_tts_mode(self.config.tts_output_mode),
+                "tts_enabled": True,
             }
         return self._user_settings[uid]
 
@@ -380,7 +385,18 @@ class MiMoTTSPlugin(Star):
         return scope_key, self._get_user_settings(scope_key)
 
     def _should_tts(self, uid: str) -> bool:
-        return self.config.get("auto_tts", True)
+        if not self.config.get("auto_tts", True):
+            return False
+
+        if not self._get_user_settings(uid).get("tts_enabled", True):
+            return False
+
+        probability = self.config.probability
+        if probability <= 0:
+            return False
+        if probability >= 1:
+            return True
+        return random.random() < probability
 
     def _should_skip(self, text: str) -> bool:
         if not text or not text.strip():
@@ -603,6 +619,28 @@ class MiMoTTSPlugin(Star):
         return "".join(chunks).strip()
 
     @staticmethod
+    def _build_audio_only_chain(chain, text: str, audio_component) -> list:
+        """构造尽量仅包含语音的消息链，避免自动 TTS 时重复发送大量文字。"""
+        new_chain: list = []
+        consumed = False
+
+        for comp in chain:
+            if isinstance(comp, Record):
+                continue
+            if not consumed and isinstance(comp, Plain) and comp.text:
+                comp_text = str(comp.text)
+                if text and text in comp_text:
+                    remainder = (comp_text.replace(text, "", 1)).strip()
+                    if remainder:
+                        new_chain.append(Plain(remainder))
+                    consumed = True
+                    continue
+            new_chain.append(comp)
+
+        new_chain.append(audio_component)
+        return new_chain
+
+    @staticmethod
     def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
         """识别明显的人格/skill 内部提示词或推理腔文本，避免被自动 TTS 朗读。
 
@@ -773,22 +811,26 @@ class MiMoTTSPlugin(Star):
         try:
             audio_path = await self._do_tts(plain, uid)
             if audio_path:
-                result.chain.append(Record.fromFileSystem(str(audio_path)))
+                audio_comp = Record.fromFileSystem(str(audio_path))
+                if self.config.send_text_with_tts:
+                    result.chain.append(audio_comp)
+                else:
+                    result.chain = self._build_audio_only_chain(chain, plain, audio_comp)
         except Exception as e:
             result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
         finally:
             uset["emotion"] = orig_emotion
 
-    @filter.command("tts")
-    async def cmd_tts(self, event: AstrMessageEvent):
+    async def _handle_say_command(self, event: AstrMessageEvent, command_name: str):
         """
-        /tts <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
-                   [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
+        /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
+                        [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
         """
         raw = event.message_str.strip()
-        text = raw[len("/tts"):].strip()
+        prefix = f"/{command_name}"
+        text = raw[len(prefix):].strip() if raw.startswith(prefix) else raw
         if not text:
-            yield MessageEventResult().message("用法: /tts <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色] [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]")
+            yield MessageEventResult().message("用法: /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色] [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]")
             return
 
         uid, uset = self._get_event_settings(event)
@@ -845,6 +887,32 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message(f"! {e}")
         finally:
             uset.update(orig)
+
+    @filter.command("mimo_say")
+    async def cmd_mimo_say(self, event: AstrMessageEvent):
+        async for item in self._handle_say_command(event, "mimo_say"):
+            yield item
+
+    @filter.command("tts_off")
+    async def cmd_tts_off(self, event: AstrMessageEvent):
+        """/tts_off — 关闭当前对话自动 TTS"""
+        _, uset = self._get_event_settings(event)
+        uset["tts_enabled"] = False
+        self._persist_current_state()
+        yield MessageEventResult().message(
+            "[✓] 已关闭当前对话的自动 TTS。\n如需重新开启，可使用 /tts_on"
+        )
+
+    @filter.command("tts_on")
+    async def cmd_tts_on(self, event: AstrMessageEvent):
+        """/tts_on — 开启当前对话自动 TTS"""
+        _, uset = self._get_event_settings(event)
+        uset["tts_enabled"] = True
+        self._persist_current_state()
+        yield MessageEventResult().message(
+            "[✓] 已开启当前对话的自动 TTS。\n"
+            "仅恢复当前对话的自动朗读，不会修改插件配置面板中的全局自动 TTS 开关。"
+        )
 
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
@@ -1255,8 +1323,7 @@ class MiMoTTSPlugin(Star):
                 f"[✓] 已登记克隆音色: {vid}\n"
                 f"  参考音频: {audio_file}\n"
                 f"  已自动切换当前音色为: {vid}\n"
-                f"  可用 /ttsswitch clone 切到克隆输出模式\n"
-                f"  配置面板已同步更新"
+                f"  可用 /ttsswitch clone 切到克隆输出模式"
             )
         else:
             yield MessageEventResult().message(
@@ -1378,6 +1445,7 @@ class MiMoTTSPlugin(Star):
             f"呼吸: {'开' if uset['breath'] else '关'}  重音: {'开' if uset['stress'] else '关'}",
             f"方言: {uset['dialect'] or '(无)'}  音量: {uset['volume'] or '(正常)'}",
             f"笑声: {'开' if uset['laughter'] else '关'}  停顿: {'开' if uset['pause'] else '关'}",
+            f"当前对话自动 TTS: {'开' if uset.get('tts_enabled', True) else '关'}",
             f"音色: {uset['voice']}",
             f"输出模式: {self._tts_mode_label(self._resolve_tts_mode(uid))} ({self._resolve_tts_mode(uid)})",
             f"格式: {self._user_format.get(uid, 'mp3')}",
@@ -1424,7 +1492,7 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
         """ /ttsinfo — 查看插件信息"""
         lines = [
-            "MiMO TTS Plugin v1.2.2",
+            "MiMO TTS Plugin v1.2.3",
             "",
             "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
             "",
@@ -1434,7 +1502,8 @@ class MiMoTTSPlugin(Star):
             f"控制维度: 情感 语速 音高 呼吸声 重音 方言 音量 笑声 停顿（唱歌仅 /sing）",
             "",
             "主要命令:",
-            "  /tts <文本>  - 即时合成",
+            "  /mimo_say <文本>  - 即时合成",
+            "  /tts_off  - 关闭当前对话自动 TTS",
             "  /sing <歌词>  - 唱歌模式",
             "  /preset <名>  - 应用预设",
             "  /ttsconfig  - 查看配置",
