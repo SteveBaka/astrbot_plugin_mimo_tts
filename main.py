@@ -30,6 +30,7 @@ MiMO TTS Plugin for AstrBot - Enhanced Edition
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -79,17 +80,24 @@ class MiMoTTSPlugin(Star):
         # ── Per-user output format override ──
         self._user_format: dict[str, str] = {}
 
+        # ── Persistent state ──
+        self._plugin_dir = Path(__file__).resolve().parent
+        self._data_dir = self._resolve_data_dir()
+        self._state_file = self._data_dir / "user_state.json"
+
         # ── Emotion detector ──
         self._detector = EmotionDetector()
 
         # ── Voice manager ──
-        self._voice_manager = VoiceManager()
+        self._voice_manager = VoiceManager(data_dir=self._data_dir)
 
         # ── Audio file cleanup tracking ──
         self._recent_files: list[tuple[float, Path]] = []
 
         # ── Init done ──
         self._started = False
+
+        self._load_user_state()
 
     # ── Helpers ────────────────────────────────────────────────
 
@@ -126,6 +134,157 @@ class MiMoTTSPlugin(Star):
             max_retries=self.config.get("max_retries", 3),
         )
         return self._provider
+
+    def _resolve_data_dir(self) -> Path:
+        """Best-effort resolve AstrBot persistent data dir.
+
+        优先尝试 AstrBot 运行时可能提供的 data/plugin_data 路径；若不可用，则退化到
+        插件目录外侧的 data/plugins/<plugin_id>，避免把持久化数据继续写回插件自身目录。
+        """
+        candidates: list[Path] = []
+
+        def _collect_from(obj) -> None:
+            if not obj:
+                return
+            for name in (
+                "plugin_data_dir",
+                "data_dir",
+                "storage_dir",
+                "plugin_storage_dir",
+            ):
+                try:
+                    value = getattr(obj, name, None)
+                    value = value() if callable(value) else value
+                    if value:
+                        path = Path(str(value)).expanduser()
+                        if path.name == PLUGIN_ID:
+                            candidates.append(path)
+                        else:
+                            candidates.append(path / PLUGIN_ID)
+                except Exception:
+                    continue
+
+        _collect_from(getattr(self, "context", None))
+        _collect_from(self)
+
+        plugin_dir = self._plugin_dir
+        parents = [plugin_dir, *plugin_dir.parents]
+        for base in parents:
+            candidates.extend([
+                base / "data" / "plugins" / PLUGIN_ID,
+                base / "data" / PLUGIN_ID,
+            ])
+
+        seen: set[str] = set()
+        for candidate in candidates:
+            try:
+                normalized = candidate.resolve(strict=False)
+            except Exception:
+                normalized = candidate
+            key = str(normalized)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                normalized.mkdir(parents=True, exist_ok=True)
+                return normalized
+            except Exception:
+                continue
+
+        fallback = plugin_dir.parent / "data" / "plugins" / PLUGIN_ID
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+    @staticmethod
+    def _sanitize_user_settings(data: dict) -> dict:
+        defaults = {
+            "emotion": "",
+            "speed": 1.0,
+            "pitch": 0,
+            "voice": "mimo_default",
+            "breath": False,
+            "stress": False,
+            "sing": False,
+            "laughter": False,
+            "pause": False,
+            "style_hint": "",
+            "dialect": "",
+            "volume": "",
+            "tts_mode": "default",
+        }
+        cleaned = dict(defaults)
+        if isinstance(data, dict):
+            cleaned.update({k: v for k, v in data.items() if k in defaults})
+        cleaned["speed"] = max(0.5, min(2.0, float(cleaned.get("speed", 1.0) or 1.0)))
+        cleaned["pitch"] = max(-12, min(12, int(cleaned.get("pitch", 0) or 0)))
+        cleaned["breath"] = bool(cleaned.get("breath", False))
+        cleaned["stress"] = bool(cleaned.get("stress", False))
+        cleaned["sing"] = False
+        cleaned["laughter"] = bool(cleaned.get("laughter", False))
+        cleaned["pause"] = bool(cleaned.get("pause", False))
+        cleaned["dialect"] = str(cleaned.get("dialect", "") or "")
+        cleaned["volume"] = str(cleaned.get("volume", "") or "")
+        cleaned["voice"] = str(cleaned.get("voice", "mimo_default") or "mimo_default")
+        cleaned["emotion"] = str(cleaned.get("emotion", "") or "")
+        cleaned["style_hint"] = str(cleaned.get("style_hint", "") or "")
+        cleaned["tts_mode"] = str(cleaned.get("tts_mode", "default") or "default")
+        return cleaned
+
+    def _load_user_state(self) -> None:
+        if not self._state_file.exists():
+            return
+        try:
+            payload = json.loads(self._state_file.read_text(encoding="utf-8"))
+            user_settings = payload.get("user_settings", {}) if isinstance(payload, dict) else {}
+            user_format = payload.get("user_format", {}) if isinstance(payload, dict) else {}
+
+            if isinstance(user_settings, dict):
+                self._user_settings = {
+                    str(uid): self._sanitize_user_settings(settings)
+                    for uid, settings in user_settings.items()
+                    if isinstance(uid, str)
+                }
+            if isinstance(user_format, dict):
+                self._user_format = {
+                    str(uid): str(fmt).lower()
+                    for uid, fmt in user_format.items()
+                    if isinstance(uid, str) and str(fmt).lower() in SUPPORTED_AUDIO_FORMATS
+                }
+            logger.info("MiMO TTS: loaded persistent user state from %s", self._state_file)
+        except Exception:
+            logger.warning("MiMO TTS: failed to load persistent user state from %s", self._state_file, exc_info=True)
+
+    def _save_user_state(self) -> None:
+        try:
+            self._state_file.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "user_settings": {
+                    uid: self._sanitize_user_settings(settings)
+                    for uid, settings in self._user_settings.items()
+                },
+                "user_format": {
+                    uid: fmt for uid, fmt in self._user_format.items()
+                    if fmt in SUPPORTED_AUDIO_FORMATS
+                },
+            }
+            self._state_file.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.warning("MiMO TTS: failed to save persistent user state to %s", self._state_file, exc_info=True)
+
+    def _persist_current_state(self) -> None:
+        self._save_user_state()
+
+    def _reset_persistent_state(self) -> None:
+        self._user_settings.clear()
+        self._user_format.clear()
+        try:
+            if self._state_file.exists():
+                self._state_file.unlink()
+        except Exception:
+            logger.warning("MiMO TTS: failed to remove persistent state file %s", self._state_file, exc_info=True)
 
     def _get_user_settings(self, uid: str) -> dict:
         if uid not in self._user_settings:
@@ -190,8 +349,10 @@ class MiMoTTSPlugin(Star):
 
         if scope_key not in self._user_settings and legacy_sender_key and legacy_sender_key in self._user_settings:
             self._user_settings[scope_key] = dict(self._user_settings[legacy_sender_key])
+            self._persist_current_state()
         if scope_key not in self._user_format and legacy_sender_key and legacy_sender_key in self._user_format:
             self._user_format[scope_key] = self._user_format[legacy_sender_key]
+            self._persist_current_state()
 
         return scope_key, self._get_user_settings(scope_key)
 
@@ -431,9 +592,20 @@ class MiMoTTSPlugin(Star):
         suspicious_prefixes = (
             "**considering ",
             "considering ",
+            "analysis:",
+            "chain of thought",
             "thought:",
             "reasoning:",
             "internal monologue:",
+            "system prompt",
+            "developer prompt",
+            "assistant persona",
+            "skill:",
+            "persona:",
+            "你是",
+            "系统提示",
+            "开发者提示",
+            "角色设定",
             "response style",
             "i need to ",
             "i should ",
@@ -451,9 +623,27 @@ class MiMoTTSPlugin(Star):
             "without punctuation",
             "i need to provide",
             "i should provide",
+            "system prompt",
+            "developer message",
+            "assistant persona",
+            "chain-of-thought",
+            "internal reasoning",
+            "不要向用户展示",
+            "以下是你的设定",
+            "技能描述",
+            "人格设定",
         )
         matched = sum(1 for phrase in suspicious_phrases if phrase in head)
-        return matched >= 2
+        if matched >= 2:
+            return True
+
+        suspicious_patterns = (
+            r"^(?:#|##|###)\s*(?:system|developer|persona|skill|thought|reasoning)",
+            r"^[\[【](?:system|developer|persona|skill|内部|推理|思考)[\]】]",
+            r"(?:请扮演|你的任务是|你的人设是|必须遵循以下规则)",
+            r"(?:do not reveal|hidden prompt|internal use only)",
+        )
+        return any(re.search(pattern, head, re.IGNORECASE) for pattern in suspicious_patterns)
 
     # ── TTS command (reusable for auto TTS too) ──
 
@@ -513,7 +703,7 @@ class MiMoTTSPlugin(Star):
     #  Event Handlers
     # ═══════════════════════════════════════════════════════════
 
-    @filter.on_decorating_result(priority=9999)
+    @filter.on_decorating_result(priority=1)
     async def on_decorating_result(self, event: AstrMessageEvent):
         """Auto TTS: intercept LLM output and generate voice reply."""
         uid, uset = self._get_event_settings(event)
@@ -675,6 +865,7 @@ class MiMoTTSPlugin(Star):
 
         resolved = self._resolve_voice(arg)
         self._get_user_settings(uid)["voice"] = resolved
+        self._persist_current_state()
         yield MessageEventResult().message(f"[u2713] 音色已切换为: {resolved}")
 
     @filter.command("ttsswitch")
@@ -701,6 +892,7 @@ class MiMoTTSPlugin(Star):
 
         mode = self._normalize_tts_mode(arg)
         uset["tts_mode"] = mode
+        self._persist_current_state()
         yield MessageEventResult().message(
             f"[✓] TTS 输出模式已切换为: {self._tts_mode_label(mode)} ({mode})"
         )
@@ -725,12 +917,15 @@ class MiMoTTSPlugin(Star):
 
         if arg == "off":
             self._get_user_settings(uid)["emotion"] = ""
+            self._persist_current_state()
             yield MessageEventResult().message("[u2713] 已关闭情感覆盖（自动检测）")
         elif arg == "auto":
             self._get_user_settings(uid)["emotion"] = "auto"
+            self._persist_current_state()
             yield MessageEventResult().message("[u2713] 已开启情感自动检测")
         elif arg in SUPPORTED_EMOTIONS:
             self._get_user_settings(uid)["emotion"] = arg
+            self._persist_current_state()
             yield MessageEventResult().message(f"[u2713] 情感已设置为: {arg}")
         else:
             yield MessageEventResult().message(f"[X] 不支持的情感: {arg}\n可用: {', '.join(SUPPORTED_EMOTIONS)}")
@@ -759,6 +954,7 @@ class MiMoTTSPlugin(Star):
         try:
             val = max(0.5, min(2.0, float(arg)))
             self._get_user_settings(uid)["speed"] = val
+            self._persist_current_state()
             yield MessageEventResult().message(f"[u2713] 语速已设置为: {val}")
         except ValueError:
             yield MessageEventResult().message("[X] 请输入 0.5~2.0 之间的数值。")
@@ -778,6 +974,7 @@ class MiMoTTSPlugin(Star):
         try:
             val = max(-12, min(12, int(arg)))
             self._get_user_settings(uid)["pitch"] = val
+            self._persist_current_state()
             yield MessageEventResult().message(f"[u2713] 音高已设置为: {val}")
         except ValueError:
             yield MessageEventResult().message("[X] 请输入 -12~+12 之间的整数。")
@@ -797,6 +994,7 @@ class MiMoTTSPlugin(Star):
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["breath"] = val
+        self._persist_current_state()
         yield MessageEventResult().message(f"[u2713] 呼吸声已{'开启' if val else '关闭'}")
 
     @filter.command("stress")
@@ -814,6 +1012,7 @@ class MiMoTTSPlugin(Star):
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["stress"] = val
+        self._persist_current_state()
         yield MessageEventResult().message(f"[u2713] 重音模式已{'开启' if val else '关闭'}")
 
     @filter.command("dialect")
@@ -835,9 +1034,11 @@ class MiMoTTSPlugin(Star):
 
         if arg == "off":
             self._get_user_settings(uid)["dialect"] = ""
+            self._persist_current_state()
             yield MessageEventResult().message("[u2713] 已关闭方言口音")
         else:
             self._get_user_settings(uid)["dialect"] = arg
+            self._persist_current_state()
             yield MessageEventResult().message(f"[u2713] 方言已设置为: {arg}")
 
     @filter.command("volume")
@@ -858,9 +1059,11 @@ class MiMoTTSPlugin(Star):
 
         if arg == "off":
             self._get_user_settings(uid)["volume"] = ""
+            self._persist_current_state()
             yield MessageEventResult().message("[u2713] 音量已恢复为正常")
         else:
             self._get_user_settings(uid)["volume"] = arg
+            self._persist_current_state()
             yield MessageEventResult().message(f"[u2713] 音量已设置为: {arg}")
 
     @filter.command("laughter")
@@ -878,6 +1081,7 @@ class MiMoTTSPlugin(Star):
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["laughter"] = val
+        self._persist_current_state()
         yield MessageEventResult().message(f"[u2713] 笑声已{'开启' if val else '关闭'}")
 
     @filter.command("pause")
@@ -895,6 +1099,7 @@ class MiMoTTSPlugin(Star):
 
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["pause"] = val
+        self._persist_current_state()
         yield MessageEventResult().message(f"[u2713] 停顿模式已{'开启' if val else '关闭'}")
 
     @filter.command("preset")
@@ -925,6 +1130,7 @@ class MiMoTTSPlugin(Star):
         uset["breath"] = preset["breath"]
         uset["stress"] = preset["stress"]
         uset["voice"] = self._resolve_voice(preset["voice"])
+        self._persist_current_state()
 
         yield MessageEventResult().message(
             f"[u2713] 已应用预设: {arg}\n"
@@ -1017,6 +1223,7 @@ class MiMoTTSPlugin(Star):
             self.config._cfg["clone_voice_id"] = vid
             uid, _ = self._get_event_settings(event)
             self._get_user_settings(uid)["voice"] = vid
+            self._persist_current_state()
             yield MessageEventResult().message(
                 f"[✓] 已登记克隆音色: {vid}\n"
                 f"  参考音频: {audio_file}\n"
@@ -1064,6 +1271,7 @@ class MiMoTTSPlugin(Star):
             self.config._cfg["design_voice_description"] = desc
             uid, _ = self._get_event_settings(event)
             self._get_user_settings(uid)["voice"] = vid
+            self._persist_current_state()
             yield MessageEventResult().message(
                 f"[✓] 已登记设计音色: {vid}\n"
                 f"  可用 /ttsswitch design 切换到设计模式\n"
@@ -1112,6 +1320,7 @@ class MiMoTTSPlugin(Star):
             return
 
         self._user_format[uid] = arg.lower()
+        self._persist_current_state()
         yield MessageEventResult().message(f"[u2713] 音频格式已设置为: {arg}")
 
     @filter.command("ttsconfig")
@@ -1120,8 +1329,7 @@ class MiMoTTSPlugin(Star):
         arg = raw[len("/ttsconfig"):].strip()
 
         if arg == "reset":
-            self._user_settings.clear()
-            self._user_format.clear()
+            self._reset_persistent_state()
             yield MessageEventResult().message("[u2713] 所有个人设置已重置。")
             return
 
@@ -1135,6 +1343,7 @@ class MiMoTTSPlugin(Star):
             f"MiMO TTS 配置状态: {status}",
             f"模型: {self.config.get('model', 'mimo-v2.5-tts')}",
             f"API: {self.config.get('api_base_url', 'https://api.xiaomimimo.com/v1')[:80]}",
+            f"持久化文件: {self._state_file}",
             f"",
             f"── 你的当前设置 ──",
             f"情感: {uset['emotion'] or '(自动)'}",
@@ -1188,7 +1397,7 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
         """ /ttsinfo — 查看插件信息"""
         lines = [
-            "MiMO TTS Plugin v1.2.1",
+            "MiMO TTS Plugin v1.2.2",
             "",
             "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
             "",

@@ -16,11 +16,13 @@ class VoiceManager:
 
     def __init__(
         self,
+        data_dir: Path | None = None,
         voice_cache_dir: Path | None = None,
         clone_audio_dir: Path | None = None,
     ):
         self.plugin_dir = Path(__file__).resolve().parent.parent
-        self.voice_cache_dir = Path(voice_cache_dir) if voice_cache_dir else (self.plugin_dir / "voice")
+        self.data_dir = Path(data_dir) if data_dir else (self.plugin_dir.parent / "data" / "plugins" / "astrbot_plugin_mimo_tts")
+        self.voice_cache_dir = Path(voice_cache_dir) if voice_cache_dir else (self.data_dir / "voice")
         self.clone_audio_dir = Path(clone_audio_dir) if clone_audio_dir else (self.plugin_dir / "clone")
         self.voice_cache_dir.mkdir(parents=True, exist_ok=True)
         self.clone_audio_dir.mkdir(parents=True, exist_ok=True)
@@ -28,6 +30,7 @@ class VoiceManager:
         # Registry file for clones
         self.registry_file = self.voice_cache_dir / "voice_registry.json"
         self.legacy_registry_file = Path("voice") / "voice_registry.json"
+        self.legacy_plugin_registry_file = self.plugin_dir / "voice" / "voice_registry.json"
         self._voices: dict[str, dict] = self._load_registry()
 
     def _load_registry(self) -> dict:
@@ -43,6 +46,15 @@ class VoiceManager:
                 with open(self.legacy_registry_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 logger.info("Loaded legacy voice registry from: %s", self.legacy_registry_file)
+                return data if isinstance(data, dict) else {}
+            except Exception:
+                return {}
+
+        if self.legacy_plugin_registry_file.exists():
+            try:
+                with open(self.legacy_plugin_registry_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info("Loaded legacy plugin voice registry from: %s", self.legacy_plugin_registry_file)
                 return data if isinstance(data, dict) else {}
             except Exception:
                 return {}
