@@ -16,16 +16,18 @@ class VoiceManager:
 
     def __init__(
         self,
-        voice_cache_dir: Path = Path("voice"),
-        clone_audio_dir: Path = Path("clone"),
+        voice_cache_dir: Path | None = None,
+        clone_audio_dir: Path | None = None,
     ):
-        self.voice_cache_dir = voice_cache_dir
-        self.clone_audio_dir = clone_audio_dir
+        self.plugin_dir = Path(__file__).resolve().parent.parent
+        self.voice_cache_dir = Path(voice_cache_dir) if voice_cache_dir else (self.plugin_dir / "voice")
+        self.clone_audio_dir = Path(clone_audio_dir) if clone_audio_dir else (self.plugin_dir / "clone")
         self.voice_cache_dir.mkdir(parents=True, exist_ok=True)
         self.clone_audio_dir.mkdir(parents=True, exist_ok=True)
 
         # Registry file for clones
         self.registry_file = self.voice_cache_dir / "voice_registry.json"
+        self.legacy_registry_file = Path("voice") / "voice_registry.json"
         self._voices: dict[str, dict] = self._load_registry()
 
     def _load_registry(self) -> dict:
@@ -33,6 +35,15 @@ class VoiceManager:
             try:
                 with open(self.registry_file, "r", encoding="utf-8") as f:
                     return json.load(f)
+            except Exception:
+                return {}
+
+        if self.legacy_registry_file.exists():
+            try:
+                with open(self.legacy_registry_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info("Loaded legacy voice registry from: %s", self.legacy_registry_file)
+                return data if isinstance(data, dict) else {}
             except Exception:
                 return {}
         return {}
@@ -48,7 +59,16 @@ class VoiceManager:
         audio_path = normalized_kwargs.get("audio_path")
         if audio_path:
             try:
-                normalized_kwargs["audio_path"] = str(Path(audio_path).resolve())
+                path_obj = Path(audio_path)
+                if not path_obj.is_absolute():
+                    candidate = self.plugin_dir / path_obj
+                    if candidate.exists():
+                        path_obj = candidate
+                    else:
+                        clone_candidate = self.clone_audio_dir / path_obj.name
+                        if clone_candidate.exists():
+                            path_obj = clone_candidate
+                normalized_kwargs["audio_path"] = str(path_obj.resolve())
             except Exception:
                 normalized_kwargs["audio_path"] = str(audio_path)
 
@@ -64,7 +84,28 @@ class VoiceManager:
     def get_clone_audio_path(self, voice_id: str) -> str:
         """Get local reference audio path for a clone voice."""
         info = self.get_voice(voice_id) or {}
-        return str(info.get("audio_path", "") or "")
+        raw_path = str(info.get("audio_path", "") or "").strip()
+        if not raw_path:
+            return ""
+
+        path_obj = Path(raw_path)
+        if path_obj.exists():
+            return str(path_obj)
+
+        fallback = self.clone_audio_dir / path_obj.name
+        if fallback.exists():
+            logger.warning(
+                "Clone audio path migrated by fallback: voice_id=%s old=%s new=%s",
+                voice_id,
+                raw_path,
+                fallback,
+            )
+            info["audio_path"] = str(fallback.resolve())
+            self._voices[voice_id] = info
+            self._save_registry()
+            return str(fallback.resolve())
+
+        return ""
 
     def get_voice(self, voice_id: str) -> Optional[dict]:
         """Get voice info by ID."""
