@@ -23,6 +23,17 @@
     "hint": "如 XiaoIce、mimo_default 等，用 /voices 查看全部",
     "default": "mimo_default"
   },
+  "tts_output_mode": {
+    "type": "string",
+    "description": "🔊 TTS 输出音色来源",
+    "default": "default",
+    "options": [
+      "default",
+      "design",
+      "clone"
+    ],
+    "hint": "default：使用默认音色。\ndesign：使用设计音色。\nclone：使用克隆音色。"
+  },
   "probability": {
     "type": "float",
     "description": "自动 TTS 触发概率",
@@ -128,12 +139,6 @@
     "description": "🔊 设计模型名称",
     "hint": "当前仅支持 mimo-v2.5-tts-voicedesign",
     "default": "mimo-v2.5-tts-voicedesign"
-  },
-  "tts_output_mode": {
-    "type": "string",
-    "description": "🔊 TTS 输出音色来源",
-    "hint": "可填 default / design / clone，分别表示默认 / 设计 / 克隆",
-    "default": "default"
   },
   "design_voice_description": {
     "type": "string",
