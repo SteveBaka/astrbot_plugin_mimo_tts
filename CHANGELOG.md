@@ -23,3 +23,5 @@
 ### 修复
 - provider 在接口调用失败时，现会记录并透出更明确的错误原因，便于 `/tts`、`/voiceclone`、`/voicegen`、`/ttsraw` 等命令直接反馈失败详情。
 - voicedesign 调用已支持显式传入模型名。
+- 修复 voicedesign 请求参数错误：调用 `mimo-v2.5-tts-voicedesign` 时不再传入不支持的 `audio.voice`，避免出现 `audio.voice is not supported for voice design model` 的 400 报错。
+- 修复 design 输出模式下的模型使用逻辑：VoiceDesign 仅负责生成音色，后续实际朗读改为使用常规 TTS 模型配合生成后的 `voice_id`，避免设计描述未正确体现在最终朗读结果中。

@@ -240,10 +240,12 @@ class MiMoTTSPlugin(Star):
         if mode == "design":
             design_voice_id = self.config.design_voice_id.strip()
             if design_voice_id:
-                return design_voice_id, self.config.design_model, mode
+                # VoiceDesign 仅用于“生成音色”，实际 TTS 合成阶段应回到常规 TTS 模型
+                # 并显式使用生成后的 voice_id；否则会出现描述未生效、输出音色跑偏。
+                return design_voice_id, None, mode
             if str(current_voice_info.get("model", "")).lower() == "voicedesign":
-                return current_voice, self.config.design_model, mode
-            return "1", self.config.design_model, mode
+                return current_voice, None, mode
+            return self.config.default_voice, None, mode
 
         if self._voice_manager.get_voice(current_voice):
             return self.config.default_voice, None, mode
