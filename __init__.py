@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-"""MiMO TTS Plugin for AstrBot."""
+"""astrbot_plugin_mimo_tts"""

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Configuration manager for MiMO TTS Plugin.
+Configuration manager for astrbot_plugin_mimo_tts.
 Reads _conf_schema.json and manages plugin settings.
 """
 

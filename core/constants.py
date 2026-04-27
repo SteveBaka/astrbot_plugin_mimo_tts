@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MiMO TTS Plugin - Constants."""
+"""astrbot_plugin_mimo_tts - Constants."""
 
 from pathlib import Path
 

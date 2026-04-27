@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MiMO TTS Plugin for AstrBot - Enhanced Edition
+astrbot_plugin_mimo_tts — MiMO TTS Plugin for AstrBot - Enhanced Edition
 
 基于 MiMO-V2.5-TTS 的精细化语音合成插件。
 自动拦截 LLM 输出生成语音，支持 20 种情感、语速、音高、呼吸声、
@@ -1753,7 +1753,7 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
         """/ttsinfo — 查看插件信息"""
         lines = [
-            "MiMO TTS Plugin v1.2.3",
+            "astrbot_plugin_mimo_tts v1.2.3",
             "",
             "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
             "",
