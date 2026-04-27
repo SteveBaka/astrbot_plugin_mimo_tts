@@ -487,7 +487,10 @@ class MiMoTTSPlugin(Star):
             speed=uset["speed"],
             pitch=uset["pitch"],
             breath=uset["breath"],
-            sing=uset["sing"],
+            # 官方 mimo-v2.5-tts 文档对唱歌能力的推荐控制方式，是在待合成文本
+            # 开头添加 (唱歌)/(sing)/(singing) 标签。这里避免再额外注入一段
+            # “请用唱歌方式演绎”的自然语言提示，减少对音色与风格的二次干扰。
+            sing=False,
             stress=uset["stress"],
             laughter=uset["laughter"],
             pause=uset["pause"],
@@ -597,8 +600,30 @@ class MiMoTTSPlugin(Star):
                 "当前已切换到“设计”输出，但未配置 design_voice_description，也未选中带描述的设计音色。"
             )
 
-        if self._voice_manager.get_voice(current_voice):
-            return self.config.default_voice, None, mode, None
+        # default 模式下若当前选中的是本地登记的 design/clone 音色，
+        # 不应静默回退到默认音色，否则会出现“我明明设置了某个音色，实际唱出来/读出来却是另一种声音”。
+        custom_model = str(current_voice_info.get("model", "")).lower()
+        if custom_model == "voiceclone":
+            clone_audio_path = self._voice_manager.get_clone_audio_path(current_voice)
+            if clone_audio_path:
+                return (
+                    current_voice,
+                    self.config.clone_model,
+                    "clone",
+                    clone_audio_path,
+                )
+            raise RuntimeError(
+                f"当前音色 {current_voice} 是克隆音色，但未找到可用参考音频。请重新执行 /voiceclone {current_voice} <音频路径>。"
+            )
+
+        if custom_model == "voicedesign":
+            description = self._resolve_design_description(uid)
+            if description:
+                return "", self.config.design_model, "design", None
+            raise RuntimeError(
+                f"当前音色 {current_voice} 是设计音色，但缺少可用描述文本。请重新执行 /voicegen {current_voice} <描述>。"
+            )
+
         return current_voice, None, mode, None
 
     @staticmethod
@@ -730,10 +755,14 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _log_tts_text(uid: str, mode: str, sing: bool, text: str) -> None:
-        """同时写入插件 logger 与 AstrBot 常见根日志，便于排查 TTS 入参。"""
+        """同时写入插件 logger 与 AstrBot 常见根日志，便于排查 TTS 入参。
+
+        AstrBot 运行环境里 info 级别日志经常默认不可见；这里使用 debug，
+        避免把正常合成请求误记为 warning，同时保留按需排查能力。
+        """
         message = "MiMO TTS: synthesize text uid=%s mode=%s sing=%s text=%r"
-        logger.info(message, uid, mode, sing, text)
-        logging.info(message, uid, mode, sing, text)
+        logger.debug(message, uid, mode, sing, text)
+        logging.debug(message, uid, mode, sing, text)
 
     @staticmethod
     def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
