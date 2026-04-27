@@ -42,8 +42,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.message.components import Plain, Record
@@ -68,6 +66,10 @@ from .emotion.emotion_detector import EmotionDetector
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
 from .voice.voice_manager import VoiceManager
+
+logger = logging.getLogger(f"{PLUGIN_ID}.main")
+logger.propagate = True
+logger.setLevel(logging.INFO)
 
 
 class MiMoTTSPlugin(Star):
@@ -755,18 +757,21 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _log_tts_text(uid: str, mode: str, sing: bool, text: str) -> None:
-        """使用插件模块 logger 记录 TTS 入参，便于在 AstrBot 默认日志中观察。
+        """记录 TTS 入参，并尽量兼容 AstrBot 当前日志接管方式。
 
-        参考常见 AstrBot 插件日志输出方式，这里使用模块级 logger 的 info 级别，
-        避免写到 root logger 后丢失插件来源上下文，也避免把正常合成记成 warning。
+        某些运行环境下，插件模块 logger 可能不会被 AstrBot 主日志直接接管；
+        因此这里同时向显式插件名 logger 与 root logger 输出一份 info，既尽量保留
+        `astrbot_plugin_mimo_tts.main` 这类来源名，也确保至少能在主日志中稳定可见。
         """
+        message = "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s text=%r"
         logger.info(
-            "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s text=%r",
+            message,
             uid,
             mode,
             sing,
             text,
         )
+        logging.getLogger().info(message, uid, mode, sing, text)
 
     @staticmethod
     def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
