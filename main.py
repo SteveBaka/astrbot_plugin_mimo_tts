@@ -755,14 +755,18 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _log_tts_text(uid: str, mode: str, sing: bool, text: str) -> None:
-        """同时写入插件 logger 与 AstrBot 常见根日志，便于排查 TTS 入参。
+        """使用插件模块 logger 记录 TTS 入参，便于在 AstrBot 默认日志中观察。
 
-        AstrBot 运行环境里 info 级别日志经常默认不可见；这里使用 debug，
-        避免把正常合成请求误记为 warning，同时保留按需排查能力。
+        参考常见 AstrBot 插件日志输出方式，这里使用模块级 logger 的 info 级别，
+        避免写到 root logger 后丢失插件来源上下文，也避免把正常合成记成 warning。
         """
-        message = "MiMO TTS: synthesize text uid=%s mode=%s sing=%s text=%r"
-        logger.debug(message, uid, mode, sing, text)
-        logging.debug(message, uid, mode, sing, text)
+        logger.info(
+            "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s text=%r",
+            uid,
+            mode,
+            sing,
+            text,
+        )
 
     @staticmethod
     def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
