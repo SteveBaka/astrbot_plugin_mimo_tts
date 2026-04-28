@@ -542,16 +542,27 @@ class MiMoTTSPlugin(Star):
         }.get(mode, "默认")
 
     def _cleanup_recent_files(self) -> None:
+        """清理过期和无效的临时音频文件，防止磁盘空间泄漏。
+
+        1. 超过 2 小时的文件直接从磁盘删除。
+        2. 存活但体积过小（< 100 字节，通常为损坏/空文件）的也删除。
+        3. 最终重建列表，仅保留未被删除的存活文件。
+        """
         now = time.time()
-        self._recent_files = [
-            (t, p) for t, p in self._recent_files if (now - t) < 2 * 3600 and p.exists()
-        ]
-        for _, p in self._recent_files:
+        kept: list[tuple[float, Path]] = []
+        for t, p in self._recent_files:
             try:
-                if p.exists() and p.stat().st_size < 100:
+                if not p.exists():
+                    continue
+                expired = (now - t) >= 2 * 3600
+                too_small = p.stat().st_size < 100
+                if expired or too_small:
                     p.unlink(missing_ok=True)
+                else:
+                    kept.append((t, p))
             except Exception:
                 pass
+        self._recent_files = kept
 
     def _resolve_voice(self, voice_id: str) -> str:
         info = self._voice_manager.get_voice(voice_id)
@@ -803,6 +814,15 @@ class MiMoTTSPlugin(Star):
         self._recent_files.append((time.time(), out))
         self._cleanup_recent_files()
         return out
+
+    async def on_unload(self) -> None:
+        """插件卸载时关闭底层网络会话，避免 Unclosed client session 警告。"""
+        if self._provider is not None:
+            try:
+                await self._provider.close()
+            except Exception:
+                pass
+            self._provider = None
 
     # ═══════════════════════════════════════════════════════════
     #  Event Handlers
@@ -1462,9 +1482,9 @@ class MiMoTTSPlugin(Star):
             self._voice_manager.register_voice(
                 vid, name=vid, model="voiceclone", audio_path=str(audio_file)
             )
-            # 同步到配置面板
-            self.config._cfg["clone_enabled"] = True
-            self.config._cfg["clone_voice_id"] = vid
+            # 同步到配置面板（config 直接引用原始字典，修改会被 AstrBot 持久化）
+            self.config.set("clone_enabled", True)
+            self.config.set("clone_voice_id", vid)
             uid, _ = self._get_event_settings(event)
             self._get_user_settings(uid)["voice"] = vid
             self._persist_current_state()
@@ -1511,9 +1531,9 @@ class MiMoTTSPlugin(Star):
                 vid, name=vid, model="voicedesign", description=desc
             )
             # 仅同步可展示的配置项；design_voice_id 改为内部状态，避免出现在插件设置面板。
-            self.config._cfg["design_enabled"] = True
+            self.config.set("design_enabled", True)
             self.config.design_voice_id = vid
-            self.config._cfg["design_voice_description"] = desc
+            self.config.set("design_voice_description", desc)
             uid, _ = self._get_event_settings(event)
             self._get_user_settings(uid)["voice"] = vid
             self._persist_current_state()

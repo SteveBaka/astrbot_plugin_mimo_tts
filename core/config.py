@@ -63,7 +63,8 @@ class ConfigManager:
     }
 
     def __init__(self, config: dict):
-        raw_cfg = dict(config or {})
+        # 直接引用原始字典，不做浅拷贝，确保运行时修改能被 AstrBot 检测并持久化。
+        raw_cfg: dict = config or {}
         # 清理不应继续出现在插件设置面板中的历史字段。
         raw_cfg.pop("singing_mode", None)
 
