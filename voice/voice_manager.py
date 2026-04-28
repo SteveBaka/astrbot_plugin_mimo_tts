@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Optional
 
 from astrbot.api import logger
-from astrbot.api.star import StarTools
 
 
 class VoiceManager:
@@ -22,7 +21,10 @@ class VoiceManager:
     ):
         self.plugin_dir = Path(__file__).resolve().parent.parent
 
-        default_data_dir = Path(StarTools.get_data_dir())
+        # data_dir 由 main.py 通过 StarTools.get_data_dir() 获取后传入；
+        # 这里仅在未传入时回退到插件目录下的 data 子目录，避免在子模块中
+        # 直接调用 StarTools 导致无法解析模块元数据的问题。
+        default_data_dir = self.plugin_dir / "data"
         self.data_dir = Path(data_dir) if data_dir else default_data_dir
         self.voice_cache_dir = (
             Path(voice_cache_dir) if voice_cache_dir else (self.data_dir / "voice")
