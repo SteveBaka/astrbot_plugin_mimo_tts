@@ -42,7 +42,6 @@
 | `default_voice` | 默认音色 | `mimo_default` |
 | `audio_format` | 输出格式(mp3/wav/ogg) | `mp3` |
 | `auto_tts` | 自动拦截 LLM 输出 | `true` |
-| `auto_tts_in_group` | 群聊中自动 TTS | `true` |
 | `send_text_with_tts` | 自动 TTS 时是否同步发送文字 | `true` |
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |

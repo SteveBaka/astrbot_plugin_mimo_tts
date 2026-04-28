@@ -26,7 +26,6 @@ class ConfigManager:
         "default_voice": "mimo_default",
         "probability": 0.8,
         "auto_tts": True,
-        "auto_tts_in_group": True,
         "send_text_with_tts": True,
         # Emotion / prosody
         "emotion_override": "",
@@ -116,7 +115,11 @@ class ConfigManager:
 
     @property
     def default_speed(self) -> float:
-        return float(self._cfg.get("default_speed", 1.0))
+        try:
+            value = float(self._cfg.get("default_speed", 1.0))
+        except (ValueError, TypeError):
+            value = 1.0
+        return max(0.5, min(2.0, value))
 
     @property
     def send_text_with_tts(self) -> bool:
@@ -124,7 +127,11 @@ class ConfigManager:
 
     @property
     def default_pitch(self) -> int:
-        return int(self._cfg.get("default_pitch", 0))
+        try:
+            value = int(self._cfg.get("default_pitch", 0))
+        except (ValueError, TypeError):
+            value = 0
+        return max(-12, min(12, value))
 
     @property
     def emotion_override(self) -> str:
@@ -211,8 +218,16 @@ class ConfigManager:
 
     @property
     def timeout(self) -> int:
-        return int(self._cfg.get("timeout", 60))
+        try:
+            value = int(self._cfg.get("timeout", 60))
+        except (ValueError, TypeError):
+            value = 60
+        return max(1, value)
 
     @property
     def max_retries(self) -> int:
-        return int(self._cfg.get("max_retries", 2))
+        try:
+            value = int(self._cfg.get("max_retries", 2))
+        except (ValueError, TypeError):
+            value = 2
+        return max(0, value)

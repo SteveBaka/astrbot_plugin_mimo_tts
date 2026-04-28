@@ -617,13 +617,12 @@ class MiMoTTSPlugin(Star):
         for candidate in candidates:
             try:
                 resolved = candidate.resolve(strict=False)
-                if (
-                    any(
-                        str(resolved).startswith(str(root.resolve()))
-                        for root in allowed_roots
-                        if root.exists()
-                    )
-                    and resolved.exists()
+                if not resolved.exists():
+                    continue
+                if any(
+                    resolved.is_relative_to(root.resolve())
+                    for root in allowed_roots
+                    if root.exists()
                 ):
                     return resolved
             except Exception:
@@ -851,10 +850,6 @@ class MiMoTTSPlugin(Star):
         uid, uset = self._get_event_settings(event)
 
         if not self._should_tts(uid):
-            return
-        if not event.is_private_chat() and not self.config.get(
-            "auto_tts_in_group", True
-        ):
             return
 
         result = event.get_result()

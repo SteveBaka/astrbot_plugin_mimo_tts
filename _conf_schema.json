@@ -45,11 +45,6 @@
     "description": "自动 TTS（拦截 LLM 回复生成语音）",
     "default": true
   },
-  "auto_tts_in_group": {
-    "type": "bool",
-    "description": "群聊中也自动 TTS",
-    "default": true
-  },
   "send_text_with_tts": {
     "type": "bool",
     "description": "TTS 输出时是否同步发送文字",

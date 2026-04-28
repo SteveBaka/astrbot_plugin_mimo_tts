@@ -101,9 +101,8 @@ class VoiceManager:
             resolved = path.resolve()
         except Exception:
             return False
-        resolved_str = str(resolved)
         return any(
-            resolved_str.startswith(str(root)) for root in self._allowed_audio_roots()
+            resolved.is_relative_to(root) for root in self._allowed_audio_roots()
         )
 
     def register_voice(
