@@ -822,7 +822,7 @@ class MiMoTTSPlugin(Star):
             )
 
         # Write temp file
-        tmp_dir = Path(__file__).parent / "temp"
+        tmp_dir = self._data_dir / "temp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         ts = int(time.time() * 1000)
         out = tmp_dir / f"mimo_{ts}.{actual_fmt}"
@@ -1666,7 +1666,7 @@ class MiMoTTSPlugin(Star):
 
             actual_fmt = str(provider.last_output_format or fmt or "mp3").lower()
 
-            tmp_dir = Path(__file__).parent / "temp"
+            tmp_dir = self._data_dir / "temp"
             tmp_dir.mkdir(parents=True, exist_ok=True)
             out = tmp_dir / f"mimo_raw_{int(time.time() * 1000)}.{actual_fmt}"
             out.write_bytes(raw_audio)

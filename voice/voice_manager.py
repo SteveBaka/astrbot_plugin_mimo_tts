@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -44,12 +45,28 @@ class VoiceManager:
         self.legacy_plugin_clone_dir = self.plugin_dir / "clone"
         self._voices: dict[str, dict] = self._load_registry()
 
+    @staticmethod
+    def _backup_corrupted_file(path: Path) -> None:
+        """Rename a corrupted file to ``<name>.bak`` so the user can inspect it."""
+        backup = path.with_suffix(path.suffix + ".bak")
+        try:
+            shutil.move(str(path), str(backup))
+            logger.warning("已备份损坏的注册表文件: %s → %s", path, backup)
+        except Exception:
+            logger.warning("损坏的注册表文件备份失败: %s", path, exc_info=True)
+
     def _load_registry(self) -> dict:
         if self.registry_file.exists():
             try:
                 with open(self.registry_file, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except Exception:
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.error(
+                    "注册表文件损坏，将备份后重置: %s (%s)",
+                    self.registry_file,
+                    exc,
+                )
+                self._backup_corrupted_file(self.registry_file)
                 return {}
 
         if self.legacy_registry_file.exists():
@@ -60,7 +77,10 @@ class VoiceManager:
                     "Loaded legacy voice registry from: %s", self.legacy_registry_file
                 )
                 return data if isinstance(data, dict) else {}
-            except Exception:
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.warning(
+                    "旧注册表文件损坏: %s (%s)", self.legacy_registry_file, exc
+                )
                 return {}
 
         if self.legacy_plugin_registry_file.exists():
@@ -72,7 +92,12 @@ class VoiceManager:
                     self.legacy_plugin_registry_file,
                 )
                 return data if isinstance(data, dict) else {}
-            except Exception:
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.warning(
+                    "旧插件注册表文件损坏: %s (%s)",
+                    self.legacy_plugin_registry_file,
+                    exc,
+                )
                 return {}
         return {}
 

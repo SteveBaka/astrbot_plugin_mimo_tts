@@ -109,7 +109,7 @@ class ConfigManager:
     def probability(self) -> float:
         try:
             value = float(self._cfg.get("probability", 0.8))
-        except Exception:
+        except (ValueError, TypeError):
             value = 0.8
         return max(0.0, min(1.0, value))
 
