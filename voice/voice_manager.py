@@ -4,16 +4,11 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Optional
 
-try:
-    from astrbot.core.utils.astrbot_path import get_astrbot_data_path
-except Exception:  # pragma: no cover - 兼容低版本 AstrBot
-    get_astrbot_data_path = None
-
-logger = logging.getLogger(__name__)
+from astrbot.api import logger
+from astrbot.api.star import StarTools
 
 
 class VoiceManager:
@@ -27,19 +22,7 @@ class VoiceManager:
     ):
         self.plugin_dir = Path(__file__).resolve().parent.parent
 
-        default_data_dir = (
-            self.plugin_dir.parent / "data" / "plugin_data" / "astrbot_plugin_mimo_tts"
-        )
-        if get_astrbot_data_path is not None:
-            try:
-                default_data_dir = (
-                    Path(get_astrbot_data_path())
-                    / "plugin_data"
-                    / "astrbot_plugin_mimo_tts"
-                )
-            except Exception:
-                pass
-
+        default_data_dir = Path(StarTools.get_data_dir())
         self.data_dir = Path(data_dir) if data_dir else default_data_dir
         self.voice_cache_dir = (
             Path(voice_cache_dir) if voice_cache_dir else (self.data_dir / "voice")

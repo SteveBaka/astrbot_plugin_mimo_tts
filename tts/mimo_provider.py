@@ -6,7 +6,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
-import logging
 import wave
 from mimetypes import guess_type
 from pathlib import Path
@@ -14,9 +13,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import aiohttp
-
-logger = logging.getLogger(__name__)
-
+from astrbot.api import logger
 
 DEFAULT_PCM_SAMPLE_RATE = 24000
 DEFAULT_PCM_CHANNELS = 1

@@ -6,10 +6,7 @@ Pattern borrowed from astrbot_plugin_tts_emotion_router.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 def import_astr_message_event() -> Any:

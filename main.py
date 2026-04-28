@@ -35,28 +35,22 @@ astrbot_plugin_mimo_tts — MiMO TTS Plugin for AstrBot - Enhanced Edition
 from __future__ import annotations
 
 import json
-import logging
 import random
 import re
 import time
 from pathlib import Path
 from typing import Optional
 
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
-from astrbot.api.star import Context, Star
+from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.message.components import Plain, Record
-
-try:
-    from astrbot.core.utils.astrbot_path import get_astrbot_data_path
-except Exception:  # pragma: no cover - 兼容低版本 AstrBot
-    get_astrbot_data_path = None
 
 from .core.config import ConfigManager
 from .core.constants import (
     AUDIO_MIN_VALID_SIZE,
     AUDIO_VALID_EXTENSIONS,
     MIMO_VOICE_LIST,
-    PLUGIN_ID,
     SKIP_PATTERNS,
     SUPPORTED_AUDIO_FORMATS,
     SUPPORTED_EMOTIONS,
@@ -66,10 +60,6 @@ from .emotion.emotion_detector import EmotionDetector
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
 from .voice.voice_manager import VoiceManager
-
-logger = logging.getLogger(f"{PLUGIN_ID}.main")
-logger.propagate = True
-logger.setLevel(logging.INFO)
 
 
 class MiMoTTSPlugin(Star):
@@ -91,7 +81,7 @@ class MiMoTTSPlugin(Star):
 
         # ── Persistent state ──
         self._plugin_dir = Path(__file__).resolve().parent
-        self._data_dir = self._resolve_data_dir()
+        self._data_dir = Path(StarTools.get_data_dir())
         self._state_file = self._data_dir / "user_state.json"
 
         # ── Emotion detector ──
@@ -143,91 +133,6 @@ class MiMoTTSPlugin(Star):
             max_retries=self.config.get("max_retries", 3),
         )
         return self._provider
-
-    def _resolve_data_dir(self) -> Path:
-        """Best-effort resolve AstrBot persistent data dir.
-
-        优先尝试 AstrBot 官方推荐的 data/plugin_data/<plugin_name> 路径；若不可用，
-        再尝试运行时可能提供的 data/plugin_data 路径；最后退化到插件目录外侧的
-        data/plugin_data/<plugin_id>，避免把持久化数据继续写回插件自身目录。
-        """
-        candidates: list[Path] = []
-        plugin_storage_name = (
-            str(getattr(self, "name", "") or PLUGIN_ID).strip() or PLUGIN_ID
-        )
-
-        if get_astrbot_data_path is not None:
-            try:
-                astrbot_data_path = Path(get_astrbot_data_path()).expanduser()
-                candidates.append(
-                    astrbot_data_path / "plugin_data" / plugin_storage_name
-                )
-                if plugin_storage_name != PLUGIN_ID:
-                    candidates.append(astrbot_data_path / "plugin_data" / PLUGIN_ID)
-            except Exception:
-                pass
-
-        def _collect_from(obj) -> None:
-            if not obj:
-                return
-            for name in (
-                "plugin_data_dir",
-                "data_dir",
-                "storage_dir",
-                "plugin_storage_dir",
-            ):
-                try:
-                    value = getattr(obj, name, None)
-                    value = value() if callable(value) else value
-                    if value:
-                        path = Path(str(value)).expanduser()
-                        if path.name in {plugin_storage_name, PLUGIN_ID}:
-                            candidates.append(path)
-                        elif path.name == "plugin_data":
-                            candidates.append(path / plugin_storage_name)
-                            if plugin_storage_name != PLUGIN_ID:
-                                candidates.append(path / PLUGIN_ID)
-                        else:
-                            candidates.append(path / plugin_storage_name)
-                            if plugin_storage_name != PLUGIN_ID:
-                                candidates.append(path / PLUGIN_ID)
-                except Exception:
-                    continue
-
-        _collect_from(getattr(self, "context", None))
-        _collect_from(self)
-
-        plugin_dir = self._plugin_dir
-        parents = [plugin_dir, *plugin_dir.parents]
-        for base in parents:
-            candidates.extend(
-                [
-                    base / "data" / "plugin_data" / plugin_storage_name,
-                    base / "data" / "plugin_data" / PLUGIN_ID,
-                    base / "data" / "plugins" / PLUGIN_ID,
-                    base / "data" / PLUGIN_ID,
-                ]
-            )
-
-        seen: set[str] = set()
-        for candidate in candidates:
-            try:
-                normalized = candidate.resolve(strict=False)
-            except Exception:
-                normalized = candidate
-            key = str(normalized)
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                normalized.mkdir(parents=True, exist_ok=True)
-                return normalized
-            except Exception:
-                continue
-
-        fallback = plugin_dir.parent / "data" / "plugin_data" / PLUGIN_ID
-        fallback.mkdir(parents=True, exist_ok=True)
-        return fallback
 
     @staticmethod
     def _sanitize_user_settings(data: dict) -> dict:
@@ -757,21 +662,14 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _log_tts_text(uid: str, mode: str, sing: bool, text: str) -> None:
-        """记录 TTS 入参，并尽量兼容 AstrBot 当前日志接管方式。
-
-        某些运行环境下，插件模块 logger 可能不会被 AstrBot 主日志直接接管；
-        因此这里同时向显式插件名 logger 与 root logger 输出一份 info，既尽量保留
-        `astrbot_plugin_mimo_tts.main` 这类来源名，也确保至少能在主日志中稳定可见。
-        """
-        message = "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s text=%r"
+        """记录 TTS 入参。"""
         logger.info(
-            message,
+            "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s text=%r",
             uid,
             mode,
             sing,
             text,
         )
-        logging.getLogger().info(message, uid, mode, sing, text)
 
     @staticmethod
     def _looks_like_hidden_prompt_or_reasoning(text: str) -> bool:
