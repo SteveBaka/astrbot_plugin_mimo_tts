@@ -81,10 +81,42 @@ class VoiceManager:
         with open(self.registry_file, "w", encoding="utf-8") as f:
             json.dump(self._voices, f, ensure_ascii=False, indent=2)
 
+    def _allowed_audio_roots(self) -> list[Path]:
+        """Return list of directories where audio files may legally reside."""
+        roots: list[Path] = []
+        for candidate in (
+            self.clone_audio_dir,
+            self.legacy_plugin_clone_dir,
+            self.plugin_dir,
+        ):
+            try:
+                roots.append(candidate.resolve())
+            except Exception:
+                roots.append(candidate)
+        return roots
+
+    def _is_path_within_allowed_roots(self, path: Path) -> bool:
+        """Check that *path* resolves inside one of the allowed audio directories."""
+        try:
+            resolved = path.resolve()
+        except Exception:
+            return False
+        resolved_str = str(resolved)
+        return any(
+            resolved_str.startswith(str(root)) for root in self._allowed_audio_roots()
+        )
+
     def register_voice(
         self, voice_id: str, name: str = "", model: str = "voiceclone", **kwargs
     ) -> None:
-        """Register a voice (clone or generated) in the local registry."""
+        """Register a voice (clone or generated) in the local registry.
+
+        Security: if ``audio_path`` is provided, its resolved path must fall
+        within one of the allowed directories (``clone_audio_dir``,
+        ``legacy_plugin_clone_dir``, or ``plugin_dir``).  Paths that escape
+        the allowed boundary are rejected with a ``PermissionError`` to
+        mitigate directory traversal attacks.
+        """
         normalized_kwargs = dict(kwargs)
         audio_path = normalized_kwargs.get("audio_path")
         if audio_path:
@@ -104,7 +136,16 @@ class VoiceManager:
                             )
                             if legacy_clone_candidate.exists():
                                 path_obj = legacy_clone_candidate
-                normalized_kwargs["audio_path"] = str(path_obj.resolve())
+
+                resolved = path_obj.resolve()
+                if not self._is_path_within_allowed_roots(resolved):
+                    raise PermissionError(
+                        f"拒绝：音频路径 {audio_path!r} 解析后位于允许的目录范围外。"
+                        f"允许的目录：{self.clone_audio_dir}"
+                    )
+                normalized_kwargs["audio_path"] = str(resolved)
+            except PermissionError:
+                raise
             except Exception:
                 normalized_kwargs["audio_path"] = str(audio_path)
 

@@ -177,3 +177,25 @@ class EmotionDetector:
             self.keywords[emotion].extend(keywords)
         else:
             self.keywords[emotion] = keywords
+
+
+# ── Module-level convenience function ────────────────────────────
+# Provides a stateless one-shot emotion detection API without
+# requiring callers to instantiate ``EmotionDetector`` themselves.
+# Used by ``tts.prompt_builder.detect_emotion`` and ``main.py``.
+
+
+_default_detector: Optional[EmotionDetector] = None
+
+
+def detect_emotion(text: str) -> Optional[str]:
+    """Detect the dominant emotion from *text* using a default keyword detector.
+
+    This is a thin wrapper around ``EmotionDetector.detect()`` so callers
+    don't need to create their own instance.  Returns the emotion name
+    (e.g. ``"happy"``, ``"sad"``) or ``None`` for neutral.
+    """
+    global _default_detector
+    if _default_detector is None:
+        _default_detector = EmotionDetector()
+    return _default_detector.detect(text)

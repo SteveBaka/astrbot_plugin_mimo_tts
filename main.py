@@ -56,7 +56,6 @@ from .core.constants import (
     SUPPORTED_EMOTIONS,
     TTS_PRESETS,
 )
-from .emotion.emotion_detector import EmotionDetector
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
 from .voice.voice_manager import VoiceManager
@@ -83,9 +82,6 @@ class MiMoTTSPlugin(Star):
         self._plugin_dir = Path(__file__).resolve().parent
         self._data_dir = Path(StarTools.get_data_dir())
         self._state_file = self._data_dir / "user_state.json"
-
-        # ── Emotion detector ──
-        self._detector = EmotionDetector()
 
         # ── Voice manager ──
         self._voice_manager = VoiceManager(data_dir=self._data_dir)
@@ -574,14 +570,16 @@ class MiMoTTSPlugin(Star):
         return self.config.get("default_voice", "mimo_default")
 
     def _resolve_clone_audio_path(self, raw_path: str) -> Path:
-        """解析 /voiceclone 使用的参考音频路径。
+        """解析 /voiceclone 使用的参考音频路径（带路径穿越防护）。
 
         支持：
-        1. 绝对路径
-        2. 相对当前工作目录的路径
-        3. 相对 AstrBot data/plugin_data/<plugin_name>/clone 的路径
-        4. 相对插件根目录的路径（兼容旧行为）
-        5. 仅文件名时，自动尝试 data/plugin_data 下的 clone/ 目录，再回退插件下 clone/ 目录
+        1. 相对 AstrBot data/plugin_data/<plugin_name>/clone 的路径（推荐）
+        2. 相对插件根目录 clone/ 的路径（兼容旧行为）
+        3. 相对当前工作目录的路径
+        4. 绝对路径（限制在允许的目录范围内）
+
+        安全策略：解析后的路径必须位于 ``_ALLOWED_CLONE_ROOTS`` 允许的目录树内，
+        否则抛出 PermissionError，防止通过 ../../ 访问或窃取任意文件。
         """
         text = str(raw_path or "").strip().strip('"').strip("'")
         if not text:
@@ -591,32 +589,51 @@ class MiMoTTSPlugin(Star):
         plugin_dir = Path(__file__).parent
         data_clone_dir = self._data_dir / "clone"
         legacy_clone_dir = plugin_dir / "clone"
+
+        # 允许的目录白名单：所有 clone 音频只能存放在这些目录下
+        allowed_roots: list[Path] = [
+            data_clone_dir,
+            legacy_clone_dir,
+            Path.cwd(),
+        ]
+
         candidates: list[Path] = []
 
         if raw.is_absolute():
+            # 绝对路径：直接检查是否在允许目录内
             candidates.append(raw)
         else:
             candidates.extend(
                 [
-                    raw,
                     data_clone_dir / raw,
                     data_clone_dir / raw.name,
-                    plugin_dir / raw,
                     legacy_clone_dir / raw,
                     legacy_clone_dir / raw.name,
+                    raw,
+                    Path.cwd() / raw,
                 ]
             )
 
         for candidate in candidates:
             try:
-                if candidate.exists():
-                    return candidate.resolve()
+                resolved = candidate.resolve(strict=False)
+                if (
+                    any(
+                        str(resolved).startswith(str(root.resolve()))
+                        for root in allowed_roots
+                        if root.exists()
+                    )
+                    and resolved.exists()
+                ):
+                    return resolved
             except Exception:
                 continue
 
-        # 找不到时，仍返回一个最适合提示给用户的候选路径
-        fallback = raw if raw.is_absolute() else (data_clone_dir / raw.name)
-        return fallback
+        # 全部候选均不在白名单或不存在时，抛出异常而非返回路径
+        raise PermissionError(
+            f"路径 {raw_path!r} 解析后不在允许的克隆音频目录范围内。"
+            f"请将参考音频放入: {data_clone_dir}"
+        )
 
     @staticmethod
     def _apply_singing_tag(text: str) -> str:

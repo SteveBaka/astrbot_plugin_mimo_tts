@@ -172,7 +172,9 @@ class MiMOProvider:
             raise ValueError(f"参考音频为空文件: {audio_path}")
 
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-        if len(audio_b64.encode("utf-8")) > 10 * 1024 * 1024:
+        # audio_b64 is纯 ASCII 字符串，其 len() 就等于 UTF-8 字节数，
+        # 无需再 encode("utf-8") 造成大量临时内存分配。
+        if len(audio_b64) > 10 * 1024 * 1024:
             raise ValueError("参考音频 Base64 编码后超过 10MB，无法用于 VoiceClone")
         return f"data:{mime_type};base64,{audio_b64}"
 

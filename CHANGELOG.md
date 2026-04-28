@@ -8,7 +8,7 @@
 - 新增 `clone_style_prompt` 配置，用于对 voiceclone 合成追加自然语言风格控制。
 - 新增 `clone_audio_tags` 配置，用于对 voiceclone 合成追加音频标签控制。
 - 新增 `design_model` 与 `clone_model` 配置，用于显式指定 voicedesign / voiceclone 所用模型。
-- 新增 `design_voice_description` 配置项，替代原先配置面板中的“设计音色ID”输入语义。
+- 新增 `design_voice_description` 配置项，替代原先配置面板中的"设计音色ID"输入语义。
 - 新增用户状态持久化文件：插件会将每个用户的 TTS 设置保存到 AstrBot `data` 目录中的 `user_state.json`。
 - 新增 `/tts_off` 与 `/tts_on` 命令，用于按当前对话关闭 / 恢复自动 TTS。
 - 新增 `/mimo_say <文本>` 作为即时合成命令入口。
@@ -25,7 +25,7 @@
 - voiceclone 在 clone 模式下支持独立拼接自然语言风格控制与音频标签；若配置留空，则不注入额外控制文本，保留官方默认行为。
 - voiceclone 的本地参考音频目录已对齐 AstrBot 大文件存储规范，默认调整到 `data/plugin_data/astrbot_plugin_mimo_tts/clone/`，并同步更新命令帮助、路径解析与错误提示。
 - `VoiceManager` 现在会自动创建并使用 AstrBot 数据目录下的 `clone/` 目录，便于直接存放待克隆音频文件。
-- `/voiceclone` 的语义调整为“登记本地参考音频”，不再尝试调用不存在的远端预注册接口。
+- `/voiceclone` 的语义调整为"登记本地参考音频"，不再尝试调用不存在的远端预注册接口。
 - 自动 TTS 装饰阶段优先级已调整，使文本清理插件能够更早处理回复结果，再由本插件执行朗读。
 - 自定义音色注册表默认迁移到 AstrBot `data` 目录下保存，同时兼容读取旧版插件目录中的注册表文件。
 - README 已补充 VoiceClone 参考音频上传位置说明，推荐将音频放到 `data/plugin_data/astrbot_plugin_mimo_tts/clone/` 文件夹，并使用 `/voiceclone <ID> clone/文件名` 进行登记。
@@ -43,4 +43,23 @@
 - 修复插件重载或更新后用户个人 TTS 配置丢失的问题。
 - 修复自动 TTS 误朗读 persona / skill / system prompt / reasoning 等提示词溢出文本的问题。
 - 修复 clone 大文件仍落在插件代码目录中的问题，改为优先使用 AstrBot 官方建议的 `data/plugin_data/{plugin_name}/` 存储位置，并保留旧路径兼容读取。
-- 修复“想只听语音却仍被文本刷屏”的问题：关闭 `send_text_with_tts` 后，自动 TTS 会尽量只保留语音输出。
+- 修复"想只听语音却仍被文本刷屏"的问题：关闭 `send_text_with_tts` 后，自动 TTS 会尽量只保留语音输出。
+
+## 2026-04-28
+
+### 新增
+- `voice_manager.py` 新增 `_allowed_audio_roots()` 与 `_is_path_within_allowed_roots()` 两个路径安全方法，`register_voice()` 在存储音频路径前必须校验 resolve 后的位置是否在白名单内。
+- `main.py` 新增 `on_unload()` 生命周期钩子，在插件卸载时释放 HTTP session 等资源。
+- `emotion/emotion_detector.py` 新增模块级便捷函数 `detect_emotion()`，`tts/prompt_builder.py` 改为从 `emotion_detector` 导入并 re-export，消除两个模块中完全重复的 120+ 行情感关键词字典与检测逻辑。
+
+### 修改
+- 优化 `tts/mimo_provider.py` 中 Base64 长度校验：将 `len(audio_b64.encode("utf-8"))` 改为直接 `len(audio_b64)`，避免对大音频文件产生大量临时内存分配（Base64 字符串为纯 ASCII，`len()` 已等于 UTF-8 字节数）。
+- 移除 `main.py` 中未使用的 `EmotionDetector` 实例化（`self._detector = EmotionDetector()`），同步清理对应 import。
+- `core/compat.py` 清理仅被删除函数使用的死代码（`_ST_STAR_TOOLS` 辅助函数）。
+- `main.py` `cmd_voiceclone` 与 `cmd_voicegen` 中的 `self.config.write()` 调用已替换为 AstrBot 推荐的 `self.config.set()` 方法。
+
+### 修复
+- 修复 `main.py` `_resolve_clone_audio_path()` 的路径穿越风险：新增白名单目录机制（`allowed_roots`），用户输入的路径经 `resolve()` 后必须位于允许目录内才放行，绝对路径也受同样约束；全部候选均不在白名单内时抛出 `PermissionError`。
+- 修复 `core/config.py` 配置引用脱钩问题：`get()` 现在同时检查 `super().__dict__["_data"]` 与 `self._extra`，确保运行时通过 `set()` 写入的配置项始终可被 `get()` 读回。
+- 修复 `main.py` `_cleanup_recent_files()` 磁盘空间泄漏：调用 `data_path.resolve()` 将相对路径转为绝对路径后才执行 `rglob` 清理，避免 `data_path` 为相对路径时 `rglob` 相对于 CWD 而非数据目录查找文件。
+- 修复 `voice_manager.py` `register_voice()` 路径安全问题：在存储音频路径前调用 `_is_path_within_allowed_roots()` 验证 resolve 后的位置必须位于 `clone_audio_dir`、`legacy_plugin_clone_dir` 或 `plugin_dir` 之内，越界时抛出 `PermissionError`。
