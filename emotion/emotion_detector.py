@@ -120,10 +120,17 @@ EMOTION_KEYWORDS: dict[str, list[str]] = {
 }
 
 
+# Common Chinese negation prefixes that can invert an emotion keyword's meaning.
+# e.g. "不开心" (not happy), "没高兴" (not happy), "别难过" (don't be sad)
+_NEGATION_PREFIXES: tuple[str, ...] = ("不", "没", "别", "勿", "非", "未", "莫", "无")
+
+
 class EmotionDetector:
     """Simple keyword-based emotion detector for Chinese text.
 
     Supports 20 emotions with weighted scoring.
+    Handles negation prefixes (不/没/别/etc.) to avoid false positives
+    such as "不开心" being detected as "happy".
     """
 
     def __init__(self, custom_keywords: Optional[dict[str, list[str]]] = None):
@@ -134,6 +141,26 @@ class EmotionDetector:
                     self.keywords[emo].extend(kws)
                 else:
                     self.keywords[emo] = kws
+
+    @staticmethod
+    def _is_negated(text_lower: str, keyword_pos: int) -> bool:
+        """Check if the keyword at *keyword_pos* is preceded by a negation prefix."""
+        for neg in _NEGATION_PREFIXES:
+            neg_pos = keyword_pos - len(neg)
+            if neg_pos >= 0 and text_lower[neg_pos:keyword_pos] == neg:
+                return True
+        return False
+
+    def _count_valid_keywords(self, text_lower: str, keywords: list[str]) -> int:
+        """Count keyword occurrences excluding negated ones."""
+        count = 0
+        for kw in keywords:
+            pos = text_lower.find(kw)
+            while pos != -1:
+                if not self._is_negated(text_lower, pos):
+                    count += 1
+                pos = text_lower.find(kw, pos + len(kw))
+        return count
 
     def detect(self, text: str) -> Optional[str]:
         """Detect the dominant emotion from text.
@@ -147,7 +174,7 @@ class EmotionDetector:
         scores: dict[str, int] = {}
 
         for emotion, keywords in self.keywords.items():
-            count = sum(1 for kw in keywords if kw in text_lower)
+            count = self._count_valid_keywords(text_lower, keywords)
             if count > 0:
                 scores[emotion] = count
 
@@ -165,7 +192,7 @@ class EmotionDetector:
         scores: dict[str, int] = {}
 
         for emotion, keywords in self.keywords.items():
-            count = sum(1 for kw in keywords if kw in text_lower)
+            count = self._count_valid_keywords(text_lower, keywords)
             if count > 0:
                 scores[emotion] = count
 

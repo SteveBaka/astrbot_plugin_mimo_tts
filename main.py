@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import random
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -85,6 +86,9 @@ class MiMoTTSPlugin(Star):
 
         # ── Voice manager ──
         self._voice_manager = VoiceManager(data_dir=self._data_dir)
+
+        # ── Persist lock (prevents concurrent state file writes) ──
+        self._persist_lock = threading.Lock()
 
         # ── Audio file cleanup tracking ──
         self._recent_files: list[tuple[float, Path]] = []
@@ -231,7 +235,9 @@ class MiMoTTSPlugin(Star):
             )
 
     def _persist_current_state(self) -> None:
-        self._save_user_state()
+        """Persist user state to disk with lock to prevent concurrent writes."""
+        with self._persist_lock:
+            self._save_user_state()
 
     def _restore_user_state(self, uid: str) -> None:
         """将当前会话设置恢复为插件配置默认值。"""
@@ -537,12 +543,17 @@ class MiMoTTSPlugin(Star):
             "clone": "克隆",
         }.get(mode, "默认")
 
+    # 最大临时音频总占用 (500 MB)
+    _CLEANUP_MAX_TOTAL_BYTES = 500 * 1024 * 1024
+
     def _cleanup_recent_files(self) -> None:
         """清理过期和无效的临时音频文件，防止磁盘空间泄漏。
 
         1. 超过 2 小时的文件直接从磁盘删除。
         2. 存活但体积过小（< 100 字节，通常为损坏/空文件）的也删除。
-        3. 最终重建列表，仅保留未被删除的存活文件。
+        3. 若剩余存活文件的总大小超过 500 MB，按"最旧优先"继续删除，
+           直到总占用降至限制以下。
+        4. 最终重建列表，仅保留未被删除的存活文件。
         """
         now = time.time()
         kept: list[tuple[float, Path]] = []
@@ -558,6 +569,32 @@ class MiMoTTSPlugin(Star):
                     kept.append((t, p))
             except Exception:
                 pass
+
+        # 总大小保护：按时间排序后从最旧文件开始删除，直到总占用低于阈值
+        kept.sort(key=lambda item: item[0])
+        total_bytes = 0
+        for _, p in kept:
+            try:
+                total_bytes += p.stat().st_size
+            except Exception:
+                pass
+        if total_bytes > self._CLEANUP_MAX_TOTAL_BYTES:
+            final: list[tuple[float, Path]] = []
+            for t, p in kept:
+                try:
+                    sz = p.stat().st_size
+                except Exception:
+                    continue
+                if total_bytes > self._CLEANUP_MAX_TOTAL_BYTES:
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    total_bytes -= sz
+                else:
+                    final.append((t, p))
+            kept = final
+
         self._recent_files = kept
 
     def _resolve_voice(self, voice_id: str) -> str:
