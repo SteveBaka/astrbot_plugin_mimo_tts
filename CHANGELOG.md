@@ -45,6 +45,25 @@
 - 修复 clone 大文件仍落在插件代码目录中的问题，改为优先使用 AstrBot 官方建议的 `data/plugin_data/{plugin_name}/` 存储位置，并保留旧路径兼容读取。
 - 修复"想只听语音却仍被文本刷屏"的问题：关闭 `send_text_with_tts` 后，自动 TTS 会尽量只保留语音输出。
 
+## 2026-04-29
+
+### 新增
+- 新增 `sing_voice` 配置项（插件设置面板下拉选项），用于指定 `/sing` 命令未指定音色时的默认唱歌音色，可选官方预置音色列表中的任意一项。
+- `/sing` 命令现支持 `/sing [音色名] <歌词>` 格式，可临时指定内置音色进行唱歌合成，如 `/sing 冰糖 一闪一闪亮晶晶`。
+
+### 修改
+- 唱歌模式音色锁定逻辑重构：唱歌时优先使用命令行指定的音色 → 其次使用插件设置面板的 `sing_voice` → 再回退到 `default_voice` → 最终兜底 `mimo_default`，全程确保仅使用内置音色且模型为 `mimo-v2.5-tts`。
+- 唱歌模式下自动清除 clone/design 模型覆盖，强制使用 `mimo-v2.5-tts` 基础模型，符合官方文档"仅 mimo-v2.5-tts 支持唱歌"的约束。
+- `core/config.py` 异常捕获类型统一：`probability` 属性的 `except Exception` 收窄为 `except (ValueError, TypeError)`，与其它数值属性保持一致。
+- `voice/voice_manager.py` 注册表损坏处理增强：`_load_registry()` 损坏时记录 `logger.error`，调用 `_backup_corrupted_file()` 将损坏文件重命名为 `.bak` 后再重置为空字典。
+- 临时音频文件存储位置从插件源码目录迁移到 AstrBot 数据目录 `self._data_dir / "temp"`，兼容 Docker 只读部署场景。
+
+### 修复
+- 修复 `/sing` 唱歌模式音色偏移问题。
+- 修复 `main.py` 路径白名单穿越风险，改为 `Path.is_relative_to()`。
+- 修复 `voice/voice_manager.py` 路径校验风险，改为 `Path.is_relative_to()`。
+- 修复 `core/config.py` 数值属性缺少防御性类型转换的问题。
+
 ## 2026-04-28
 
 ### 新增

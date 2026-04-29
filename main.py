@@ -560,6 +560,11 @@ class MiMoTTSPlugin(Star):
                 pass
         self._recent_files = kept
 
+    @staticmethod
+    def _is_builtin_voice(voice_id: str) -> bool:
+        """检查 voice_id 是否为官方内置音色之一。"""
+        return any(v["id"] == voice_id for v in MIMO_VOICE_LIST)
+
     def _resolve_voice(self, voice_id: str) -> str:
         info = self._voice_manager.get_voice(voice_id)
         if info:
@@ -796,9 +801,34 @@ class MiMoTTSPlugin(Star):
         voice_id, model_override, mode, clone_audio_path = (
             self._resolve_synthesis_target(uid)
         )
-        if mode == "clone":
+
+        # 唱歌模式音色锁定：官方文档明确只有 mimo-v2.5-tts 模型支持唱歌，
+        # 且只能使用内置音色。优先使用 /sing 命令行指定的音色，其次使用
+        # 插件设置面板的 sing_voice，最后回退到 mimo_default。
+        if uset["sing"]:
+            override = uset.get("_sing_voice_override")
+            if override and self._is_builtin_voice(override):
+                voice_id = override
+            elif self._is_builtin_voice(voice_id):
+                pass  # 当前音色已经是内置音色，保持不变
+            else:
+                fallback = self.config.sing_voice
+                if not self._is_builtin_voice(fallback):
+                    fallback = self.config.default_voice
+                if not self._is_builtin_voice(fallback):
+                    fallback = "mimo_default"
+                logger.info(
+                    "MiMO TTS sing: voice %s is not built-in, falling back to %s",
+                    voice_id,
+                    fallback,
+                )
+                voice_id = fallback
+            model_override = None
+            clone_audio_path = None
+
+        if mode == "clone" and not uset["sing"]:
             prompt = self._build_clone_prompt(prompt)
-        elif mode == "design":
+        elif mode == "design" and not uset["sing"]:
             design_description = self._resolve_design_description(uid)
             prompt = self._merge_prompt_parts(design_description, prompt)
 
@@ -1066,20 +1096,39 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
-        """/sing <歌词>"""
+        """/sing [音色名] <歌词>"""
         raw = event.message_str.strip()
         text = raw[len("/sing") :].strip()
         if not text:
-            yield MessageEventResult().message("用法: /sing <歌词>")
+            yield MessageEventResult().message(
+                f"用法: /sing [音色名] <歌词>\n"
+                f"示例: /sing 冰糖 一闪一闪亮晶晶\n"
+                f"当前唱歌默认音色: {self.config.sing_voice}\n"
+                f"可用音色: {', '.join(v['id'] for v in MIMO_VOICE_LIST)}"
+            )
             return
+
+        # 尝试解析可选的音色名前缀
+        parts = text.split(maxsplit=1)
+        sing_voice_override: Optional[str] = None
+        lyrics = text
+        if len(parts) == 2:
+            candidate = parts[0]
+            if self._is_builtin_voice(candidate):
+                sing_voice_override = candidate
+                lyrics = parts[1]
 
         uid, _ = self._get_event_settings(event)
         uset = self._get_user_settings(uid)
         orig = uset.copy()
         uset["sing"] = True
 
+        # 将临时唱歌音色写入 uset，供 _do_tts 读取
+        if sing_voice_override:
+            uset["_sing_voice_override"] = sing_voice_override
+
         try:
-            audio_path = await self._do_tts(text, uid)
+            audio_path = await self._do_tts(lyrics, uid)
             if audio_path:
                 r = MessageEventResult()
                 r.chain.append(Record.fromFileSystem(str(audio_path)))
@@ -1089,6 +1138,7 @@ class MiMoTTSPlugin(Star):
         except Exception as e:
             yield MessageEventResult().message(f"! {e}")
         finally:
+            uset.pop("_sing_voice_override", None)
             uset.update(orig)
 
     @filter.command("voice")

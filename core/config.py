@@ -24,6 +24,7 @@ class ConfigManager:
         "api_base_url": "https://api.xiaomimimo.com/v1",
         "model": "mimo-v2.5-tts",
         "default_voice": "mimo_default",
+        "sing_voice": "mimo_default",
         "probability": 0.8,
         "auto_tts": True,
         "send_text_with_tts": True,
@@ -104,6 +105,10 @@ class ConfigManager:
     @property
     def default_voice(self) -> str:
         return str(self._cfg.get("default_voice", "mimo_default"))
+
+    @property
+    def sing_voice(self) -> str:
+        return str(self._cfg.get("sing_voice", "mimo_default"))
 
     @property
     def probability(self) -> float:

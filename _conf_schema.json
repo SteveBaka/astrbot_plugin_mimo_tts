@@ -23,6 +23,23 @@
     "hint": "如 XiaoIce、mimo_default 等，用 /voices 查看全部",
     "default": "mimo_default"
   },
+  "sing_voice": {
+    "type": "string",
+    "description": "🎤 唱歌默认音色",
+    "hint": "/sing 命令未指定音色时使用的内置音色",
+    "default": "mimo_default",
+    "options": [
+      "mimo_default",
+      "冰糖",
+      "茉莉",
+      "苏打",
+      "白桦",
+      "Mia",
+      "Chloe",
+      "Milo",
+      "Dean"
+    ]
+  },
   "tts_output_mode": {
     "type": "string",
     "description": "🔊 TTS 输出音色来源",
