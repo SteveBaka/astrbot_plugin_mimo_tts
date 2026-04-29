@@ -789,6 +789,16 @@ class MiMoTTSPlugin(Star):
         # AstrBot 的 Record 组件在当前版本下对 RIFF/WAV 兼容性最稳定，
         # 因此这里统一向上游请求 wav，避免 mp3/ogg/pcm 落地后再次被按 RIFF 解析时报错。
         fmt = "wav"
+        # 唱歌模式：使用 sing_voice_override > 插件配置 sing_voice > 当前用户音色
+        sing_voice_override = uset.get("sing_voice_override")
+        if uset["sing"] and sing_voice_override:
+            current_voice = self._resolve_voice(sing_voice_override)
+            uset["voice"] = current_voice
+        elif uset["sing"]:
+            sing_voice_cfg = self.config.sing_voice.strip()
+            if sing_voice_cfg:
+                current_voice = self._resolve_voice(sing_voice_cfg)
+                uset["voice"] = current_voice
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
         self._log_tts_text(uid, self._resolve_tts_mode(uid), uset["sing"], final_text)
@@ -1042,7 +1052,7 @@ class MiMoTTSPlugin(Star):
             "MiMO TTS 常用指令:",
             "",
             "/mimo_say <文本>  - 即时合成语音",
-            "/sing <歌词>  - 单次唱歌合成",
+            "/sing [-音色名] <歌词>  - 单次唱歌合成（可选指定音色）",
             "/ttsconfig  - 查看当前会话配置",
             "/tts_restore  - 将当前会话配置恢复为插件默认设置",
             "/tts_<on/off>  - 开启或关闭当前对话自动 TTS",
@@ -1066,17 +1076,40 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
-        """/sing <歌词>"""
+        """/sing [-音色名] <歌词>"""
         raw = event.message_str.strip()
         text = raw[len("/sing") :].strip()
         if not text:
-            yield MessageEventResult().message("用法: /sing <歌词>")
+            yield MessageEventResult().message(
+                "用法: /sing <歌词>（单次触发，执行后自动恢复原设置）\n"
+                "     /sing -冰糖 <歌词> — 使用冰糖音色唱歌"
+            )
             return
 
         uid, _ = self._get_event_settings(event)
         uset = self._get_user_settings(uid)
         orig = uset.copy()
         uset["sing"] = True
+
+        # 支持 -音色名 格式：/sing -冰糖 歌词
+        if text.startswith("-") and len(text) > 1:
+            parts = text[1:].split(maxsplit=1)
+            candidate = parts[0].strip() if parts else ""
+            if candidate:
+                uset["sing_voice_override"] = candidate
+                text = parts[1].strip() if len(parts) > 1 else ""
+                logger.debug(
+                    f"[MimoTTSPlugin] uid={uid} cmd_sing sing_voice_override={candidate}"
+                )
+
+        if not text:
+            uset["sing"] = False
+            uset.pop("sing_voice_override", None)
+            yield MessageEventResult().message(
+                "用法: /sing <歌词>（单次触发，执行后自动恢复原设置）\n"
+                "     /sing -冰糖 <歌词> — 使用冰糖音色唱歌"
+            )
+            return
 
         try:
             audio_path = await self._do_tts(text, uid)

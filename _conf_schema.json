@@ -20,8 +20,25 @@
   "default_voice": {
     "type": "string",
     "description": "默认音色",
-    "hint": "如 XiaoIce、mimo_default 等，用 /voices 查看全部",
+    "hint": "如 mimo_default、冰糖 等，用 /voices 查看全部",
     "default": "mimo_default"
+  },
+  "sing_voice": {
+    "type": "string",
+    "description": "🎤 唱歌模式默认音色",
+    "hint": "留空则使用当前 default_voice",
+    "default": "",
+    "options": [
+      "",
+      "冰糖",
+      "茉莉",
+      "苏打",
+      "白桦",
+      "Mia",
+      "Chloe",
+      "Milo",
+      "Dean"
+    ]
   },
   "tts_output_mode": {
     "type": "string",
