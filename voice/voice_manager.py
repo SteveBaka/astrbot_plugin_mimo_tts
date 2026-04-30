@@ -180,7 +180,7 @@ class VoiceManager:
             **normalized_kwargs,
         }
         self._save_registry()
-        logger.info(f"Voice registered: {voice_id} (model={model})")
+        logger.info("Voice registered: %s (model=%s)", voice_id, model)
 
     def get_clone_audio_path(self, voice_id: str) -> str:
         """Get local reference audio path for a clone voice."""
@@ -234,6 +234,6 @@ class VoiceManager:
         if voice_id in self._voices:
             del self._voices[voice_id]
             self._save_registry()
-            logger.info(f"Voice removed: {voice_id}")
+            logger.info("Voice removed: %s", voice_id)
             return True
         return False

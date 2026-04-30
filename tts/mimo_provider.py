@@ -264,7 +264,8 @@ class MiMOProvider:
             bool(system_prompt),
         )
 
-        for attempt in range(1, self.max_retries + 2):
+        total_attempts = self.max_retries + 1
+        for attempt in range(1, total_attempts + 1):
             try:
                 session = self._get_session()
                 async with session.post(url, headers=headers, json=payload) as resp:
@@ -285,7 +286,8 @@ class MiMOProvider:
                                 f"接口返回中未找到音频数据，响应键：{list(data.keys())}"
                             )
                             logger.error(
-                                f"MiMO TTS: no audio in response. Keys: {list(data.keys())}"
+                                "MiMO TTS: no audio in response. Keys: %s",
+                                list(data.keys()),
                             )
                             return None
                         audio_bytes = base64.b64decode(audio_b64)
@@ -294,8 +296,11 @@ class MiMOProvider:
                         )
                         self._last_output_format = actual_format
                         logger.info(
-                            f"MiMO TTS: synthesized {len(text)} chars -> {len(normalized_bytes)} bytes "
-                            f"(requested={fmt}, actual={actual_format})"
+                            "MiMO TTS: synthesized %d chars -> %d bytes (requested=%s, actual=%s)",
+                            len(text),
+                            len(normalized_bytes),
+                            fmt,
+                            actual_format,
                         )
                         return normalized_bytes
                     else:
@@ -322,13 +327,13 @@ class MiMOProvider:
                     e,
                 )
 
-            if attempt <= self.max_retries:
+            if attempt < total_attempts:
                 await asyncio.sleep(min(backoff, 10))
                 backoff *= 2
 
         if not self.last_error:
-            self._set_last_error(f"请求失败，已重试 {self.max_retries + 1} 次")
-        logger.error(f"MiMO TTS: all {self.max_retries + 1} attempts failed")
+            self._set_last_error(f"请求失败，已重试 {total_attempts} 次")
+        logger.error("MiMO TTS: all %d attempts failed", total_attempts)
         return None
 
     async def register_voice(self, voice_id: str, audio_path: str) -> bool:

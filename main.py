@@ -236,8 +236,15 @@ class MiMoTTSPlugin(Star):
 
     def _persist_current_state(self) -> None:
         """Persist user state to disk with lock to prevent concurrent writes."""
+        self._evict_stale_users()
         with self._persist_lock:
             self._save_user_state()
+
+    def _touch_user(self, uid: str) -> None:
+        """刷新用户访问顺序，实现 LRU 淘汰。"""
+        for store in (self._user_settings, self._user_format):
+            if uid in store:
+                store[uid] = store.pop(uid)
 
     def _restore_user_state(self, uid: str) -> None:
         """将当前会话设置恢复为插件配置默认值。"""
@@ -267,7 +274,6 @@ class MiMoTTSPlugin(Star):
                 "voice": self.config.default_voice,
                 "breath": self.config.breath_enabled,
                 "stress": self.config.stress_enabled,
-                # 唱歌模式仅允许由 /sing 命令临时触发，避免污染普通即时合成与自动 TTS。
                 "sing": False,
                 "laughter": self.config.laughter_enabled,
                 "pause": self.config.pause_enabled,
@@ -278,6 +284,7 @@ class MiMoTTSPlugin(Star):
                 "tts_enabled": True,
                 "text_enabled": None,
             }
+        self._touch_user(uid)
         return self._user_settings[uid]
 
     def _should_send_text_with_tts(self, uid: str) -> bool:
@@ -360,7 +367,7 @@ class MiMoTTSPlugin(Star):
 
         return scope_key, self._get_user_settings(scope_key)
 
-    def _should_tts(self, uid: str) -> bool:
+    def _is_tts_active(self, uid: str) -> bool:
         if not self.config.get("auto_tts", True):
             return False
 
@@ -387,12 +394,14 @@ class MiMoTTSPlugin(Star):
                 return True
         return False
 
-    def _build_prompt(self, uid: str) -> str:
+    def _build_prompt(self, uid: str, emotion_override: Optional[str] = None) -> str:
         uset = self._get_user_settings(uid)
         # 全局风格提示词
         style = self.config.style_hint
         return build_system_prompt(
-            emotion=uset["emotion"] or None,
+            emotion=emotion_override
+            if emotion_override is not None
+            else (uset["emotion"] or None),
             speed=uset["speed"],
             pitch=uset["pitch"],
             breath=uset["breath"],
@@ -541,32 +550,43 @@ class MiMoTTSPlugin(Star):
             "default": "默认",
             "design": "设计",
             "clone": "克隆",
-        }.get(mode, "默认")
+        }.get(mode, "[未知]")
+
+    # ── P1-4: 用户设置 LRU 淘汰 ──
+    _MAX_IDLE_USERS = 500
+
+    def _evict_stale_users(self) -> bool:
+        """淘汰过多的用户条目，防止长期运行时内存无限增长。返回是否有条目被淘汰。"""
+        evicted = False
+        for store in (self._user_settings, self._user_format):
+            if len(store) > self._MAX_IDLE_USERS:
+                excess = len(store) - self._MAX_IDLE_USERS
+                for uid in list(store.keys())[:excess]:
+                    store.pop(uid, None)
+                    evicted = True
+        return evicted
 
     # 最大临时音频总占用 (500 MB)
     _CLEANUP_MAX_TOTAL_BYTES = 500 * 1024 * 1024
 
     def _cleanup_recent_files(self) -> None:
-        """清理过期和无效的临时音频文件，防止磁盘空间泄漏。
+        """清理无效的临时音频文件并控制总磁盘占用。
 
-        1. 超过 2 小时的文件直接从磁盘删除。
-        2. 存活但体积过小（< 100 字节，通常为损坏/空文件）的也删除。
-        3. 若剩余存活文件的总大小超过 500 MB，按"最旧优先"继续删除，
-           直到总占用降至限制以下。
-        4. 最终重建列表，仅保留未被删除的存活文件。
+        临时文件的生命周期由 AstrBot Star 框架管理（卸载时自动清理），
+        此处仅负责：
+        1. 剔除已不存在或体积异常（< 100 字节，通常为损坏/空文件）的记录。
+        2. 若存活文件总大小超过 500 MB，按"最旧优先"逐个删除，
+           直到总占用降至限制以下，防止磁盘空间泄漏。
         """
-        now = time.time()
         kept: list[tuple[float, Path]] = []
         for t, p in self._recent_files:
             try:
                 if not p.exists():
                     continue
-                expired = (now - t) >= 2 * 3600
-                too_small = p.stat().st_size < 100
-                if expired or too_small:
+                if p.stat().st_size < 100:
                     p.unlink(missing_ok=True)
-                else:
-                    kept.append((t, p))
+                    continue
+                kept.append((t, p))
             except Exception:
                 pass
 
@@ -631,7 +651,6 @@ class MiMoTTSPlugin(Star):
         allowed_roots: list[Path] = [
             data_clone_dir,
             legacy_clone_dir,
-            Path.cwd(),
         ]
 
         candidates: list[Path] = []
@@ -647,7 +666,6 @@ class MiMoTTSPlugin(Star):
                     legacy_clone_dir / raw,
                     legacy_clone_dir / raw.name,
                     raw,
-                    Path.cwd() / raw,
                 ]
             )
 
@@ -762,7 +780,8 @@ class MiMoTTSPlugin(Star):
             "assistant persona",
             "skill:",
             "persona:",
-            "你是",
+            "你是谁",
+            "你是一个",
             "系统提示",
             "开发者提示",
             "角色设定",
@@ -794,7 +813,7 @@ class MiMoTTSPlugin(Star):
             "人格设定",
         )
         matched = sum(1 for phrase in suspicious_phrases if phrase in head)
-        if matched >= 2:
+        if matched >= 3:
             return True
 
         suspicious_patterns = (
@@ -814,18 +833,28 @@ class MiMoTTSPlugin(Star):
         text: str,
         uid: str,
         format_override: Optional[str] = None,
+        emotion_override: Optional[str] = None,
+        settings_override: Optional[dict] = None,
     ) -> Optional[Path]:
-        """Run TTS and return the audio file path."""
+        """Run TTS and return the audio file path.
+
+        Args:
+            emotion_override: 若非 None，优先使用此情感值而非全局 uset，
+                用于并发安全地传递自动检测的情感。
+            settings_override: 若非 None，临时覆盖 uset 中的对应字段（不修改全局 uset），
+                用于 /mimo_say 和 /sing 的并发安全。
+        """
         provider = self._ensure_provider()
         if not provider:
             raise RuntimeError("API Key 未配置。请在配置中设置 api_key。")
 
-        prompt = self._build_prompt(uid)
         uset = self._get_user_settings(uid)
+        # 并发安全：如有临时覆盖，创建浅拷贝而非修改全局 uset
+        if settings_override:
+            uset = {**uset, **settings_override}
+        prompt = self._build_prompt(uid, emotion_override=emotion_override)
         requested_fmt = format_override or self._get_effective_audio_format(uid)
-        # AstrBot 的 Record 组件在当前版本下对 RIFF/WAV 兼容性最稳定，
-        # 因此这里统一向上游请求 wav，避免 mp3/ogg/pcm 落地后再次被按 RIFF 解析时报错。
-        fmt = "wav"
+        fmt = requested_fmt
         # 唱歌模式：使用 sing_voice_override > 插件配置 sing_voice > 当前用户音色
         sing_voice_override = uset.get("sing_voice_override")
         if uset["sing"] and sing_voice_override:
@@ -896,7 +925,7 @@ class MiMoTTSPlugin(Star):
         """Auto TTS: intercept LLM output and generate voice reply."""
         uid, uset = self._get_event_settings(event)
 
-        if not self._should_tts(uid):
+        if not self._is_tts_active(uid):
             return
 
         result = event.get_result()
@@ -926,13 +955,13 @@ class MiMoTTSPlugin(Star):
 
         # If emotion is auto, detect from text
         orig_emotion = uset["emotion"]
+        # 并发安全：通过 emotion_override 传递情感，避免直接修改全局 uset
+        emo_override: Optional[str] = None
         if not orig_emotion or orig_emotion == "auto":
-            detected = detect_emotion(plain)
-            if detected:
-                uset["emotion"] = detected
+            emo_override = detect_emotion(plain) or None
 
         try:
-            audio_path = await self._do_tts(plain, uid)
+            audio_path = await self._do_tts(plain, uid, emotion_override=emo_override)
             if audio_path:
                 audio_comp = Record.fromFileSystem(str(audio_path))
                 if self._should_send_text_with_tts(uid):
@@ -943,8 +972,6 @@ class MiMoTTSPlugin(Star):
                     )
         except Exception as e:
             result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
-        finally:
-            uset["emotion"] = orig_emotion
 
     async def _handle_say_command(self, event: AstrMessageEvent, command_name: str):
         """
@@ -987,33 +1014,39 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message("文本内容不能为空。")
             return
 
-        # Save originals and apply overrides
-        orig = dict(uset)
+        # 并发安全：构建 settings_override 而非修改全局 uset
+        overrides: dict = {}
+        emo_override: Optional[str] = None
         if emo:
             if emo == "auto":
                 detected = detect_emotion(text)
-                uset["emotion"] = detected or ""
+                emo_override = detected or None
             elif emo == "off":
-                uset["emotion"] = ""
+                overrides["emotion"] = ""
             else:
-                uset["emotion"] = emo
+                overrides["emotion"] = emo
         if spd:
-            uset["speed"] = max(0.5, min(2.0, float(spd)))
+            overrides["speed"] = max(0.5, min(2.0, float(spd)))
         if ptc:
-            uset["pitch"] = max(-12, min(12, int(ptc)))
+            overrides["pitch"] = max(-12, min(12, int(ptc)))
         if voi:
-            uset["voice"] = self._resolve_voice(voi)
+            overrides["voice"] = self._resolve_voice(voi)
         if brt:
-            uset["breath"] = brt == "on"
+            overrides["breath"] = brt == "on"
         if sts:
-            uset["stress"] = sts == "on"
+            overrides["stress"] = sts == "on"
         if dia:
-            uset["dialect"] = "" if dia == "off" else dia
+            overrides["dialect"] = "" if dia == "off" else dia
         if vol:
-            uset["volume"] = "" if vol == "off" else vol
+            overrides["volume"] = "" if vol == "off" else vol
 
         try:
-            audio_path = await self._do_tts(text, uid)
+            audio_path = await self._do_tts(
+                text,
+                uid,
+                emotion_override=emo_override,
+                settings_override=overrides or None,
+            )
             if audio_path:
                 r = MessageEventResult()
                 r.chain.append(Record.fromFileSystem(str(audio_path)))
@@ -1022,8 +1055,6 @@ class MiMoTTSPlugin(Star):
                 yield MessageEventResult().message("TTS 合成失败。")
         except Exception as e:
             yield MessageEventResult().message(f"! {e}")
-        finally:
-            uset.update(orig)
 
     @filter.command("mimo_say")
     async def cmd_mimo_say(self, event: AstrMessageEvent):
@@ -1124,32 +1155,36 @@ class MiMoTTSPlugin(Star):
             return
 
         uid, _ = self._get_event_settings(event)
-        uset = self._get_user_settings(uid)
-        orig = uset.copy()
-        uset["sing"] = True
+
+        # 并发安全：构建 settings_override 而非修改全局 uset
+        overrides: dict = {"sing": True}
+        sing_voice = ""
 
         # 支持 -音色名 格式：/sing -冰糖 歌词
         if text.startswith("-") and len(text) > 1:
             parts = text[1:].split(maxsplit=1)
             candidate = parts[0].strip() if parts else ""
             if candidate:
-                uset["sing_voice_override"] = candidate
+                sing_voice = candidate
                 text = parts[1].strip() if len(parts) > 1 else ""
                 logger.debug(
-                    f"[MimoTTSPlugin] uid={uid} cmd_sing sing_voice_override={candidate}"
+                    "[MimoTTSPlugin] uid=%s cmd_sing sing_voice_override=%s",
+                    uid,
+                    candidate,
                 )
 
         if not text:
-            uset["sing"] = False
-            uset.pop("sing_voice_override", None)
             yield MessageEventResult().message(
                 "用法: /sing <歌词>（单次触发，执行后自动恢复原设置）\n"
                 "     /sing -冰糖 <歌词> — 使用冰糖音色唱歌"
             )
             return
 
+        if sing_voice:
+            overrides["sing_voice_override"] = sing_voice
+
         try:
-            audio_path = await self._do_tts(text, uid)
+            audio_path = await self._do_tts(text, uid, settings_override=overrides)
             if audio_path:
                 r = MessageEventResult()
                 r.chain.append(Record.fromFileSystem(str(audio_path)))
@@ -1158,8 +1193,6 @@ class MiMoTTSPlugin(Star):
                 yield MessageEventResult().message("唱歌合成失败。")
         except Exception as e:
             yield MessageEventResult().message(f"! {e}")
-        finally:
-            uset.update(orig)
 
     @filter.command("voice")
     async def cmd_voice(self, event: AstrMessageEvent):
@@ -1183,7 +1216,7 @@ class MiMoTTSPlugin(Star):
         resolved = self._resolve_voice(arg)
         self._get_user_settings(uid)["voice"] = resolved
         self._persist_current_state()
-        yield MessageEventResult().message(f"[u2713] 音色已切换为: {resolved}")
+        yield MessageEventResult().message(f"[✓] 音色已切换为: {resolved}")
 
     @filter.command("ttsswitch")
     async def cmd_ttsswitch(self, event: AstrMessageEvent):
@@ -1217,8 +1250,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("emotion")
     async def cmd_emotion(self, event: AstrMessageEvent):
         """/emotion [情感名|auto|off]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/emotion") :].strip()
+        arg = self._parse_cmd(event, "/emotion")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1235,15 +1267,15 @@ class MiMoTTSPlugin(Star):
         if arg == "off":
             self._get_user_settings(uid)["emotion"] = ""
             self._persist_current_state()
-            yield MessageEventResult().message("[u2713] 已关闭情感覆盖（自动检测）")
+            yield MessageEventResult().message("[✓] 已关闭情感覆盖（自动检测）")
         elif arg == "auto":
             self._get_user_settings(uid)["emotion"] = "auto"
             self._persist_current_state()
-            yield MessageEventResult().message("[u2713] 已开启情感自动检测")
+            yield MessageEventResult().message("[✓] 已开启情感自动检测")
         elif arg in SUPPORTED_EMOTIONS:
             self._get_user_settings(uid)["emotion"] = arg
             self._persist_current_state()
-            yield MessageEventResult().message(f"[u2713] 情感已设置为: {arg}")
+            yield MessageEventResult().message(f"[✓] 情感已设置为: {arg}")
         else:
             yield MessageEventResult().message(
                 f"[X] 不支持的情感: {arg}\n可用: {', '.join(SUPPORTED_EMOTIONS)}"
@@ -1261,8 +1293,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("speed")
     async def cmd_speed(self, event: AstrMessageEvent):
         """/speed [0.5~2.0]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/speed") :].strip()
+        arg = self._parse_cmd(event, "/speed")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1276,15 +1307,14 @@ class MiMoTTSPlugin(Star):
             val = max(0.5, min(2.0, float(arg)))
             self._get_user_settings(uid)["speed"] = val
             self._persist_current_state()
-            yield MessageEventResult().message(f"[u2713] 语速已设置为: {val}")
+            yield MessageEventResult().message(f"[✓] 语速已设置为: {val}")
         except ValueError:
             yield MessageEventResult().message("[X] 请输入 0.5~2.0 之间的数值。")
 
     @filter.command("pitch")
     async def cmd_pitch(self, event: AstrMessageEvent):
         """/pitch [-12~+12]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/pitch") :].strip()
+        arg = self._parse_cmd(event, "/pitch")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1298,15 +1328,14 @@ class MiMoTTSPlugin(Star):
             val = max(-12, min(12, int(arg)))
             self._get_user_settings(uid)["pitch"] = val
             self._persist_current_state()
-            yield MessageEventResult().message(f"[u2713] 音高已设置为: {val}")
+            yield MessageEventResult().message(f"[✓] 音高已设置为: {val}")
         except ValueError:
             yield MessageEventResult().message("[X] 请输入 -12~+12 之间的整数。")
 
     @filter.command("breath")
     async def cmd_breath(self, event: AstrMessageEvent):
         """/breath [on|off]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/breath") :].strip()
+        arg = self._parse_cmd(event, "/breath")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1320,15 +1349,12 @@ class MiMoTTSPlugin(Star):
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["breath"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(
-            f"[u2713] 呼吸声已{'开启' if val else '关闭'}"
-        )
+        yield MessageEventResult().message(f"[✓] 呼吸声已{'开启' if val else '关闭'}")
 
     @filter.command("stress")
     async def cmd_stress(self, event: AstrMessageEvent):
         """/stress [on|off]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/stress") :].strip()
+        arg = self._parse_cmd(event, "/stress")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1342,15 +1368,12 @@ class MiMoTTSPlugin(Star):
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["stress"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(
-            f"[u2713] 重音模式已{'开启' if val else '关闭'}"
-        )
+        yield MessageEventResult().message(f"[✓] 重音模式已{'开启' if val else '关闭'}")
 
     @filter.command("dialect")
     async def cmd_dialect(self, event: AstrMessageEvent):
         """/dialect [方言名|off] — 设置方言口音，如 四川话、粤语、东北话"""
-        raw = event.message_str.strip()
-        arg = raw[len("/dialect") :].strip()
+        arg = self._parse_cmd(event, "/dialect")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1366,17 +1389,16 @@ class MiMoTTSPlugin(Star):
         if arg == "off":
             self._get_user_settings(uid)["dialect"] = ""
             self._persist_current_state()
-            yield MessageEventResult().message("[u2713] 已关闭方言口音")
+            yield MessageEventResult().message("[✓] 已关闭方言口音")
         else:
             self._get_user_settings(uid)["dialect"] = arg
             self._persist_current_state()
-            yield MessageEventResult().message(f"[u2713] 方言已设置为: {arg}")
+            yield MessageEventResult().message(f"[✓] 方言已设置为: {arg}")
 
     @filter.command("volume")
     async def cmd_volume(self, event: AstrMessageEvent):
         """/volume [轻声|正常|大声|off]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/volume") :].strip()
+        arg = self._parse_cmd(event, "/volume")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1390,17 +1412,16 @@ class MiMoTTSPlugin(Star):
         if arg == "off":
             self._get_user_settings(uid)["volume"] = ""
             self._persist_current_state()
-            yield MessageEventResult().message("[u2713] 音量已恢复为正常")
+            yield MessageEventResult().message("[✓] 音量已恢复为正常")
         else:
             self._get_user_settings(uid)["volume"] = arg
             self._persist_current_state()
-            yield MessageEventResult().message(f"[u2713] 音量已设置为: {arg}")
+            yield MessageEventResult().message(f"[✓] 音量已设置为: {arg}")
 
     @filter.command("laughter")
     async def cmd_laughter(self, event: AstrMessageEvent):
         """/laughter [on|off] — 允许自然笑声"""
-        raw = event.message_str.strip()
-        arg = raw[len("/laughter") :].strip()
+        arg = self._parse_cmd(event, "/laughter")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1414,13 +1435,12 @@ class MiMoTTSPlugin(Star):
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["laughter"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(f"[u2713] 笑声已{'开启' if val else '关闭'}")
+        yield MessageEventResult().message(f"[✓] 笑声已{'开启' if val else '关闭'}")
 
     @filter.command("pause")
     async def cmd_pause(self, event: AstrMessageEvent):
         """/pause [on|off] — 增加句间停顿"""
-        raw = event.message_str.strip()
-        arg = raw[len("/pause") :].strip()
+        arg = self._parse_cmd(event, "/pause")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1434,9 +1454,7 @@ class MiMoTTSPlugin(Star):
         val = arg.lower() in ("on", "true", "1", "开")
         self._get_user_settings(uid)["pause"] = val
         self._persist_current_state()
-        yield MessageEventResult().message(
-            f"[u2713] 停顿模式已{'开启' if val else '关闭'}"
-        )
+        yield MessageEventResult().message(f"[✓] 停顿模式已{'开启' if val else '关闭'}")
 
     @filter.command("preset")
     async def cmd_preset(self, event: AstrMessageEvent):
@@ -1473,7 +1491,7 @@ class MiMoTTSPlugin(Star):
         self._persist_current_state()
 
         yield MessageEventResult().message(
-            f"[u2713] 已应用预设: {arg}\n"
+            f"[✓] 已应用预设: {arg}\n"
             f"  情感={preset['emotion']}  语速={preset['speed']}  音高={preset['pitch']:+d}\n"
             f"  呼吸={'开' if preset['breath'] else '关'}  重音={'开' if preset['stress'] else '关'}  音色={preset['voice']}"
         )
@@ -1651,8 +1669,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("ttsformat")
     async def cmd_ttsformat(self, event: AstrMessageEvent):
         """/ttsformat [mp3|wav|ogg] — 设置音频输出格式"""
-        raw = event.message_str.strip()
-        arg = raw[len("/ttsformat") :].strip()
+        arg = self._parse_cmd(event, "/ttsformat")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1674,7 +1691,7 @@ class MiMoTTSPlugin(Star):
 
         self._user_format[uid] = arg.lower()
         self._persist_current_state()
-        yield MessageEventResult().message(f"[u2713] 音频格式已设置为: {arg}")
+        yield MessageEventResult().message(f"[✓] 音频格式已设置为: {arg}")
 
     @filter.command("ttsconfig")
     async def cmd_ttsconfig(self, event: AstrMessageEvent):
@@ -1683,11 +1700,11 @@ class MiMoTTSPlugin(Star):
 
         if arg == "reset":
             self._reset_persistent_state()
-            yield MessageEventResult().message("[u2713] 所有个人设置已重置。")
+            yield MessageEventResult().message("[✓] 所有个人设置已重置。")
             return
 
         provider = self._ensure_provider()
-        status = "[u2713] 正常" if provider else "[X] 未配置"
+        status = "[✓] 正常" if provider else "[X] 未配置"
 
         uid, _ = self._get_event_settings(event)
         uset = self._get_user_settings(uid)
@@ -1725,27 +1742,13 @@ class MiMoTTSPlugin(Star):
             return
         uid, _ = self._get_event_settings(event)
         try:
-            provider = self._ensure_provider()
-            if not provider:
-                raise RuntimeError("API Key 未配置。")
-
-            fmt = "wav"
-            raw_audio = await provider.synthesize(text=text, audio_format=fmt)
-            if not raw_audio:
-                raise RuntimeError(provider.last_error or "TTS 合成失败。")
-
-            actual_fmt = str(provider.last_output_format or fmt or "mp3").lower()
-
-            tmp_dir = self._data_dir / "temp"
-            tmp_dir.mkdir(parents=True, exist_ok=True)
-            out = tmp_dir / f"mimo_raw_{int(time.time() * 1000)}.{actual_fmt}"
-            out.write_bytes(raw_audio)
-            self._recent_files.append((time.time(), out))
-            self._cleanup_recent_files()
-
-            r = MessageEventResult()
-            r.chain.append(Record.fromFileSystem(str(out)))
-            yield r
+            audio_path = await self._do_tts(text, uid)
+            if audio_path:
+                r = MessageEventResult()
+                r.chain.append(Record.fromFileSystem(str(audio_path)))
+                yield r
+            else:
+                yield MessageEventResult().message("TTS 合成失败。")
         except Exception as e:
             yield MessageEventResult().message(f"! {e}")
 
@@ -1776,8 +1779,17 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _parse_opt(text: str, flag: str) -> tuple[str, str]:
-        """Parse -flag value from text. Returns (remaining_text, value)."""
+        """Parse -flag value from text. Returns (remaining_text, value).
+
+        支持带引号的值，如 ``-emotion "开心"``。
+        """
         m = re.search(rf"{flag}\s+(\S+)", text)
         if m:
-            return text[: m.start()].strip() + " " + text[m.end() :].strip(), m.group(1)
+            val = m.group(1).strip('"').strip("'")
+            return text[: m.start()].strip() + " " + text[m.end() :].strip(), val
         return text, ""
+
+    @staticmethod
+    def _parse_cmd(event: AstrMessageEvent, cmd: str) -> str:
+        """从消息中提取命令参数部分。"""
+        return event.message_str.strip()[len(cmd) :].strip()
