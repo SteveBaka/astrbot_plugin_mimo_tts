@@ -40,7 +40,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
@@ -242,7 +242,8 @@ class MiMoTTSPlugin(Star):
 
     def _touch_user(self, uid: str) -> None:
         """刷新用户访问顺序，实现 LRU 淘汰。"""
-        for store in (self._user_settings, self._user_format):
+        stores: list[dict[str, Any]] = [self._user_settings, self._user_format]
+        for store in stores:
             if uid in store:
                 store[uid] = store.pop(uid)
 
@@ -851,20 +852,25 @@ class MiMoTTSPlugin(Star):
         uset = self._get_user_settings(uid)
         # 并发安全：如有临时覆盖，创建浅拷贝而非修改全局 uset
         if settings_override:
-            uset = {**uset, **settings_override}
+            uset: dict = {**uset, **settings_override}
         prompt = self._build_prompt(uid, emotion_override=emotion_override)
         requested_fmt = format_override or self._get_effective_audio_format(uid)
         fmt = requested_fmt
-        # 唱歌模式：使用 sing_voice_override > 插件配置 sing_voice > 当前用户音色
+        # 唱歌模式：使用 sing_voice_override > 当前用户音色 > 插件配置 sing_voice
+        # 优先级说明：当前用户音色高于插件默认 sing_voice，避免 clone/design 音色被覆盖
         sing_voice_override = uset.get("sing_voice_override")
         if uset["sing"] and sing_voice_override:
             current_voice = self._resolve_voice(sing_voice_override)
             uset["voice"] = current_voice
         elif uset["sing"]:
-            sing_voice_cfg = self.config.sing_voice.strip()
-            if sing_voice_cfg:
-                current_voice = self._resolve_voice(sing_voice_cfg)
-                uset["voice"] = current_voice
+            # 当前用户音色已设置（非默认值）时，保持不变；
+            # 仅当用户未自定义音色时，才回退到插件配置的 sing_voice。
+            is_custom_voice = uset["voice"] != self.config.default_voice
+            if not is_custom_voice:
+                sing_voice_cfg = self.config.sing_voice.strip()
+                if sing_voice_cfg:
+                    current_voice = self._resolve_voice(sing_voice_cfg)
+                    uset["voice"] = current_voice
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
         self._log_tts_text(uid, self._resolve_tts_mode(uid), uset["sing"], final_text)

@@ -9,7 +9,6 @@
 ### 修改
 - 唱歌模式 `/sing` 改为单次触发模式：执行后自动恢复原始设置，避免持续污染普通即时合成与自动 TTS。
 - 唱歌音色优先级调整为：命令参数 `-音色名` > 插件配置 `sing_voice` > 当前用户音色。
-- 使用 mimo-v2.5-pro 生成。
 
 ## 2026-04-28
 
@@ -23,7 +22,6 @@
 - 移除 `main.py` 中未使用的 `EmotionDetector` 实例化（`self._detector = EmotionDetector()`），同步清理对应 import。
 - `core/compat.py` 清理仅被删除函数使用的死代码（`_ST_STAR_TOOLS` 辅助函数）。
 - `main.py` `cmd_voiceclone` 与 `cmd_voicegen` 中的 `self.config.write()` 调用已替换为 AstrBot 推荐的 `self.config.set()` 方法。
-- 使用 mimo-v2.5-pro 对代码和功能进行优化。
 
 ### 修复
 - 修复 `main.py` `_resolve_clone_audio_path()` 的路径穿越风险：新增白名单目录机制（`allowed_roots`），用户输入的路径经 `resolve()` 后必须位于允许目录内才放行，绝对路径也受同样约束；全部候选均不在白名单内时抛出 `PermissionError`。

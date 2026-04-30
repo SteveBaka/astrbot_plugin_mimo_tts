@@ -229,17 +229,10 @@ class MiMOProvider:
         messages.append({"role": "assistant", "content": text})
 
         model_name = model or self._model
-        payload = {
-            "model": model_name,
-            "messages": messages,
-            "audio": {
-                "format": fmt,
-            },
-            "stream": False,
-        }
+        audio: dict = {"format": fmt}
         if self._is_voice_clone_model(model_name):
             try:
-                payload["audio"]["voice"] = self._build_voice_clone_data_url(
+                audio["voice"] = self._build_voice_clone_data_url(
                     clone_audio_path or ""
                 )
             except Exception as e:
@@ -247,7 +240,13 @@ class MiMOProvider:
                 logger.error("MiMO TTS voiceclone payload build failed: %s", e)
                 return None
         elif not self._is_voice_design_model(model_name):
-            payload["audio"]["voice"] = voice_id
+            audio["voice"] = voice_id
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "audio": audio,
+            "stream": False,
+        }
 
         backoff = 1.0
         self._set_last_error("")
