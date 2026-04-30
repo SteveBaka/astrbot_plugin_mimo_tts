@@ -304,7 +304,7 @@ class MiMoTTSPlugin(Star):
         if config_fmt in SUPPORTED_AUDIO_FORMATS:
             return config_fmt
 
-        return "mp3"
+        return "wav"
 
     @staticmethod
     def _safe_event_value(event: AstrMessageEvent, *names: str) -> str:
@@ -896,11 +896,16 @@ class MiMoTTSPlugin(Star):
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")
 
         actual_fmt = str(provider.last_output_format or fmt or "mp3").lower()
-        if actual_fmt != "wav":
+        if requested_fmt == "wav" and actual_fmt != "wav":
             logger.warning(
-                "MiMO TTS: Record 输出期望 wav，但接口返回了 %s（用户原设置=%s）",
+                "MiMO TTS: 请求 wav 格式但接口返回了 %s，建议通过 /ttsformat 切换到 wav 或检查平台兼容性",
                 actual_fmt,
+            )
+        elif requested_fmt != actual_fmt:
+            logger.info(
+                "MiMO TTS: 请求 %s 格式，实际返回 %s",
                 requested_fmt,
+                actual_fmt,
             )
 
         # Write temp file

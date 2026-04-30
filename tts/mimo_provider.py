@@ -108,12 +108,21 @@ class MiMOProvider:
     def _normalize_audio_bytes(
         self, audio_bytes: bytes, requested_format: str
     ) -> tuple[bytes, str]:
-        """尽量将接口返回的音频整理为 AstrBot 可稳定发送的格式。"""
+        """尽量将接口返回的音频整理为 AstrBot 可稳定发送的格式。
+
+        当请求 wav 但 API 返回 mp3 时，自动将实际格式记录为 mp3 并发出警告，
+        由调用方决定后续处理方式（当前 _do_tts 会用 actual_fmt 命名文件）。
+        """
         if audio_bytes.startswith(b"RIFF"):
             return audio_bytes, "wav"
         if audio_bytes.startswith(b"OggS"):
             return audio_bytes, "ogg"
         if self._looks_like_mp3(audio_bytes):
+            if requested_format.lower().strip() in {"wav", "pcm"}:
+                logger.warning(
+                    "MiMO TTS: requested wav but API returned mp3; "
+                    "keeping actual format to avoid playback failure"
+                )
             return audio_bytes, "mp3"
 
         normalized = requested_format.lower().strip()

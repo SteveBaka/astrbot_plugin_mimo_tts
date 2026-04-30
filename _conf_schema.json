@@ -197,8 +197,8 @@
   "audio_format": {
     "type": "string",
     "description": "音频输出格式",
-    "hint": "mp3（推荐）/ wav / ogg",
-    "default": "mp3"
+    "hint": "wav（推荐，兼容性最佳）/ mp3 / ogg。若平台不支持 wav 会自动回退 mp3 并输出日志提醒",
+    "default": "wav"
   },
   "min_text_length": {
     "type": "int",
