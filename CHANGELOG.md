@@ -9,6 +9,10 @@
 ### 修改
 - 唱歌模式 `/sing` 改为单次触发模式：执行后自动恢复原始设置，避免持续污染普通即时合成与自动 TTS。
 - 唱歌音色优先级调整为：命令参数 `-音色名` > 插件配置 `sing_voice` > 当前用户音色。
+- `main.py` 中 9 个命令处理器（`/text`、`/sing`、`/voice`、`/ttsswitch`、`/preset`、`/voiceclone`、`/voicegen`、`/ttsconfig`、`/ttsraw`）统一改用 `self._parse_cmd()` 提取参数，减少重复的字符串处理代码。
+- `main.py` 用户状态持久化：将过期用户淘汰逻辑 `_evict_stale_users()` 移入写锁内，确保淘汰与持久化的原子性，避免并发写入时的竞态条件。
+- `tts/mimo_provider.py` 新增不可重试 HTTP 状态码处理：遇到 400（参数错误）、401（未授权）、403（鉴权失败）时立即终止重试，减少无意义的重试等待。
+- `voice/voice_manager.py` 收窄 `_backup_corrupted_file()` 的异常捕获范围，由 `except Exception` 改为 `except (OSError, shutil.Error)`，避免意外吞掉非文件系统相关异常。
 
 ## 2026-04-28
 

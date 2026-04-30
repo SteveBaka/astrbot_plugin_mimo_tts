@@ -1,5 +1,8 @@
 # astrbot_plugin_mimo_tts
 
+[![AstrBot](https://img.shields.io/badge/AstrBot-v3.4.0+-blue)](https://github.com/AstrBotDevs/AstrBot)
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+
 > **⚠️ 免责声明：本项目初版v1.1.0使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正，后期若更换其他大模型会在下方更新日志中指出。**
 
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
@@ -327,6 +330,10 @@ AstrBot/
   - `/sing` 新增 `-音色名` 参数支持，可临时指定唱歌音色（如 `/sing -冰糖 歌词`）；
   - 新增 `sing_voice` 插件配置项，支持通过下拉选择框配置唱歌模式默认音色；
   - 唱歌音色优先级：命令参数 > 当前用户音色 > 插件配置 `sing_voice`；
+  - `main.py` 中 9 个命令处理器（`/text`、`/sing`、`/voice`、`/ttsswitch`、`/preset`、`/voiceclone`、`/voicegen`、`/ttsconfig`、`/ttsraw`）统一改用 `self._parse_cmd()` 提取参数，减少重复的字符串处理代码；
+  - `main.py` 用户状态持久化：将过期用户淘汰逻辑 `_evict_stale_users()` 移入写锁内，确保淘汰与持久化的原子性，避免并发写入时的竞态条件；
+  - `tts/mimo_provider.py` 新增不可重试 HTTP 状态码处理：遇到 400（参数错误）、401（未授权）、403（鉴权失败）时立即终止重试，减少无意义的重试等待；
+  - `voice/voice_manager.py` 收窄 `_backup_corrupted_file()` 的异常捕获范围，由 `except Exception` 改为 `except (OSError, shutil.Error)`，避免意外吞掉非文件系统相关异常；
   - 使用 mimo-v2.5-pro 生成。
 
 ## 作者的碎碎念
@@ -335,10 +342,13 @@ AstrBot/
 
 若开启笑声模式，部分情况下在使用**voiceclone**模式时，可能会出现长句子出现语句间有杂音的问题。
 
-**/sing**目前还是会有较短句出现效果不合预期的情况，可能需要参考官方文档来输入指令，对输出的唱歌音色进行控制。
+**/sing**目前还是会有较短句出现效果不合预期的情况，可能需要参考`/sing`指令的操作，对输出的唱歌音色进行控制。
 
-> 并且使用*voiceclone*不要学习作者在测试时，上传并使用非官方支持的*中文/English*以外的语言，效果自测（就是很奇怪罢了）。
+4月30日更：唱歌模式我也力竭了，还特地上了兜底机制，让输出音色（至少？）可被控制，最后我还是推荐**中文环境下**指定使用**茉莉**作为唱歌音色，我认为是声调相对最舒服的那一档。
 
+> 笑话1:使用*voiceclone*不要学习作者在测试时，上传并使用非官方支持的*中文/English*以外的语言，效果自测（就是很奇怪罢了）。「被mimo-v2.5-pro重构了一次插件，没想到效果变好了很多，这对吗？」
+
+> 笑话2:为了唱歌模式的优化，已经尝试去官方的TTS交流群上点压力了，可惜只回了个*get*。
 
 
 ## License

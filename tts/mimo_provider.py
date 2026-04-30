@@ -323,6 +323,13 @@ class MiMOProvider:
                             model_name,
                             body[:300],
                         )
+                        # 认证错误和客户端参数错误不重试
+                        if resp.status in (401, 403, 400):
+                            logger.error(
+                                "MiMO TTS: non-retryable HTTP %s, aborting",
+                                resp.status,
+                            )
+                            return None
             except asyncio.CancelledError:
                 raise
             except Exception as e:

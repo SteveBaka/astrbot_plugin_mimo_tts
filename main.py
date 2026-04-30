@@ -236,8 +236,8 @@ class MiMoTTSPlugin(Star):
 
     def _persist_current_state(self) -> None:
         """Persist user state to disk with lock to prevent concurrent writes."""
-        self._evict_stale_users()
         with self._persist_lock:
+            self._evict_stale_users()
             self._save_user_state()
 
     def _touch_user(self, uid: str) -> None:
@@ -1105,8 +1105,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("text")
     async def cmd_text(self, event: AstrMessageEvent):
         """/text [on|off] — 设置当前对话自动 TTS 是否同步发送文字"""
-        raw = event.message_str.strip()
-        arg = raw[len("/text") :].strip().lower()
+        arg = self._parse_cmd(event, "/text").lower()
         _, uset = self._get_event_settings(event)
 
         if not arg:
@@ -1165,8 +1164,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
         """/sing [-音色名] <歌词>"""
-        raw = event.message_str.strip()
-        text = raw[len("/sing") :].strip()
+        text = self._parse_cmd(event, "/sing")
         if not text:
             yield MessageEventResult().message(
                 "用法: /sing <歌词>（单次触发，执行后自动恢复原设置）\n"
@@ -1217,8 +1215,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("voice")
     async def cmd_voice(self, event: AstrMessageEvent):
         """/voice [音色名]"""
-        raw = event.message_str.strip()
-        arg = raw[len("/voice") :].strip()
+        arg = self._parse_cmd(event, "/voice")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1241,8 +1238,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("ttsswitch")
     async def cmd_ttsswitch(self, event: AstrMessageEvent):
         """/ttsswitch [default|design|clone] — 切换 TTS 输出来源模式"""
-        raw = event.message_str.strip()
-        arg = raw[len("/ttsswitch") :].strip()
+        arg = self._parse_cmd(event, "/ttsswitch")
         uid, uset = self._get_event_settings(event)
 
         if not arg:
@@ -1479,8 +1475,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("preset")
     async def cmd_preset(self, event: AstrMessageEvent):
         """/preset [预设名] — 查看/应用预设"""
-        raw = event.message_str.strip()
-        arg = raw[len("/preset") :].strip()
+        arg = self._parse_cmd(event, "/preset")
         uid, _ = self._get_event_settings(event)
 
         if not arg:
@@ -1542,8 +1537,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("voiceclone")
     async def cmd_voiceclone(self, event: AstrMessageEvent):
         """/voiceclone <ID> <音频路径> — 克隆参考音频的声音"""
-        raw = event.message_str.strip()
-        arg = raw[len("/voiceclone") :].strip()
+        arg = self._parse_cmd(event, "/voiceclone")
         if not arg:
             yield MessageEventResult().message(
                 "用法: /voiceclone <ID> <参考音频路径>\n"
@@ -1622,8 +1616,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("voicegen")
     async def cmd_voicegen(self, event: AstrMessageEvent):
         """/voicegen <ID> <描述文本> — 用文字描述生成全新音色"""
-        raw = event.message_str.strip()
-        arg = raw[len("/voicegen") :].strip()
+        arg = self._parse_cmd(event, "/voicegen")
         if not arg:
             yield MessageEventResult().message(
                 "用法: /voicegen <ID> <音色描述>\n"
@@ -1715,8 +1708,7 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("ttsconfig")
     async def cmd_ttsconfig(self, event: AstrMessageEvent):
-        raw = event.message_str.strip()
-        arg = raw[len("/ttsconfig") :].strip()
+        arg = self._parse_cmd(event, "/ttsconfig")
 
         if arg == "reset":
             self._reset_persistent_state()
@@ -1757,8 +1749,7 @@ class MiMoTTSPlugin(Star):
     @filter.command("ttsraw")
     async def cmd_ttsraw(self, event: AstrMessageEvent):
         """/ttsraw <文本> — 不带情感的纯文本合成"""
-        raw = event.message_str.strip()
-        text = raw[len("/ttsraw") :].strip()
+        text = self._parse_cmd(event, "/ttsraw")
         if not text:
             yield MessageEventResult().message("用法: /ttsraw <文本>")
             return

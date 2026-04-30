@@ -52,7 +52,7 @@ class VoiceManager:
         try:
             shutil.move(str(path), str(backup))
             logger.warning("已备份损坏的注册表文件: %s → %s", path, backup)
-        except Exception:
+        except (OSError, shutil.Error):
             logger.warning("损坏的注册表文件备份失败: %s", path, exc_info=True)
 
     def _load_registry(self) -> dict:
