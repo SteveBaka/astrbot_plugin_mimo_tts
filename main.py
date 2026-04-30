@@ -473,11 +473,18 @@ class MiMoTTSPlugin(Star):
         return self.config.design_voice_description.strip()
 
     def _resolve_synthesis_target(
-        self, uid: str
+        self, uid: str, uset: Optional[dict] = None
     ) -> tuple[str, Optional[str], str, Optional[str]]:
-        """根据当前输出模式解析最终音色、模型与克隆参考音频。"""
-        uset = self._get_user_settings(uid)
-        mode = self._resolve_tts_mode(uid)
+        """根据当前输出模式解析最终音色、模型与克隆参考音频。
+
+        Args:
+            uid: 用户标识
+            uset: 可选的用户设置覆盖字典（来自 _do_tts 的本地修改）。
+                  若为 None 则从全局存储读取。
+        """
+        if uset is None:
+            uset = self._get_user_settings(uid)
+        mode = self._normalize_tts_mode(uset.get("tts_mode", "default"))
         current_voice = self._resolve_voice(uset["voice"])
         current_voice_info = self._voice_manager.get_voice(current_voice) or {}
 
@@ -873,10 +880,12 @@ class MiMoTTSPlugin(Star):
                     uset["voice"] = current_voice
         final_text = self._apply_singing_tag(text) if uset["sing"] else text
 
-        self._log_tts_text(uid, self._resolve_tts_mode(uid), uset["sing"], final_text)
+        self._log_tts_text(
+            uid, uset.get("tts_mode", "default"), uset["sing"], final_text
+        )
 
         voice_id, model_override, mode, clone_audio_path = (
-            self._resolve_synthesis_target(uid)
+            self._resolve_synthesis_target(uid, uset=uset)
         )
         if mode == "clone":
             prompt = self._build_clone_prompt(prompt)
@@ -1737,7 +1746,9 @@ class MiMoTTSPlugin(Star):
             f"音色: {uset['voice']}",
             f"输出模式: {self._tts_mode_label(self._resolve_tts_mode(uid))} ({self._resolve_tts_mode(uid)})",
             f"格式: {self._get_effective_audio_format(uid)}",
+            f"唱歌默认音色: {self.config.sing_voice or '(跟随当前音色)'}",
             "",
+            "用 /sing [-音色名] <歌词> 触发唱歌",
             "用 /preset <预设名> 快速切换风格",
             "用 /tts_help 快速查看指令",
         ]
