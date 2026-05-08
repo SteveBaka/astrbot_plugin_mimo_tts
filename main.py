@@ -1146,6 +1146,7 @@ class MiMoTTSPlugin(Star):
             "/text <on|off>  - 设置当前对话是否同步发送文字",
             "/ttsswitch <default|design|clone>  - 切换输出模式",
             "/voice [音色ID]  - 查看/切换音色",
+            "/voiceclone <ID> <路径>  - 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）",
             "/emotion <情感名|auto|off>  - 设置情感",
             "/ttsformat <mp3|wav|ogg>  - 设置当前格式",
         ]
@@ -1539,19 +1540,67 @@ class MiMoTTSPlugin(Star):
         """/voiceclone <ID> <音频路径> — 克隆参考音频的声音"""
         arg = self._parse_cmd(event, "/voiceclone")
         if not arg:
-            yield MessageEventResult().message(
-                "用法: /voiceclone <ID> <参考音频路径>\n"
-                "示例1: /voiceclone my_clone /path/to/sample.wav\n"
-                "示例2: /voiceclone my_clone clone/sample.wav\n"
-                f"说明: 推荐将参考音频放到 AstrBot 数据目录下: {self._data_dir / 'clone'}"
-            )
+            # 列出已注册的克隆音色
+            voices = [
+                v
+                for v in self._voice_manager.list_voices()
+                if v.get("model") == "voiceclone"
+            ]
+            lines = [
+                "用法:",
+                "  /voiceclone <ID> <参考音频路径>  — 注册新克隆音色",
+                "  /voiceclone <音色名>              — 切换到已注册的克隆音色",
+                "  /voiceclone cancel <音色名>       — 取消注册某个克隆音色",
+            ]
+            if voices:
+                lines.append("\n已注册的克隆音色:")
+                for v in voices:
+                    lines.append(f"  {v['voice_id']}")
+            lines.append(f"\n说明: 推荐将参考音频放到 {self._data_dir / 'clone'}")
+            yield MessageEventResult().message("\n".join(lines))
+            return
+
+        # /voiceclone cancel <音色名> — 取消注册
+        if arg.lower().startswith("cancel "):
+            vid = arg[7:].strip()
+            if not vid:
+                yield MessageEventResult().message("用法: /voiceclone cancel <音色名>")
+                return
+            info = self._voice_manager.get_voice(vid)
+            if not info or info.get("model") != "voiceclone":
+                yield MessageEventResult().message(f"[X] 未找到已注册的克隆音色: {vid}")
+                return
+            self._voice_manager.remove_voice(vid)
+            # 如果当前用户音色正是被删除的，自动回退到默认音色
+            uid, _ = self._get_event_settings(event)
+            us = self._get_user_settings(uid)
+            if us.get("voice") == vid:
+                us["voice"] = self.config.default_voice or "mimo_default"
+                self._persist_current_state()
+                yield MessageEventResult().message(
+                    f"[✓] 已取消注册克隆音色: {vid}\n"
+                    f"  当前音色已自动回退为: {us['voice']}"
+                )
+            else:
+                yield MessageEventResult().message(f"[✓] 已取消注册克隆音色: {vid}")
             return
 
         parts = arg.split(maxsplit=1)
-        if len(parts) < 2:
+        # /voiceclone <音色名> — 切换到已注册的克隆音色（仅一个参数，且不是 cancel）
+        if len(parts) == 1:
+            vid = parts[0]
+            info = self._voice_manager.get_voice(vid)
+            if not info or info.get("model") != "voiceclone":
+                yield MessageEventResult().message(
+                    f"[X] 未找到已注册的克隆音色: {vid}\n"
+                    "请先使用 /voiceclone <ID> <参考音频路径> 注册"
+                )
+                return
+            uid, _ = self._get_event_settings(event)
+            self._get_user_settings(uid)["voice"] = vid
+            self._persist_current_state()
             yield MessageEventResult().message(
-                "用法: /voiceclone <ID> <参考音频路径>\n"
-                "例如: /voiceclone my_clone clone/sample.wav"
+                f"[✓] 已切换当前音色为: {vid}\n  可用 /ttsswitch clone 切到克隆输出模式"
             )
             return
 
@@ -1660,24 +1709,6 @@ class MiMoTTSPlugin(Star):
             yield MessageEventResult().message(
                 f"[X] 设计音色登记失败：{provider.last_error or '请查看日志。'}"
             )
-
-    @filter.command("voiceclonelist")
-    async def cmd_voiceclonelist(self, event: AstrMessageEvent):
-        voices = self._voice_manager.list_voices()
-        if not voices:
-            yield MessageEventResult().message("暂无已注册的自定义音色。")
-            return
-        lines = ["已注册的自定义音色:", ""]
-        for v in voices:
-            extra = ""
-            if v.get("model") == "voiceclone" and v.get("audio_path"):
-                extra = f"  -> {v.get('audio_path')}"
-            elif v.get("model") == "voicedesign" and v.get("description"):
-                extra = f"  -> {v.get('description')}"
-            lines.append(
-                f"  {v['voice_id']:20s}  {v.get('name', '')}  [{v.get('model', '')}]{extra}"
-            )
-        yield MessageEventResult().message("\n".join(lines))
 
     @filter.command("ttsformat")
     async def cmd_ttsformat(self, event: AstrMessageEvent):

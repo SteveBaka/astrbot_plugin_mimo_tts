@@ -143,9 +143,9 @@
 /voice [音色ID]           # 查看/切换音色
 /voices                    # 列出所有内置音色
 /ttsswitch <模式>          # 切换 default / design / clone 输出模式
-/voiceclone <ID> <路径>    # 声音克隆
+/voiceclone <ID> <路径>    # 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）
+/voiceclone（无参数）       # 列出所有已注册的克隆音色
 /voicegen <ID> <描述>      # 声音设计
-/voiceclonelist            # 查看已注册自定义音色
 ```
 
 #### 声音设计（VoiceDesign）
@@ -176,6 +176,10 @@
   - `clone_style_prompt`：自然语言风格控制
   - `clone_audio_tags`：音频标签控制
 - 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
+- `/voiceclone` 还支持以下子命令：
+  - `/voiceclone <音色名>`：快速切换到已注册的克隆音色（无需重新指定音频路径）。
+  - `/voiceclone cancel <音色名>`：取消注册某个克隆音色；若当前用户正在使用该音色，会自动回退为默认音色。
+  - `/voiceclone`（无参数）：列出当前所有已注册的克隆音色。
 
 ##### VoiceClone 快速示例
 
