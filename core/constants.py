@@ -14,7 +14,7 @@ TEMP_DIR = PLUGIN_DIR / "temp"
 AUDIO_SAMPLES_DIR = PLUGIN_DIR / "audio_samples"
 
 # API defaults
-DEFAULT_API_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+DEFAULT_API_BASE_URL = "https://api.xiaomimimo.com/v1"
 DEFAULT_MODEL = "mimo-v2.5-tts"
 DEFAULT_VOICE = "mimo_default"
 DEFAULT_TIMEOUT = 60
