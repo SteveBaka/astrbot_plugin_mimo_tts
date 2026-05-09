@@ -39,12 +39,12 @@ class ConfigManager:
         "laughter_enabled": False,
         "pause_enabled": False,
         # Voice clone / design
-        "clone_enabled": False,
+        "clone_enabled": True,
         "clone_model": "mimo-v2.5-tts-voiceclone",
         "clone_voice_id": "",
         "clone_style_prompt": "",
         "clone_audio_tags": "",
-        "design_enabled": False,
+        "design_enabled": True,
         "design_model": "mimo-v2.5-tts-voicedesign",
         "tts_output_mode": "default",
         "design_voice_description": "",
@@ -164,7 +164,7 @@ class ConfigManager:
 
     @property
     def clone_enabled(self) -> bool:
-        return bool(self._cfg.get("clone_enabled", False))
+        return bool(self._cfg.get("clone_enabled", True))
 
     @property
     def clone_model(self) -> str:
@@ -184,7 +184,7 @@ class ConfigManager:
 
     @property
     def design_enabled(self) -> bool:
-        return bool(self._cfg.get("design_enabled", False))
+        return bool(self._cfg.get("design_enabled", True))
 
     @property
     def design_model(self) -> str:

@@ -120,7 +120,8 @@
     "type": "bool",
     "description": "🔊 启用声音克隆",
     "hint": "通过参考音频克隆特定声音",
-    "default": false
+    "default": true,
+    "hidden": true
   },
   "clone_model": {
     "type": "string",
@@ -150,7 +151,8 @@
     "type": "bool",
     "description": "🔊 启用声音设计",
     "hint": "通过文字描述自动生成全新音色",
-    "default": false
+    "default": true,
+    "hidden": true
   },
   "design_model": {
     "type": "string",

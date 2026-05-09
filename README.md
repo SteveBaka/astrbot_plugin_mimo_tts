@@ -350,9 +350,18 @@ AstrBot/
 
 4月30日更：唱歌模式我也力竭了，还特地上了兜底机制，让输出音色（至少？）可被控制，最后我还是推荐**中文环境下**指定使用**茉莉**作为唱歌音色，我认为是声调相对最舒服的那一档。
 
+试着制作了一个*webUI*，可以看看[voice_studio_webUI](https://github.com/SteveBaka/voice_studio_webUI)，后续视情况考虑并入这个插件，当前已是可以单独使用的状态（
+
 > 笑话1:使用*voiceclone*不要学习作者在测试时，上传并使用非官方支持的*中文/English*以外的语言，效果自测（就是很奇怪罢了）。「被mimo-v2.5-pro重构了一次插件，没想到效果变好了很多，这对吗？」
 
-> 笑话2:为了唱歌模式的优化，已经尝试去官方的TTS交流群上点压力了，可惜只回了个*get*。
+
+## 致谢
+
+本项目离不开以下服务平台的支持，在此表示由衷的感谢。
+
+- **[Xiaomi MiMo](https://platform.xiaomimimo.com/)** — MiMO-V2.5-TTS 模型提供方，本项目的 TTS 核心能力基于该模型实现
+- **[AstrBot](https://github.com/Soulter/AstrBot)** — 多平台智能对话机器人框架，本项目的核心模块源自 AstrBot 插件生态
+- **[astrbot_plugin_tts_emotion_router](https://github.com/muyouzhi6/astrbot_plugin_tts_emotion_router)** — 来自 [muyouzhi6](https://github.com/muyouzhi6) 大佬开发的 AstrBot TTS 情绪路由插件，本项目的初步实现方式参考自这个插件
 
 
 ## License
