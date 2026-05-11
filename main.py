@@ -42,6 +42,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import yaml
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
 from astrbot.api.star import Context, Star, StarTools
@@ -60,6 +61,21 @@ from .core.constants import (
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
 from .voice.voice_manager import VoiceManager
+
+
+def _read_plugin_version() -> str:
+    """Read version from metadata.yaml to avoid hardcoding."""
+    try:
+        meta_path = Path(__file__).parent / "metadata.yaml"
+        if meta_path.exists():
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = yaml.safe_load(f) or {}
+            v = str(meta.get("version", "")).strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    return "unknown"
 
 
 class MiMoTTSPlugin(Star):
@@ -1800,7 +1816,7 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
         """/ttsinfo — 查看插件信息"""
         lines = [
-            "astrbot_plugin_mimo_tts v1.2.3",
+            f"astrbot_plugin_mimo_tts v{_read_plugin_version()}",
             "",
             "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
             "",

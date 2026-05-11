@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-05-11
+
+### 修改
+
+- `tts/mimo_provider.py`：TTS 请求头调整为同时发送 `api-key` 与 `Authorization: Bearer <API_KEY>`，增强对 MiMO 原生平台及兼容代理的鉴权兼容性，同时保留原有 `api-key` 行为不变。
+- `main.py`：插件版本展示改为从 `metadata.yaml` 动态读取，避免代码中的版本号与插件元数据不一致。
+- `requirements.txt`：补充 `pyyaml>=6.0` 依赖，用于读取 `metadata.yaml`。
+
 ## 2026-05-08
 
 ### 新增

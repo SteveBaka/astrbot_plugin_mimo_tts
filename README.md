@@ -39,6 +39,8 @@
 
 ## 配置
 
+> 补充说明：当前版本在鉴权上同时兼容 `api-key` 与 `Authorization: Bearer <API_KEY>` 两种请求头写法，以适配 MiMO 原生平台和部分 OpenAI / NewAPI 兼容代理；原有 `api-key` 方式仍然保留。另 `/ttsinfo` 中显示的插件版本已改为直接读取 `metadata.yaml`，避免文档版本与实际版本不一致。
+
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `api_key` | MiMO API Key（必填） | - |

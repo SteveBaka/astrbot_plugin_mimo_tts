@@ -24,8 +24,10 @@ class MiMOProvider:
     """Async client for MiMO-V2.5-TTS API.
 
     Follows official docs: https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5
+    Auth strategy (dual headers for maximum compatibility):
+      - api-key: <key>        — MiMO 原生平台认证
+      - Authorization: Bearer — NewAPI / OpenAI 兼容代理认证
     Key differences from OpenAI format:
-      - Auth header: api-key: <key>  (NOT Authorization: Bearer)
       - Text content goes in assistant role, control prompt in user role
       - Response: choices[0].message.audio.data (base64)
     """
@@ -199,7 +201,7 @@ class MiMOProvider:
         """Synthesize text to audio bytes.
 
         Follows official MiMO-V2.5-TTS API spec:
-          - Auth: api-key header (NOT Authorization: Bearer)
+          - Auth: dual headers (api-key + Authorization: Bearer)
           - Text to speak goes in assistant role
           - Control instructions go in user role
 
@@ -222,10 +224,13 @@ class MiMOProvider:
         fmt = audio_format or self._audio_format
         url = self._build_chat_completions_url()
 
-        # Official MiMO auth header format
+        # Dual auth headers:
+        #   - api-key: MiMO 原生平台认证
+        #   - Authorization: Bearer: NewAPI / OpenAI 兼容代理认证
         headers = {
             "Content-Type": "application/json",
             "api-key": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
         }
 
         # MiMO message format:
