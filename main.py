@@ -144,9 +144,9 @@ class MiMoTTSPlugin(Star):
             base_url=api_base_url,
             model=self.config.get("model", "mimo-v2.5-tts"),
             voice=self.config.get("default_voice", "mimo_default"),
-            audio_format=self.config.get("audio_format", "mp3"),
+            audio_format=self.config.get("audio_format", "wav"),
             timeout=self.config.get("timeout", 60),
-            max_retries=self.config.get("max_retries", 3),
+            max_retries=self.config.get("max_retries"),
         )
         return self._provider
 
@@ -402,9 +402,9 @@ class MiMoTTSPlugin(Star):
         if not text or not text.strip():
             return True
         t = text.strip()
-        if len(t) < self.config.get("min_text_length", 1):
+        if len(t) < self.config.get("min_text_length"):
             return True
-        if len(t) > self.config.get("max_text_length", 5000):
+        if len(t) > self.config.get("max_text_length"):
             return True
         for pat in SKIP_PATTERNS:
             if re.search(pat, t):

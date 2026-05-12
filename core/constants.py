@@ -1,35 +1,6 @@
 # -*- coding: utf-8 -*-
 """astrbot_plugin_mimo_tts - Constants."""
 
-from pathlib import Path
-
-# Plugin metadata
-PLUGIN_ID = "astrbot_plugin_mimo_tts"
-PLUGIN_NAME = "MiMO TTS"
-
-# Paths
-PLUGIN_DIR = Path(__file__).parent.parent
-CONFIG_FILE = PLUGIN_DIR / "config.json"
-TEMP_DIR = PLUGIN_DIR / "temp"
-AUDIO_SAMPLES_DIR = PLUGIN_DIR / "audio_samples"
-
-# API defaults
-DEFAULT_API_BASE_URL = "https://api.xiaomimimo.com/v1"
-DEFAULT_MODEL = "mimo-v2.5-tts"
-DEFAULT_VOICE = "mimo_default"
-DEFAULT_TIMEOUT = 60
-DEFAULT_MAX_RETRIES = 3
-
-# Controls defaults
-DEFAULT_SPEED = 1.0
-DEFAULT_PITCH = 0
-DEFAULT_PROBABILITY = 1.0
-
-# Output defaults
-DEFAULT_AUDIO_FORMAT = "mp3"
-DEFAULT_MIN_TEXT_LENGTH = 1
-DEFAULT_MAX_TEXT_LENGTH = 5000
-
 # Audio constants
 AUDIO_CLEANUP_TTL_SECONDS: int = 2 * 3600
 AUDIO_MIN_VALID_SIZE: int = 100

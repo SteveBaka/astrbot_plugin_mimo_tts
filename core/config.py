@@ -55,7 +55,7 @@ class ConfigManager:
         "preset_storyteller": "温和的讲述者声音，抑扬顿挫",
         "preset_news_anchor": "标准普通话，字正腔圆，专业权威",
         # Output
-        "audio_format": "mp3",
+        "audio_format": "wav",
         "min_text_length": 5,
         "max_text_length": 500,
         "timeout": 60,
@@ -219,7 +219,7 @@ class ConfigManager:
 
     @property
     def audio_format(self) -> str:
-        return str(self._cfg.get("audio_format", "mp3"))
+        return str(self._cfg.get("audio_format", "wav"))
 
     @property
     def timeout(self) -> int:

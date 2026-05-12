@@ -38,7 +38,7 @@ class MiMOProvider:
         base_url: str = "",
         model: str = "mimo-v2.5-tts",
         voice: str = "mimo_default",
-        audio_format: str = "mp3",
+        audio_format: str = "wav",
         timeout: int = 60,
         max_retries: int = 2,
     ):
