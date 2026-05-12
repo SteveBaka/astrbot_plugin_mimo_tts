@@ -22,6 +22,35 @@ from .core.constants import (
     SKIP_PATTERNS,
     SUPPORTED_AUDIO_FORMATS,
 )
+from .handlers.control import (
+    handle_text,
+    handle_tts_help,
+    handle_tts_off,
+    handle_tts_on,
+    handle_tts_restore,
+)
+from .handlers.params import (
+    handle_breath,
+    handle_dialect,
+    handle_emotion,
+    handle_emotions,
+    handle_laughter,
+    handle_pause,
+    handle_pitch,
+    handle_speed,
+    handle_stress,
+    handle_volume,
+)
+from .handlers.preset import handle_preset, handle_presetlist
+from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
+from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
+from .handlers.voice import (
+    handle_ttsswitch,
+    handle_voice,
+    handle_voiceclone,
+    handle_voicegen,
+    handle_voices,
+)
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
 from .voice.voice_manager import VoiceManager
@@ -957,8 +986,6 @@ class MiMoTTSPlugin(Star):
             result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
 
     # ── Command Handlers (delegated to handlers/) ──
-    # TTS synthesis
-    from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
 
     @filter.command("mimo_say")
     async def cmd_mimo_say(self, event: AstrMessageEvent):
@@ -974,15 +1001,6 @@ class MiMoTTSPlugin(Star):
     async def cmd_ttsraw(self, event: AstrMessageEvent):
         async for item in handle_ttsraw(self, event):
             yield item
-
-    # TTS control
-    from .handlers.control import (
-        handle_text,
-        handle_tts_help,
-        handle_tts_off,
-        handle_tts_on,
-        handle_tts_restore,
-    )
 
     @filter.command("tts_off")
     async def cmd_tts_off(self, event: AstrMessageEvent):
@@ -1008,20 +1026,6 @@ class MiMoTTSPlugin(Star):
     async def cmd_tts_restore(self, event: AstrMessageEvent):
         async for item in handle_tts_restore(self, event):
             yield item
-
-    # TTS parameters
-    from .handlers.params import (
-        handle_breath,
-        handle_dialect,
-        handle_emotion,
-        handle_emotions,
-        handle_laughter,
-        handle_pause,
-        handle_pitch,
-        handle_speed,
-        handle_stress,
-        handle_volume,
-    )
 
     @filter.command("emotion")
     async def cmd_emotion(self, event: AstrMessageEvent):
@@ -1073,9 +1077,6 @@ class MiMoTTSPlugin(Star):
         async for item in handle_pause(self, event):
             yield item
 
-    # Presets
-    from .handlers.preset import handle_preset, handle_presetlist
-
     @filter.command("preset")
     async def cmd_preset(self, event: AstrMessageEvent):
         async for item in handle_preset(self, event):
@@ -1085,15 +1086,6 @@ class MiMoTTSPlugin(Star):
     async def cmd_presetlist(self, event: AstrMessageEvent):
         async for item in handle_presetlist(self, event):
             yield item
-
-    # Voice management
-    from .handlers.voice import (
-        handle_ttsswitch,
-        handle_voice,
-        handle_voiceclone,
-        handle_voicegen,
-        handle_voices,
-    )
 
     @filter.command("voice")
     async def cmd_voice(self, event: AstrMessageEvent):
@@ -1119,9 +1111,6 @@ class MiMoTTSPlugin(Star):
     async def cmd_voicegen(self, event: AstrMessageEvent):
         async for item in handle_voicegen(self, event):
             yield item
-
-    # Settings / Info
-    from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
 
     @filter.command("ttsformat")
     async def cmd_ttsformat(self, event: AstrMessageEvent):
