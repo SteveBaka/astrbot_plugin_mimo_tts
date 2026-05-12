@@ -1,36 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-astrbot_plugin_mimo_tts — MiMO TTS Plugin for AstrBot - Enhanced Edition
-
-基于 MiMO-V2.5-TTS 的精细化语音合成插件。
-自动拦截 LLM 输出生成语音，支持 20 种情感、语速、音高、呼吸声、
-重音、唱歌、方言、音量、笑声、停顿、预设系统等精细化控制。
-
-使用方式：
-  - 自动拦截：AI 说话时自动转语音
-  - /mimo_say <文本> [选项]：即时语音合成
-  - /sing <歌词>：单次唱歌合成
-  - /tts_<on/off>：开启或关闭当前对话自动 TTS
-  - /text <on/off>：设置当前对话是否同步发送文字
-  - /tts_help：快速查看常用指令
-  - /tts_restore：将当前会话配置恢复为插件默认设置
-  - /ttsswitch <default|design|clone>：切换输出模式
-  - /voice [音色名]：查看或切换音色
-  - /emotion <情感名|auto|off>：设置情感
-  - /speed <0.5~2.0>：设置语速
-  - /pitch <-12~+12>：设置音高
-  - /breath <on/off>：呼吸声开关
-  - /stress <on/off>：重音模式开关
-  - /dialect <方言名|off>：设置方言口音
-  - /volume <轻声|正常|大声|off>：设置音量
-  - /laughter <on/off>：笑声开关
-  - /pause <on/off>：停顿开关
-  - /preset [预设名]：查看或应用预设
-  - /presetlist：列出所有预设
-  - /emotions：列出所有情感
-  - /voices：列出所有音色
-  - /ttsformat <mp3|wav|ogg>：设置音频格式
-"""
 
 from __future__ import annotations
 
@@ -44,19 +12,15 @@ from typing import Any, Optional
 
 import yaml
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.message.components import Plain, Record
 
 from .core.config import ConfigManager
 from .core.constants import (
-    AUDIO_MIN_VALID_SIZE,
-    AUDIO_VALID_EXTENSIONS,
     MIMO_VOICE_LIST,
     SKIP_PATTERNS,
     SUPPORTED_AUDIO_FORMATS,
-    SUPPORTED_EMOTIONS,
-    TTS_PRESETS,
 )
 from .tts.mimo_provider import MiMOProvider
 from .tts.prompt_builder import build_system_prompt, detect_emotion
@@ -594,14 +558,7 @@ class MiMoTTSPlugin(Star):
     _CLEANUP_MAX_TOTAL_BYTES = 500 * 1024 * 1024
 
     def _cleanup_recent_files(self) -> None:
-        """清理无效的临时音频文件并控制总磁盘占用。
-
-        临时文件的生命周期由 AstrBot Star 框架管理（卸载时自动清理），
-        此处仅负责：
-        1. 剔除已不存在或体积异常（< 100 字节，通常为损坏/空文件）的记录。
-        2. 若存活文件总大小超过 500 MB，按"最旧优先"逐个删除，
-           直到总占用降至限制以下，防止磁盘空间泄漏。
-        """
+        """Clean up stale temp audio files and enforce 500 MB disk limit."""
         kept: list[tuple[float, Path]] = []
         for t, p in self._recent_files:
             try:
@@ -651,17 +608,7 @@ class MiMoTTSPlugin(Star):
         return self.config.get("default_voice", "mimo_default")
 
     def _resolve_clone_audio_path(self, raw_path: str) -> Path:
-        """解析 /voiceclone 使用的参考音频路径（带路径穿越防护）。
-
-        支持：
-        1. 相对 AstrBot data/plugin_data/<plugin_name>/clone 的路径（推荐）
-        2. 相对插件根目录 clone/ 的路径（兼容旧行为）
-        3. 相对当前工作目录的路径
-        4. 绝对路径（限制在允许的目录范围内）
-
-        安全策略：解析后的路径必须位于 ``_ALLOWED_CLONE_ROOTS`` 允许的目录树内，
-        否则抛出 PermissionError，防止通过 ../../ 访问或窃取任意文件。
-        """
+        """Resolve reference audio path for /voiceclone with path traversal protection."""
         text = str(raw_path or "").strip().strip('"').strip("'")
         if not text:
             return Path(text)
@@ -715,7 +662,7 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _apply_singing_tag(text: str) -> str:
-        """为唱歌模式补齐官方建议的起始 tag。"""
+        """Prepend official singing tag if not already present."""
         stripped = text.lstrip()
         if not stripped:
             return text
@@ -1009,831 +956,187 @@ class MiMoTTSPlugin(Star):
         except Exception as e:
             result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
 
-    async def _handle_say_command(self, event: AstrMessageEvent, command_name: str):
-        """
-        /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
-                        [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
-        """
-        raw = str(event.message_str or "").strip()
-        first, sep, remainder = raw.partition(" ")
-        normalized_first = first.lstrip("/").split("@", 1)[0].strip().lower()
-        if normalized_first == command_name.lower():
-            text = remainder.strip()
-        else:
-            text = re.sub(
-                rf"^/?{re.escape(command_name)}(?:@[^\s]+)?\s*",
-                "",
-                raw,
-                count=1,
-                flags=re.IGNORECASE,
-            ).strip()
-        if not text:
-            yield MessageEventResult().message(
-                "用法: /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色] [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]"
-            )
-            return
-
-        uid, uset = self._get_event_settings(event)
-
-        # Parse inline options
-        text, emo = self._parse_opt(text, "-emotion")
-        text, spd = self._parse_opt(text, "-speed")
-        text, ptc = self._parse_opt(text, "-pitch")
-        text, voi = self._parse_opt(text, "-voice")
-        text, brt = self._parse_opt(text, "-breath")
-        text, sts = self._parse_opt(text, "-stress")
-        text, dia = self._parse_opt(text, "-dialect")
-        text, vol = self._parse_opt(text, "-volume")
-        text = text.strip()
-
-        if not text:
-            yield MessageEventResult().message("文本内容不能为空。")
-            return
-
-        # 并发安全：构建 settings_override 而非修改全局 uset
-        overrides: dict = {}
-        emo_override: Optional[str] = None
-        if emo:
-            if emo == "auto":
-                detected = detect_emotion(text)
-                emo_override = detected or None
-            elif emo == "off":
-                overrides["emotion"] = ""
-            else:
-                overrides["emotion"] = emo
-        if spd:
-            overrides["speed"] = max(0.5, min(2.0, float(spd)))
-        if ptc:
-            overrides["pitch"] = max(-12, min(12, int(ptc)))
-        if voi:
-            overrides["voice"] = self._resolve_voice(voi)
-        if brt:
-            overrides["breath"] = brt == "on"
-        if sts:
-            overrides["stress"] = sts == "on"
-        if dia:
-            overrides["dialect"] = "" if dia == "off" else dia
-        if vol:
-            overrides["volume"] = "" if vol == "off" else vol
-
-        try:
-            audio_path = await self._do_tts(
-                text,
-                uid,
-                emotion_override=emo_override,
-                settings_override=overrides or None,
-            )
-            if audio_path:
-                r = MessageEventResult()
-                r.chain.append(Record.fromFileSystem(str(audio_path)))
-                yield r
-            else:
-                yield MessageEventResult().message("TTS 合成失败。")
-        except Exception as e:
-            yield MessageEventResult().message(f"! {e}")
+    # ── Command Handlers (delegated to handlers/) ──
+    # TTS synthesis
+    from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
 
     @filter.command("mimo_say")
     async def cmd_mimo_say(self, event: AstrMessageEvent):
-        async for item in self._handle_say_command(event, "mimo_say"):
+        async for item in handle_mimo_say(self, event):
             yield item
-
-    @filter.command("tts_off")
-    async def cmd_tts_off(self, event: AstrMessageEvent):
-        """/tts_off — 关闭当前对话自动 TTS"""
-        _, uset = self._get_event_settings(event)
-        uset["tts_enabled"] = False
-        self._persist_current_state()
-        yield MessageEventResult().message(
-            "[✓] 已关闭当前对话的自动 TTS。\n如需重新开启，可使用 /tts_on"
-        )
-
-    @filter.command("tts_on")
-    async def cmd_tts_on(self, event: AstrMessageEvent):
-        """/tts_on — 开启当前对话自动 TTS"""
-        _, uset = self._get_event_settings(event)
-        uset["tts_enabled"] = True
-        self._persist_current_state()
-        yield MessageEventResult().message(
-            "[✓] 已开启当前对话的自动 TTS。\n"
-            "仅恢复当前对话的自动朗读，不会修改插件配置面板中的全局自动 TTS 开关。"
-        )
-
-    @filter.command("text")
-    async def cmd_text(self, event: AstrMessageEvent):
-        """/text [on|off] — 设置当前对话自动 TTS 是否同步发送文字"""
-        arg = self._parse_cmd(event, "/text").lower()
-        _, uset = self._get_event_settings(event)
-
-        if not arg:
-            current = uset.get("text_enabled", None)
-            current_state = (
-                self.config.send_text_with_tts if current is None else bool(current)
-            )
-            source = "当前对话" if current is not None else "插件全局默认"
-            yield MessageEventResult().message(
-                f"当前对话文字同步: {'开' if current_state else '关'}\n"
-                f"当前生效来源: {source}\n"
-                "用法: /text <on|off>"
-            )
-            return
-
-        if arg not in ("on", "off"):
-            yield MessageEventResult().message("用法: /text <on|off>")
-            return
-
-        uset["text_enabled"] = arg == "on"
-        self._persist_current_state()
-        yield MessageEventResult().message(
-            f"[✓] 已将当前对话的文字同步设置为: {'开' if uset['text_enabled'] else '关'}\n"
-            "仅影响当前聊天的自动 TTS，不会修改插件配置面板中的 send_text_with_tts。"
-        )
-
-    @filter.command("tts_help")
-    async def cmd_tts_help(self, event: AstrMessageEvent):
-        """/tts_help — 快速查看常用 TTS 指令"""
-        lines = [
-            "MiMO TTS 常用指令:",
-            "",
-            "/mimo_say <文本>  - 即时合成语音",
-            "/sing [-音色名] <歌词>  - 单次唱歌合成（可选指定音色）",
-            "/ttsconfig  - 查看当前会话配置",
-            "/tts_restore  - 将当前会话配置恢复为插件默认设置",
-            "/tts_<on/off>  - 开启或关闭当前对话自动 TTS",
-            "/text <on|off>  - 设置当前对话是否同步发送文字",
-            "/ttsswitch <default|design|clone>  - 切换输出模式",
-            "/voice [音色ID]  - 查看/切换音色",
-            "/voiceclone <ID> <路径>  - 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）",
-            "/emotion <情感名|auto|off>  - 设置情感",
-            "/ttsformat <mp3|wav|ogg>  - 设置当前格式",
-        ]
-        yield MessageEventResult().message("\n".join(lines))
-
-    @filter.command("tts_restore")
-    async def cmd_tts_restore(self, event: AstrMessageEvent):
-        """/tts_restore — 恢复当前会话配置为插件默认值"""
-        uid, _ = self._get_event_settings(event)
-        self._restore_user_state(uid)
-        yield MessageEventResult().message(
-            "[✓] 已将当前对话的 TTS 配置恢复为插件默认设置。\n"
-            "可使用 /ttsconfig 查看当前生效结果，或用 /tts_help 快速查看常用指令。"
-        )
 
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
-        """/sing [-音色名] <歌词>"""
-        text = self._parse_cmd(event, "/sing")
-        if not text:
-            yield MessageEventResult().message(
-                "用法: /sing <歌词>（单次触发，执行后自动恢复原设置）\n"
-                "     /sing -冰糖 <歌词> — 使用冰糖音色唱歌"
-            )
-            return
-
-        uid, _ = self._get_event_settings(event)
-
-        # 并发安全：构建 settings_override 而非修改全局 uset
-        overrides: dict = {"sing": True}
-        sing_voice = ""
-
-        # 支持 -音色名 格式：/sing -冰糖 歌词
-        if text.startswith("-") and len(text) > 1:
-            parts = text[1:].split(maxsplit=1)
-            candidate = parts[0].strip() if parts else ""
-            if candidate:
-                sing_voice = candidate
-                text = parts[1].strip() if len(parts) > 1 else ""
-                logger.debug(
-                    "[MimoTTSPlugin] uid=%s cmd_sing sing_voice_override=%s",
-                    uid,
-                    candidate,
-                )
-
-        if not text:
-            yield MessageEventResult().message(
-                "用法: /sing <歌词>（单次触发，执行后自动恢复原设置）\n"
-                "     /sing -冰糖 <歌词> — 使用冰糖音色唱歌"
-            )
-            return
-
-        if sing_voice:
-            overrides["sing_voice_override"] = sing_voice
-
-        try:
-            audio_path = await self._do_tts(text, uid, settings_override=overrides)
-            if audio_path:
-                r = MessageEventResult()
-                r.chain.append(Record.fromFileSystem(str(audio_path)))
-                yield r
-            else:
-                yield MessageEventResult().message("唱歌合成失败。")
-        except Exception as e:
-            yield MessageEventResult().message(f"! {e}")
-
-    @filter.command("voice")
-    async def cmd_voice(self, event: AstrMessageEvent):
-        """/voice [音色名]"""
-        arg = self._parse_cmd(event, "/voice")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            lines = [f"当前音色: {uset['voice']}", "", "内置音色:"]
-            for v in MIMO_VOICE_LIST:
-                lines.append(
-                    f"  {v['id']:10s} {v['name']}  ({v['gender']}声 {v['style']})"
-                )
-            lines.append("")
-            lines.append("用法: /voice <音色ID>")
-            yield MessageEventResult().message("\n".join(lines))
-            return
-
-        resolved = self._resolve_voice(arg)
-        self._get_user_settings(uid)["voice"] = resolved
-        self._persist_current_state()
-        yield MessageEventResult().message(f"[✓] 音色已切换为: {resolved}")
-
-    @filter.command("ttsswitch")
-    async def cmd_ttsswitch(self, event: AstrMessageEvent):
-        """/ttsswitch [default|design|clone] — 切换 TTS 输出来源模式"""
-        arg = self._parse_cmd(event, "/ttsswitch")
-        uid, uset = self._get_event_settings(event)
-
-        if not arg:
-            mode = self._resolve_tts_mode(uid)
-            lines = [
-                f"当前输出模式: {self._tts_mode_label(mode)} ({mode})",
-                f"配置默认模式: {self._tts_mode_label(self._normalize_tts_mode(self.config.tts_output_mode))}",
-                f"默认音色: {self.config.default_voice}",
-                f"设计音色ID: {self.config.design_voice_id or '(未配置)'}",
-                f"克隆音色ID: {self.config.clone_voice_id or '(未配置)'}",
-                "",
-                "用法: /ttsswitch <default|design|clone>",
-                "也支持中文: /ttsswitch 默认 /设计 /克隆",
-            ]
-            yield MessageEventResult().message("\n".join(lines))
-            return
-
-        mode = self._normalize_tts_mode(arg)
-        uset["tts_mode"] = mode
-        self._persist_current_state()
-        yield MessageEventResult().message(
-            f"[✓] TTS 输出模式已切换为: {self._tts_mode_label(mode)} ({mode})"
-        )
-
-    @filter.command("emotion")
-    async def cmd_emotion(self, event: AstrMessageEvent):
-        """/emotion [情感名|auto|off]"""
-        arg = self._parse_cmd(event, "/emotion")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            cur = uset["emotion"] or "(自动检测)"
-            lines = [f"当前情感: {cur}", "", "支持的情感:"]
-            for emo in SUPPORTED_EMOTIONS:
-                lines.append(f"  {emo}")
-            lines.append("")
-            lines.append("用法: /emotion <情感名|auto|off>")
-            yield MessageEventResult().message("\n".join(lines))
-            return
-
-        if arg == "off":
-            self._get_user_settings(uid)["emotion"] = ""
-            self._persist_current_state()
-            yield MessageEventResult().message("[✓] 已关闭情感覆盖（自动检测）")
-        elif arg == "auto":
-            self._get_user_settings(uid)["emotion"] = "auto"
-            self._persist_current_state()
-            yield MessageEventResult().message("[✓] 已开启情感自动检测")
-        elif arg in SUPPORTED_EMOTIONS:
-            self._get_user_settings(uid)["emotion"] = arg
-            self._persist_current_state()
-            yield MessageEventResult().message(f"[✓] 情感已设置为: {arg}")
-        else:
-            yield MessageEventResult().message(
-                f"[X] 不支持的情感: {arg}\n可用: {', '.join(SUPPORTED_EMOTIONS)}"
-            )
-
-    @filter.command("emotions")
-    async def cmd_emotions(self, event: AstrMessageEvent):
-        """List all supported emotions."""
-        lines = ["支持的情感列表:", ""]
-        for emo in SUPPORTED_EMOTIONS:
-            lines.append(f"  • {emo}")
-        lines.append(f"\n共 {len(SUPPORTED_EMOTIONS)} 种")
-        yield MessageEventResult().message("\n".join(lines))
-
-    @filter.command("speed")
-    async def cmd_speed(self, event: AstrMessageEvent):
-        """/speed [0.5~2.0]"""
-        arg = self._parse_cmd(event, "/speed")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            yield MessageEventResult().message(
-                f"当前语速: {uset['speed']}\n用法: /speed <0.5~2.0>"
-            )
-            return
-
-        try:
-            val = max(0.5, min(2.0, float(arg)))
-            self._get_user_settings(uid)["speed"] = val
-            self._persist_current_state()
-            yield MessageEventResult().message(f"[✓] 语速已设置为: {val}")
-        except ValueError:
-            yield MessageEventResult().message("[X] 请输入 0.5~2.0 之间的数值。")
-
-    @filter.command("pitch")
-    async def cmd_pitch(self, event: AstrMessageEvent):
-        """/pitch [-12~+12]"""
-        arg = self._parse_cmd(event, "/pitch")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            yield MessageEventResult().message(
-                f"当前音高: {uset['pitch']}\n用法: /pitch <-12~+12>"
-            )
-            return
-
-        try:
-            val = max(-12, min(12, int(arg)))
-            self._get_user_settings(uid)["pitch"] = val
-            self._persist_current_state()
-            yield MessageEventResult().message(f"[✓] 音高已设置为: {val}")
-        except ValueError:
-            yield MessageEventResult().message("[X] 请输入 -12~+12 之间的整数。")
-
-    @filter.command("breath")
-    async def cmd_breath(self, event: AstrMessageEvent):
-        """/breath [on|off]"""
-        arg = self._parse_cmd(event, "/breath")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            state = "开" if uset["breath"] else "关"
-            yield MessageEventResult().message(
-                f"呼吸声: {state}\n用法: /breath <on|off>"
-            )
-            return
-
-        val = arg.lower() in ("on", "true", "1", "开")
-        self._get_user_settings(uid)["breath"] = val
-        self._persist_current_state()
-        yield MessageEventResult().message(f"[✓] 呼吸声已{'开启' if val else '关闭'}")
-
-    @filter.command("stress")
-    async def cmd_stress(self, event: AstrMessageEvent):
-        """/stress [on|off]"""
-        arg = self._parse_cmd(event, "/stress")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            state = "开" if uset["stress"] else "关"
-            yield MessageEventResult().message(
-                f"重音模式: {state}\n用法: /stress <on|off>"
-            )
-            return
-
-        val = arg.lower() in ("on", "true", "1", "开")
-        self._get_user_settings(uid)["stress"] = val
-        self._persist_current_state()
-        yield MessageEventResult().message(f"[✓] 重音模式已{'开启' if val else '关闭'}")
-
-    @filter.command("dialect")
-    async def cmd_dialect(self, event: AstrMessageEvent):
-        """/dialect [方言名|off] — 设置方言口音，如 四川话、粤语、东北话"""
-        arg = self._parse_cmd(event, "/dialect")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            cur = uset["dialect"] or "(无)"
-            yield MessageEventResult().message(
-                f"当前方言: {cur}\n"
-                "用法: /dialect <方言名|off>\n"
-                "示例: /dialect 四川话、/dialect 粤语、/dialect 东北话、/dialect 台湾腔"
-            )
-            return
-
-        if arg == "off":
-            self._get_user_settings(uid)["dialect"] = ""
-            self._persist_current_state()
-            yield MessageEventResult().message("[✓] 已关闭方言口音")
-        else:
-            self._get_user_settings(uid)["dialect"] = arg
-            self._persist_current_state()
-            yield MessageEventResult().message(f"[✓] 方言已设置为: {arg}")
-
-    @filter.command("volume")
-    async def cmd_volume(self, event: AstrMessageEvent):
-        """/volume [轻声|正常|大声|off]"""
-        arg = self._parse_cmd(event, "/volume")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            cur = uset["volume"] or "(正常)"
-            yield MessageEventResult().message(
-                f"当前音量: {cur}\n用法: /volume <轻声|正常|大声|off>"
-            )
-            return
-
-        if arg == "off":
-            self._get_user_settings(uid)["volume"] = ""
-            self._persist_current_state()
-            yield MessageEventResult().message("[✓] 音量已恢复为正常")
-        else:
-            self._get_user_settings(uid)["volume"] = arg
-            self._persist_current_state()
-            yield MessageEventResult().message(f"[✓] 音量已设置为: {arg}")
-
-    @filter.command("laughter")
-    async def cmd_laughter(self, event: AstrMessageEvent):
-        """/laughter [on|off] — 允许自然笑声"""
-        arg = self._parse_cmd(event, "/laughter")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            state = "开" if uset["laughter"] else "关"
-            yield MessageEventResult().message(
-                f"笑声: {state}\n用法: /laughter <on|off>"
-            )
-            return
-
-        val = arg.lower() in ("on", "true", "1", "开")
-        self._get_user_settings(uid)["laughter"] = val
-        self._persist_current_state()
-        yield MessageEventResult().message(f"[✓] 笑声已{'开启' if val else '关闭'}")
-
-    @filter.command("pause")
-    async def cmd_pause(self, event: AstrMessageEvent):
-        """/pause [on|off] — 增加句间停顿"""
-        arg = self._parse_cmd(event, "/pause")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            uset = self._get_user_settings(uid)
-            state = "开" if uset["pause"] else "关"
-            yield MessageEventResult().message(
-                f"停顿模式: {state}\n用法: /pause <on|off>"
-            )
-            return
-
-        val = arg.lower() in ("on", "true", "1", "开")
-        self._get_user_settings(uid)["pause"] = val
-        self._persist_current_state()
-        yield MessageEventResult().message(f"[✓] 停顿模式已{'开启' if val else '关闭'}")
-
-    @filter.command("preset")
-    async def cmd_preset(self, event: AstrMessageEvent):
-        """/preset [预设名] — 查看/应用预设"""
-        arg = self._parse_cmd(event, "/preset")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            lines = ["预设列表:", ""]
-            for name, p in TTS_PRESETS.items():
-                lines.append(
-                    f"  {name:18s}  情感={p['emotion']:10s}  语速={p['speed']}  音高={p['pitch']:+d}  音色={p['voice']}"
-                )
-            lines.append("")
-            lines.append("用法: /preset <预设名>  （如 /preset bedtime_story）")
-            yield MessageEventResult().message("\n".join(lines))
-            return
-
-        if arg not in TTS_PRESETS:
-            yield MessageEventResult().message(
-                f"[X] 未知预设: {arg}\n用 /presetlist 查看所有预设"
-            )
-            return
-
-        preset = TTS_PRESETS[arg]
-        uset = self._get_user_settings(uid)
-        uset["emotion"] = preset["emotion"]
-        uset["speed"] = preset["speed"]
-        uset["pitch"] = preset["pitch"]
-        uset["breath"] = preset["breath"]
-        uset["stress"] = preset["stress"]
-        uset["voice"] = self._resolve_voice(preset["voice"])
-        self._persist_current_state()
-
-        yield MessageEventResult().message(
-            f"[✓] 已应用预设: {arg}\n"
-            f"  情感={preset['emotion']}  语速={preset['speed']}  音高={preset['pitch']:+d}\n"
-            f"  呼吸={'开' if preset['breath'] else '关'}  重音={'开' if preset['stress'] else '关'}  音色={preset['voice']}"
-        )
-
-    @filter.command("presetlist")
-    async def cmd_presetlist(self, event: AstrMessageEvent):
-        """List all TTS presets."""
-        lines = ["所有预设:", ""]
-        for name, p in TTS_PRESETS.items():
-            lines.append(f"  {name}")
-            lines.append(
-                f"    情感={p['emotion']}  语速={p['speed']}  音高={p['pitch']:+d}  音色={p['voice']}  呼吸={'✓' if p['breath'] else '✗'}  重音={'✓' if p['stress'] else '✗'}"
-            )
-        lines.append("\n用法: /preset <预设名> 应用预设")
-        yield MessageEventResult().message("\n".join(lines))
-
-    @filter.command("voices")
-    async def cmd_voices(self, event: AstrMessageEvent):
-        """List all built-in voices."""
-        lines = ["MiMO 内置音色:", ""]
-        for v in MIMO_VOICE_LIST:
-            lines.append(
-                f"  {v['id']:10s} {v['name']}  ({v['gender']}声 · {v['style']})"
-            )
-        lines.append(f"\n共 {len(MIMO_VOICE_LIST)} 种  |  用法: /voice <音色ID>")
-        yield MessageEventResult().message("\n".join(lines))
-
-    @filter.command("voiceclone")
-    async def cmd_voiceclone(self, event: AstrMessageEvent):
-        """/voiceclone <ID> <音频路径> — 克隆参考音频的声音"""
-        arg = self._parse_cmd(event, "/voiceclone")
-        if not arg:
-            # 列出已注册的克隆音色
-            voices = [
-                v
-                for v in self._voice_manager.list_voices()
-                if v.get("model") == "voiceclone"
-            ]
-            lines = [
-                "用法:",
-                "  /voiceclone <ID> <参考音频路径>  — 注册新克隆音色",
-                "  /voiceclone <音色名>              — 切换到已注册的克隆音色",
-                "  /voiceclone cancel <音色名>       — 取消注册某个克隆音色",
-            ]
-            if voices:
-                lines.append("\n已注册的克隆音色:")
-                for v in voices:
-                    lines.append(f"  {v['voice_id']}")
-            lines.append(f"\n说明: 推荐将参考音频放到 {self._data_dir / 'clone'}")
-            yield MessageEventResult().message("\n".join(lines))
-            return
-
-        # /voiceclone cancel <音色名> — 取消注册
-        if arg.lower().startswith("cancel "):
-            vid = arg[7:].strip()
-            if not vid:
-                yield MessageEventResult().message("用法: /voiceclone cancel <音色名>")
-                return
-            info = self._voice_manager.get_voice(vid)
-            if not info or info.get("model") != "voiceclone":
-                yield MessageEventResult().message(f"[X] 未找到已注册的克隆音色: {vid}")
-                return
-            self._voice_manager.remove_voice(vid)
-            # 如果当前用户音色正是被删除的，自动回退到默认音色
-            uid, _ = self._get_event_settings(event)
-            us = self._get_user_settings(uid)
-            if us.get("voice") == vid:
-                us["voice"] = self.config.default_voice or "mimo_default"
-                self._persist_current_state()
-                yield MessageEventResult().message(
-                    f"[✓] 已取消注册克隆音色: {vid}\n"
-                    f"  当前音色已自动回退为: {us['voice']}"
-                )
-            else:
-                yield MessageEventResult().message(f"[✓] 已取消注册克隆音色: {vid}")
-            return
-
-        parts = arg.split(maxsplit=1)
-        # /voiceclone <音色名> — 切换到已注册的克隆音色（仅一个参数，且不是 cancel）
-        if len(parts) == 1:
-            vid = parts[0]
-            info = self._voice_manager.get_voice(vid)
-            if not info or info.get("model") != "voiceclone":
-                yield MessageEventResult().message(
-                    f"[X] 未找到已注册的克隆音色: {vid}\n"
-                    "请先使用 /voiceclone <ID> <参考音频路径> 注册"
-                )
-                return
-            uid, _ = self._get_event_settings(event)
-            self._get_user_settings(uid)["voice"] = vid
-            self._persist_current_state()
-            yield MessageEventResult().message(
-                f"[✓] 已切换当前音色为: {vid}\n  可用 /ttsswitch clone 切到克隆输出模式"
-            )
-            return
-
-        vid, audio_path = parts[0], parts[1]
-        audio_file = self._resolve_clone_audio_path(audio_path)
-
-        if not audio_file.exists():
-            plugin_audio_dir = self._data_dir / "clone"
-            yield MessageEventResult().message(
-                f"[X] 音频文件不存在: {audio_path}\n"
-                f"可将参考音频放到 AstrBot 数据目录下: {plugin_audio_dir}\n"
-                f"然后使用: /voiceclone {vid} clone/文件名"
-            )
-            return
-
-        if not audio_file.is_file():
-            yield MessageEventResult().message(f"[X] 不是有效文件: {audio_path}")
-            return
-
-        if audio_file.suffix.lower() not in AUDIO_VALID_EXTENSIONS:
-            yield MessageEventResult().message(
-                f"[X] 不支持的音频格式: {audio_file.suffix or '(无后缀)'}\n"
-                f"支持: {', '.join(AUDIO_VALID_EXTENSIONS)}"
-            )
-            return
-
-        if audio_file.stat().st_size < AUDIO_MIN_VALID_SIZE:
-            yield MessageEventResult().message(
-                f"[X] 音频文件过小，无法用于克隆（至少 {AUDIO_MIN_VALID_SIZE} 字节）"
-            )
-            return
-
-        provider = self._ensure_provider()
-        if not provider:
-            yield MessageEventResult().message("API Key 未配置。")
-            return
-
-        yield MessageEventResult().message("⏳ 正在登记克隆参考音频…")
-
-        ok = await provider.register_voice(vid, str(audio_file))
-        if ok:
-            self._voice_manager.register_voice(
-                vid, name=vid, model="voiceclone", audio_path=str(audio_file)
-            )
-            # 同步到配置面板（config 直接引用原始字典，修改会被 AstrBot 持久化）
-            self.config.set("clone_enabled", True)
-            self.config.set("clone_voice_id", vid)
-            uid, _ = self._get_event_settings(event)
-            self._get_user_settings(uid)["voice"] = vid
-            self._persist_current_state()
-            yield MessageEventResult().message(
-                f"[✓] 已登记克隆音色: {vid}\n"
-                f"  参考音频: {audio_file}\n"
-                f"  已自动切换当前音色为: {vid}\n"
-                f"  可用 /ttsswitch clone 切到克隆输出模式"
-            )
-        else:
-            yield MessageEventResult().message(
-                f"[X] 克隆参考音频登记失败：{provider.last_error or '请查看日志。'}"
-            )
-
-    @filter.command("voicegen")
-    async def cmd_voicegen(self, event: AstrMessageEvent):
-        """/voicegen <ID> <描述文本> — 用文字描述生成全新音色"""
-        arg = self._parse_cmd(event, "/voicegen")
-        if not arg:
-            yield MessageEventResult().message(
-                "用法: /voicegen <ID> <音色描述>\n"
-                '示例: /voicegen my_voice "温柔甜美的年轻女声，语速适中"'
-            )
-            return
-
-        parts = arg.split(maxsplit=1)
-        if len(parts) < 2:
-            yield MessageEventResult().message("用法: /voicegen <ID> <音色描述>")
-            return
-
-        vid, desc = parts[0], parts[1]
-
-        provider = self._ensure_provider()
-        if not provider:
-            yield MessageEventResult().message("API Key 未配置。")
-            return
-
-        yield MessageEventResult().message("⏳ 正在登记设计音色描述…")
-
-        ok = await provider.design_voice(vid, desc, model=self.config.design_model)
-        if ok:
-            self._voice_manager.register_voice(
-                vid, name=vid, model="voicedesign", description=desc
-            )
-            # 仅同步可展示的配置项；design_voice_id 改为内部状态，避免出现在插件设置面板。
-            self.config.set("design_enabled", True)
-            self.config.design_voice_id = vid
-            self.config.set("design_voice_description", desc)
-            uid, _ = self._get_event_settings(event)
-            self._get_user_settings(uid)["voice"] = vid
-            self._persist_current_state()
-            yield MessageEventResult().message(
-                f"[✓] 已登记设计音色: {vid}\n"
-                f"  可用 /ttsswitch design 切换到设计模式\n"
-                f"  也可用 /voice {vid} 将这条描述设为当前设计音色\n"
-                f"  配置面板已同步更新描述信息"
-            )
-        else:
-            yield MessageEventResult().message(
-                f"[X] 设计音色登记失败：{provider.last_error or '请查看日志。'}"
-            )
-
-    @filter.command("ttsformat")
-    async def cmd_ttsformat(self, event: AstrMessageEvent):
-        """/ttsformat [mp3|wav|ogg] — 设置音频输出格式"""
-        arg = self._parse_cmd(event, "/ttsformat")
-        uid, _ = self._get_event_settings(event)
-
-        if not arg:
-            cur = self._get_effective_audio_format(uid)
-            source = "当前对话" if uid in self._user_format else "插件全局默认"
-            yield MessageEventResult().message(
-                f"当前格式: {cur}\n"
-                f"当前生效来源: {source}\n"
-                f"支持的格式: {', '.join(SUPPORTED_AUDIO_FORMATS)}\n"
-                f"用法: /ttsformat <格式>"
-            )
-            return
-
-        if arg.lower() not in SUPPORTED_AUDIO_FORMATS:
-            yield MessageEventResult().message(
-                f"[X] 不支持的格式: {arg}\n支持: {', '.join(SUPPORTED_AUDIO_FORMATS)}"
-            )
-            return
-
-        self._user_format[uid] = arg.lower()
-        self._persist_current_state()
-        yield MessageEventResult().message(f"[✓] 音频格式已设置为: {arg}")
-
-    @filter.command("ttsconfig")
-    async def cmd_ttsconfig(self, event: AstrMessageEvent):
-        arg = self._parse_cmd(event, "/ttsconfig")
-
-        if arg == "reset":
-            self._reset_persistent_state()
-            yield MessageEventResult().message("[✓] 所有个人设置已重置。")
-            return
-
-        provider = self._ensure_provider()
-        status = "[✓] 正常" if provider else "[X] 未配置"
-
-        uid, _ = self._get_event_settings(event)
-        uset = self._get_user_settings(uid)
-
-        lines = [
-            f"MiMO TTS 配置状态: {status}",
-            f"模型: {self.config.get('model', 'mimo-v2.5-tts')}",
-            f"API: {self.config.get('api_base_url', 'https://api.xiaomimimo.com/v1')[:80]}",
-            f"持久化文件: {self._state_file}",
-            "",
-            "── 你的当前设置 ──",
-            f"情感: {uset['emotion'] or '(自动)'}",
-            f"语速: {uset['speed']}  音高: {uset['pitch']:+d}",
-            f"呼吸: {'开' if uset['breath'] else '关'}  重音: {'开' if uset['stress'] else '关'}",
-            f"方言: {uset['dialect'] or '(无)'}  音量: {uset['volume'] or '(正常)'}",
-            f"笑声: {'开' if uset['laughter'] else '关'}  停顿: {'开' if uset['pause'] else '关'}",
-            f"当前对话自动 TTS: {'开' if uset.get('tts_enabled', True) else '关'}",
-            f"当前对话文字同步: {'开' if self._should_send_text_with_tts(uid) else '关'}",
-            f"音色: {uset['voice']}",
-            f"输出模式: {self._tts_mode_label(self._resolve_tts_mode(uid))} ({self._resolve_tts_mode(uid)})",
-            f"格式: {self._get_effective_audio_format(uid)}",
-            f"唱歌默认音色: {self.config.sing_voice or '(跟随当前音色)'}",
-            "",
-            "用 /sing [-音色名] <歌词> 触发唱歌",
-            "用 /preset <预设名> 快速切换风格",
-            "用 /tts_help 快速查看指令",
-        ]
-        yield MessageEventResult().message("\n".join(lines))
+        async for item in handle_sing(self, event):
+            yield item
 
     @filter.command("ttsraw")
     async def cmd_ttsraw(self, event: AstrMessageEvent):
-        """/ttsraw <文本> — 不带情感的纯文本合成"""
-        text = self._parse_cmd(event, "/ttsraw")
-        if not text:
-            yield MessageEventResult().message("用法: /ttsraw <文本>")
-            return
-        uid, _ = self._get_event_settings(event)
-        try:
-            audio_path = await self._do_tts(text, uid)
-            if audio_path:
-                r = MessageEventResult()
-                r.chain.append(Record.fromFileSystem(str(audio_path)))
-                yield r
-            else:
-                yield MessageEventResult().message("TTS 合成失败。")
-        except Exception as e:
-            yield MessageEventResult().message(f"! {e}")
+        async for item in handle_ttsraw(self, event):
+            yield item
+
+    # TTS control
+    from .handlers.control import (
+        handle_text,
+        handle_tts_help,
+        handle_tts_off,
+        handle_tts_on,
+        handle_tts_restore,
+    )
+
+    @filter.command("tts_off")
+    async def cmd_tts_off(self, event: AstrMessageEvent):
+        async for item in handle_tts_off(self, event):
+            yield item
+
+    @filter.command("tts_on")
+    async def cmd_tts_on(self, event: AstrMessageEvent):
+        async for item in handle_tts_on(self, event):
+            yield item
+
+    @filter.command("text")
+    async def cmd_text(self, event: AstrMessageEvent):
+        async for item in handle_text(self, event):
+            yield item
+
+    @filter.command("tts_help")
+    async def cmd_tts_help(self, event: AstrMessageEvent):
+        async for item in handle_tts_help(self, event):
+            yield item
+
+    @filter.command("tts_restore")
+    async def cmd_tts_restore(self, event: AstrMessageEvent):
+        async for item in handle_tts_restore(self, event):
+            yield item
+
+    # TTS parameters
+    from .handlers.params import (
+        handle_breath,
+        handle_dialect,
+        handle_emotion,
+        handle_emotions,
+        handle_laughter,
+        handle_pause,
+        handle_pitch,
+        handle_speed,
+        handle_stress,
+        handle_volume,
+    )
+
+    @filter.command("emotion")
+    async def cmd_emotion(self, event: AstrMessageEvent):
+        async for item in handle_emotion(self, event):
+            yield item
+
+    @filter.command("emotions")
+    async def cmd_emotions(self, event: AstrMessageEvent):
+        async for item in handle_emotions(self, event):
+            yield item
+
+    @filter.command("speed")
+    async def cmd_speed(self, event: AstrMessageEvent):
+        async for item in handle_speed(self, event):
+            yield item
+
+    @filter.command("pitch")
+    async def cmd_pitch(self, event: AstrMessageEvent):
+        async for item in handle_pitch(self, event):
+            yield item
+
+    @filter.command("breath")
+    async def cmd_breath(self, event: AstrMessageEvent):
+        async for item in handle_breath(self, event):
+            yield item
+
+    @filter.command("stress")
+    async def cmd_stress(self, event: AstrMessageEvent):
+        async for item in handle_stress(self, event):
+            yield item
+
+    @filter.command("dialect")
+    async def cmd_dialect(self, event: AstrMessageEvent):
+        async for item in handle_dialect(self, event):
+            yield item
+
+    @filter.command("volume")
+    async def cmd_volume(self, event: AstrMessageEvent):
+        async for item in handle_volume(self, event):
+            yield item
+
+    @filter.command("laughter")
+    async def cmd_laughter(self, event: AstrMessageEvent):
+        async for item in handle_laughter(self, event):
+            yield item
+
+    @filter.command("pause")
+    async def cmd_pause(self, event: AstrMessageEvent):
+        async for item in handle_pause(self, event):
+            yield item
+
+    # Presets
+    from .handlers.preset import handle_preset, handle_presetlist
+
+    @filter.command("preset")
+    async def cmd_preset(self, event: AstrMessageEvent):
+        async for item in handle_preset(self, event):
+            yield item
+
+    @filter.command("presetlist")
+    async def cmd_presetlist(self, event: AstrMessageEvent):
+        async for item in handle_presetlist(self, event):
+            yield item
+
+    # Voice management
+    from .handlers.voice import (
+        handle_ttsswitch,
+        handle_voice,
+        handle_voiceclone,
+        handle_voicegen,
+        handle_voices,
+    )
+
+    @filter.command("voice")
+    async def cmd_voice(self, event: AstrMessageEvent):
+        async for item in handle_voice(self, event):
+            yield item
+
+    @filter.command("voices")
+    async def cmd_voices(self, event: AstrMessageEvent):
+        async for item in handle_voices(self, event):
+            yield item
+
+    @filter.command("ttsswitch")
+    async def cmd_ttsswitch(self, event: AstrMessageEvent):
+        async for item in handle_ttsswitch(self, event):
+            yield item
+
+    @filter.command("voiceclone")
+    async def cmd_voiceclone(self, event: AstrMessageEvent):
+        async for item in handle_voiceclone(self, event):
+            yield item
+
+    @filter.command("voicegen")
+    async def cmd_voicegen(self, event: AstrMessageEvent):
+        async for item in handle_voicegen(self, event):
+            yield item
+
+    # Settings / Info
+    from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
+
+    @filter.command("ttsformat")
+    async def cmd_ttsformat(self, event: AstrMessageEvent):
+        async for item in handle_ttsformat(self, event):
+            yield item
+
+    @filter.command("ttsconfig")
+    async def cmd_ttsconfig(self, event: AstrMessageEvent):
+        async for item in handle_ttsconfig(self, event):
+            yield item
 
     @filter.command("ttsinfo")
     async def cmd_ttsinfo(self, event: AstrMessageEvent):
-        """/ttsinfo — 查看插件信息"""
-        lines = [
-            f"astrbot_plugin_mimo_tts v{_read_plugin_version()}",
-            "",
-            "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
-            "",
-            f"支持情感: {len(SUPPORTED_EMOTIONS)} 种",
-            f"内置音色: {len(MIMO_VOICE_LIST)} 种",
-            f"内置预设: {len(TTS_PRESETS)} 个",
-            "控制维度: 情感 语速 音高 呼吸声 重音 方言 音量 笑声 停顿（唱歌仅 /sing）",
-            "",
-            "主要命令:",
-            "  /mimo_say <文本>  - 即时合成",
-            "  /tts_off  - 关闭当前对话自动 TTS",
-            "  /text on|off  - 切换当前对话文字同步",
-            "  /sing <歌词>  - 唱歌模式",
-            "  /preset <名>  - 应用预设",
-            "  /ttsconfig  - 查看配置",
-        ]
-        yield MessageEventResult().message("\n".join(lines))
+        async for item in handle_ttsinfo(self, event):
+            yield item
 
     # ── Helpers (private) ──
 

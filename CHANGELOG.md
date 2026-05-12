@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-05-12
+
+### 架构优化
+
+- 将 `main.py` 中的 28 个命令处理器拆分至 `handlers/` 子模块（tts/control/params/preset/voice/settings），`main.py` 仅保留类结构 + 委托调用，从 1855 行降至 1158 行；
+- 删除空模块 `core/compat.py`（历史兼容层，已无实际作用）；
+- 默认音频输出格式从 `mp3` 改为 `wav`（兼容性最佳），同步更新 `_conf_schema.json`、`ConfigManager`、`MiMOProvider` 默认值；
+- 清理 `core/constants.py` 中未被任何模块引用的孤立常量（`DEFAULT_*` 系列）；
+- 统一 `max_retries`/`min_text_length`/`max_text_length` 的内联 fallback 与 `_conf_schema.json` 默认值一致；
+- `handlers/settings.py` 自行读取 `metadata.yaml` 获取版本号，避免循环导入。
+
 ## 2026-05-11
 
 ### 修改

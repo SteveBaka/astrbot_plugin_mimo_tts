@@ -47,7 +47,7 @@
 | `api_base_url` | API 地址 | `https://api.xiaomimimo.com/v1` |
 | `model` | 模型名称 | `mimo-v2.5-tts` |
 | `default_voice` | 默认音色 | `mimo_default` |
-| `audio_format` | 输出格式(mp3/wav/ogg) | `mp3` |
+| `audio_format` | 输出格式(mp3/wav/ogg) | `wav` |
 | `auto_tts` | 自动拦截 LLM 输出 | `true` |
 | `send_text_with_tts` | 自动 TTS 时是否同步发送文字 | `true` |
 | `default_speed` | 默认语速 | `1.0` |
@@ -332,15 +332,20 @@ AstrBot/
   - 消除情感检测逻辑重复，优化代码结构；
   - 今日更新使用 mimo-v2.5 对代码和功能进行优化。
 - 2026年4月30日更新：
-  - 唱歌模式 `/sing` 改为单次触发模式，执行后自动恢复原始设置，避免持续污染普通 TTS；
-  - `/sing` 新增 `-音色名` 参数支持，可临时指定唱歌音色（如 `/sing -冰糖 歌词`）；
-  - 新增 `sing_voice` 插件配置项，支持通过下拉选择框配置唱歌模式默认音色；
-  - 唱歌音色优先级：命令参数 > 当前用户音色 > 插件配置 `sing_voice`；
-  - `main.py` 中 9 个命令处理器（`/text`、`/sing`、`/voice`、`/ttsswitch`、`/preset`、`/voiceclone`、`/voicegen`、`/ttsconfig`、`/ttsraw`）统一改用 `self._parse_cmd()` 提取参数，减少重复的字符串处理代码；
-  - `main.py` 用户状态持久化：将过期用户淘汰逻辑 `_evict_stale_users()` 移入写锁内，确保淘汰与持久化的原子性，避免并发写入时的竞态条件；
-  - `tts/mimo_provider.py` 新增不可重试 HTTP 状态码处理：遇到 400（参数错误）、401（未授权）、403（鉴权失败）时立即终止重试，减少无意义的重试等待；
-  - `voice/voice_manager.py` 收窄 `_backup_corrupted_file()` 的异常捕获范围，由 `except Exception` 改为 `except (OSError, shutil.Error)`，避免意外吞掉非文件系统相关异常；
-  - 使用 mimo-v2.5-pro 生成。
+   - 唱歌模式 `/sing` 改为单次触发模式，执行后自动恢复原始设置，避免持续污染普通 TTS；
+   - `/sing` 新增 `-音色名` 参数支持，可临时指定唱歌音色（如 `/sing -冰糖 歌词`）；
+   - 新增 `sing_voice` 插件配置项，支持通过下拉选择框配置唱歌模式默认音色；
+   - 唱歌音色优先级：命令参数 > 当前用户音色 > 插件配置 `sing_voice`；
+   - `main.py` 中 9 个命令处理器（`/text`、`/sing`、`/voice`、`/ttsswitch`、`/preset`、`/voiceclone`、`/voicegen`、`/ttsconfig`、`/ttsraw`）统一改用 `self._parse_cmd()` 提取参数，减少重复的字符串处理代码；
+   - `main.py` 用户状态持久化：将过期用户淘汰逻辑 `_evict_stale_users()` 移入写锁内，确保淘汰与持久化的原子性，避免并发写入时的竞态条件；
+   - `tts/mimo_provider.py` 新增不可重试 HTTP 状态码处理：遇到 400（参数错误）、401（未授权）、403（鉴权失败）时立即终止重试，减少无意义的重试等待；
+   - `voice/voice_manager.py` 收窄 `_backup_corrupted_file()` 的异常捕获范围，由 `except Exception` 改为 `except (OSError, shutil.Error)`，避免意外吞掉非文件系统相关异常；
+   - 使用 mimo-v2.5-pro 生成。
+- v1.3.0 更新：
+   - 将 28 个命令处理器从 `main.py` 拆分至 `handlers/` 子模块，`main.py` 仅保留类结构与委托调用；
+   - 默认音频输出格式从 `mp3` 改为 `wav`；
+   - 删除空模块 `core/compat.py`；
+   - 清理 `core/constants.py` 中未被引用的孤立常量。
 
 ## 作者的碎碎念
 
