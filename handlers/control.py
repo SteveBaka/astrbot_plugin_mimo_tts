@@ -70,7 +70,7 @@ async def handle_tts_help(plugin, event: AstrMessageEvent):
         "/text <on|off>  - 设置当前对话是否同步发送文字",
         "/ttsswitch <default|design|clone>  - 切换输出模式",
         "/voice [音色ID]  - 查看/切换音色",
-        "/voiceclone <ID> <路径>  - 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）",
+        "/voiceclone <ID> <参考音频路径>  - 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）",
         "/emotion <情感名|auto|off>  - 设置情感",
         "/ttsformat <mp3|wav|ogg>  - 设置当前格式",
     ]
