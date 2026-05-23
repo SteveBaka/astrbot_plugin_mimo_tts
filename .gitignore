@@ -16,6 +16,7 @@ build/
 # IDE
 .idea/
 .vscode/
+.kilo/
 *.swp
 *.swo
 

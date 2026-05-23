@@ -14,7 +14,7 @@ import yaml
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
-from astrbot.core.message.components import Plain, Record
+from astrbot.api.message_components import Plain, Record
 
 from .core.config import ConfigManager
 from .core.constants import (
@@ -919,7 +919,7 @@ class MiMoTTSPlugin(Star):
         self._cleanup_recent_files()
         return out
 
-    async def on_unload(self) -> None:
+    async def terminate(self) -> None:
         """插件卸载时关闭底层网络会话，避免 Unclosed client session 警告。"""
         if self._provider is not None:
             try:

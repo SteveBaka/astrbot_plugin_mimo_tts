@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
-from astrbot.core.message.components import Record
+from astrbot.api.message_components import Record
 
 from ._helpers import parse_mimo_say_options
 
