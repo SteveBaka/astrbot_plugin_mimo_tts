@@ -61,6 +61,7 @@ class ConfigManager:
         # Segmentation
         "enable_segmentation": False,
         "segment_pattern": "sentence",
+        "segment_max_count": 10,
         "segment_voice_probability": 1.0,
         # Voice polish (LLM)
         "enable_voice_polish": False,
@@ -255,6 +256,14 @@ class ConfigManager:
     @property
     def segment_pattern(self) -> str:
         return str(self._cfg.get("segment_pattern", "sentence") or "sentence")
+
+    @property
+    def segment_max_count(self) -> int:
+        try:
+            value = int(self._cfg.get("segment_max_count", 10))
+        except (ValueError, TypeError):
+            value = 10
+        return max(0, value)
 
     @property
     def segment_voice_probability(self) -> float:

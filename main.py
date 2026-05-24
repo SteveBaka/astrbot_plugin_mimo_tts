@@ -411,7 +411,15 @@ class MiMoTTSPlugin(Star):
         pattern_name = self.config.segment_pattern
         regex = SEGMENT_PATTERNS.get(pattern_name, SEGMENT_PATTERNS["sentence"])
         segments = re.split(regex, text)
-        return [s.strip() for s in segments if s.strip()]
+        result = [s.strip() for s in segments if s.strip()]
+
+        max_count = self.config.segment_max_count
+        if max_count > 0 and len(result) > max_count:
+            merged = result[:max_count - 1]
+            merged.append("".join(result[max_count - 1:]))
+            result = merged
+
+        return result
 
     async def _polish_text_with_llm(self, text: str, uid: str) -> str:
         """Use LLM to inject MiMO audio tags into text before TTS."""
@@ -1018,13 +1026,16 @@ class MiMoTTSPlugin(Star):
             return
 
         # ── Step 2: LLM 音色润色（概率通过后才执行） ──
+        # 润色后的文本仅用于 TTS 合成，Plain 显示仍用原文，
+        # 避免 outputpro 等插件的文本清洗剥离音频标签。
+        tts_text = plain
         if self.config.enable_voice_polish:
             logger.info("MiMO TTS: voice polish enabled, calling LLM...")
-            plain = await self._polish_text_with_llm(plain, uid)
+            tts_text = await self._polish_text_with_llm(plain, uid)
 
         # ── Step 3: 文本分段模式 ──
         if self.config.enable_segmentation:
-            segments = self._split_text(plain)
+            segments = self._split_text(tts_text)
             if not segments:
                 return
             logger.info(
@@ -1073,7 +1084,7 @@ class MiMoTTSPlugin(Star):
             emo_override = detect_emotion(plain) or None
 
         try:
-            audio_path = await self._do_tts(plain, uid, emotion_override=emo_override)
+            audio_path = await self._do_tts(tts_text, uid, emotion_override=emo_override)
             if audio_path:
                 audio_comp = Record.fromFileSystem(str(audio_path))
                 if self._should_send_text_with_tts(uid):

@@ -217,7 +217,7 @@
   "enable_segmentation": {
     "type": "bool",
     "description": "启用文本分段 TTS",
-    "hint": "开启后长文本将按规则切分为多段逐段合成。关闭时超过 max_text_length 的文本会被跳过",
+    "hint": "长文本将按规则切分成多段输出，变为发送多个音频",
     "default": false
   },
   "segment_pattern": {
@@ -226,6 +226,12 @@
     "hint": "sentence=按句末标点切分，paragraph=按空行切分，comma=按逗号分号切分，mixed=混合切分",
     "default": "sentence",
     "options": ["sentence", "paragraph", "comma", "mixed"]
+  },
+  "segment_max_count": {
+    "type": "int",
+    "description": "分段数量上限",
+    "hint": "超过此数量的分段将被合并，避免无限切分。0=不限制",
+    "default": 10
   },
   "segment_voice_probability": {
     "type": "float",
