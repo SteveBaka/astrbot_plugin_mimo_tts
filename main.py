@@ -404,6 +404,57 @@ class MiMoTTSPlugin(Star):
                 return True
         return False
 
+    def _split_text(self, text: str) -> list[str]:
+        """Split text into segments using the configured regex pattern."""
+        from .core.constants import SEGMENT_PATTERNS
+
+        pattern_name = self.config.segment_pattern
+        regex = SEGMENT_PATTERNS.get(pattern_name, SEGMENT_PATTERNS["sentence"])
+        segments = re.split(regex, text)
+        return [s.strip() for s in segments if s.strip()]
+
+    async def _polish_text_with_llm(self, text: str, uid: str) -> str:
+        """Use LLM to inject MiMO audio tags into text before TTS."""
+        provider_id = self.config.polish_llm_provider
+        if not provider_id:
+            try:
+                provider_id = await self.context.get_current_chat_provider_id(uid)
+            except Exception:
+                logger.warning(
+                    "MiMO TTS: failed to get current provider for voice polish, "
+                    "falling back to original text"
+                )
+                return text
+        prompt_tpl = self.config.polish_prompt
+        if not prompt_tpl:
+            prompt_tpl = (
+                "你是语音润色助手。请在以下文本中适当添加 MiMO TTS 音频标签，"
+                "使语音更自然生动。\n\n规则：\n"
+                "1. 在文本开头添加风格标签，如 (温柔)、(磁性)、(活泼) 等\n"
+                "2. 在文本中间适当位置插入音频标签，如 [深呼吸]、[叹气]、[笑]、[语速加快] 等\n"
+                "3. 标签应与文本内容情感一致，不要过度使用，每段最多 2-3 个标签\n"
+                "4. 保持原文内容不变，只添加标签\n"
+                "5. 直接返回添加标签后的文本，不要添加任何解释\n\n"
+                "原文：{text}"
+            )
+        prompt = prompt_tpl.replace("{text}", text)
+        try:
+            resp = await self.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+            )
+            polished = (resp.completion_text or "").strip()
+            if polished:
+                logger.info(
+                    "MiMO TTS: voice polish applied, %d chars -> %d chars",
+                    len(text),
+                    len(polished),
+                )
+                return polished
+        except Exception as e:
+            logger.warning("MiMO TTS: voice polish failed: %s", e)
+        return text
+
     def _build_prompt(self, uid: str, emotion_override: Optional[str] = None) -> str:
         uset = self._get_user_settings(uid)
         # 全局风格提示词
@@ -965,9 +1016,43 @@ class MiMoTTSPlugin(Star):
         if plain.startswith("/"):
             return
 
-        # If emotion is auto, detect from text
+        # LLM 音色润色：注入 MiMO 音频标签
+        if self.config.enable_voice_polish:
+            plain = await self._polish_text_with_llm(plain, uid)
+
+        # 文本分段模式
+        if self.config.enable_segmentation:
+            segments = self._split_text(plain)
+            if not segments:
+                return
+            prob = self.config.segment_voice_probability
+            for seg in segments:
+                if len(seg) < self.config.get("min_text_length"):
+                    result.chain.append(Plain(seg))
+                    continue
+                if random.random() < prob:
+                    try:
+                        emo_override: Optional[str] = None
+                        if not uset["emotion"] or uset["emotion"] == "auto":
+                            emo_override = detect_emotion(seg) or None
+                        audio_path = await self._do_tts(
+                            seg, uid, emotion_override=emo_override
+                        )
+                        if audio_path:
+                            result.chain.append(
+                                Record.fromFileSystem(str(audio_path))
+                            )
+                            if self._should_send_text_with_tts(uid):
+                                result.chain.append(Plain(seg))
+                    except Exception as e:
+                        result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
+                        result.chain.append(Plain(seg))
+                else:
+                    result.chain.append(Plain(seg))
+            return
+
+        # 原有逻辑：全文单次合成
         orig_emotion = uset["emotion"]
-        # 并发安全：通过 emotion_override 传递情感，避免直接修改全局 uset
         emo_override: Optional[str] = None
         if not orig_emotion or orig_emotion == "auto":
             emo_override = detect_emotion(plain) or None
