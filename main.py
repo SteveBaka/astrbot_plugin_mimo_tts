@@ -988,6 +988,7 @@ class MiMoTTSPlugin(Star):
         """Auto TTS: intercept LLM output and generate voice reply."""
         uid, uset = self._get_event_settings(event)
 
+        # ── Step 1: 概率判断（最先执行，不通过则直接跳出，节省资源） ──
         if not self._is_tts_active(uid):
             return
 
@@ -1016,19 +1017,31 @@ class MiMoTTSPlugin(Star):
         if plain.startswith("/"):
             return
 
-        # LLM 音色润色：注入 MiMO 音频标签
+        # ── Step 2: LLM 音色润色（概率通过后才执行） ──
         if self.config.enable_voice_polish:
+            logger.info("MiMO TTS: voice polish enabled, calling LLM...")
             plain = await self._polish_text_with_llm(plain, uid)
 
-        # 文本分段模式
+        # ── Step 3: 文本分段模式 ──
         if self.config.enable_segmentation:
             segments = self._split_text(plain)
             if not segments:
                 return
+            logger.info(
+                "MiMO TTS: segmentation enabled, split into %d segments", len(segments)
+            )
+
             prob = self.config.segment_voice_probability
+            # 先清空原 chain 中的 Plain 文本，避免二次消息
+            new_chain: list = []
+            for comp in chain:
+                if isinstance(comp, Plain):
+                    continue
+                new_chain.append(comp)
+
             for seg in segments:
                 if len(seg) < self.config.get("min_text_length"):
-                    result.chain.append(Plain(seg))
+                    new_chain.append(Plain(seg))
                     continue
                 if random.random() < prob:
                     try:
@@ -1039,19 +1052,21 @@ class MiMoTTSPlugin(Star):
                             seg, uid, emotion_override=emo_override
                         )
                         if audio_path:
-                            result.chain.append(
+                            new_chain.append(
                                 Record.fromFileSystem(str(audio_path))
                             )
                             if self._should_send_text_with_tts(uid):
-                                result.chain.append(Plain(seg))
+                                new_chain.append(Plain(seg))
                     except Exception as e:
-                        result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
-                        result.chain.append(Plain(seg))
+                        new_chain.append(Plain(f"[TTS 合成失败: {e}]"))
+                        new_chain.append(Plain(seg))
                 else:
-                    result.chain.append(Plain(seg))
+                    new_chain.append(Plain(seg))
+
+            result.chain = new_chain
             return
 
-        # 原有逻辑：全文单次合成
+        # ── Step 4: 原有逻辑 — 全文单次合成 ──
         orig_emotion = uset["emotion"]
         emo_override: Optional[str] = None
         if not orig_emotion or orig_emotion == "auto":
