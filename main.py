@@ -1069,7 +1069,9 @@ class MiMoTTSPlugin(Star):
                             chain_msg = MessageChain()
                             if self._should_send_text_with_tts(uid):
                                 chain_msg.message(display_seg)
-                            chain_msg.file_record(str(audio_path))
+                            chain_msg.chain.append(
+                                Record.fromFileSystem(str(audio_path))
+                            )
                             await event.send(chain_msg)
                         else:
                             await event.send(MessageChain().message(display_seg))
