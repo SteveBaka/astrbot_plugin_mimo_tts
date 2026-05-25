@@ -1,15 +1,15 @@
 # astrbot_plugin_mimo_tts
 
-[![AstrBot](https://img.shields.io/badge/AstrBot-v3.4.0+-blue)](https://github.com/AstrBotDevs/AstrBot)
+[![AstrBot](https://img.shields.io/badge/AstrBot-v4.5.7+-blue)](https://github.com/AstrBotDevs/AstrBot)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
-
-> **⚠️ 免责声明：本项目初版v1.1.0使用同期发布的MiMO-V2.5生成，代码生成时以及发布时个人只对插件需要生成的内容与报错对其进行指正，后期若更换其他大模型会在下方更新日志中指出。**
 
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
 
-> **⚠️ 免责声明：本项目意在调用mimo-v2.5-tts series的API服务进行文本生成语音（TTS）服务，请不要将其用于不正当用途以及骚扰他人。**
+> **⚠️ 免责声明：本项目意在调用mimo-v2.5-tts series的API服务进行文本生成语音（TTS）服务，仅供娱乐使用，请不要将其用于不正当用途以及骚扰他人。**
 
-> 如果你对这个项目有兴趣，可以看看*README.md*中的提示板块，我会根据我的测试对提示里面的内容进行补充，希望对每一个爱折腾的你有一定的帮助。遇到问题提交一份issue也是对我有莫大的帮助，在此表示由衷的感谢。
+> **⚠️ 免责声明：本项目使用mimo-v2.5、mimo-v2.5-pro、GPT-5.4、longcat-v2-preview生成，插件生成过程个人只对插件需要生成的内容与报错对其进行指正，我会在各个版本的更新日志中指出该对应版本使用的大模型。**
+
+> 如果你对这个项目有兴趣，可以完整阅读*README.md*，并且关注`提示`板块，我会根据我的测试对提示里面的内容进行补充，希望对每一个爱折腾的你有一定的帮助。遇到问题提交issue并且带上对应的日志也是对我有莫大的帮助，在此表示由衷的感谢。
 
 ## 核心特性
 
@@ -25,6 +25,8 @@
 - [x]声音克隆 & 设计：支持自定义音色生成与调用
 - [x]输出模式切换：支持 默认 / 设计 / 克隆 三种 TTS 输出来源
 - [x]文字同步开关：可控制自动 TTS 时是否同时保留文字消息
+- [x]文本分段 TTS：长文本自动切分，首段文字快速回复，后续段落语音补充
+- [x]LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力
 - [x]错误原因透出：接口失败时直接返回具体报错原因
 - [x]多用户独立：每人独立设置，互不干扰
 
@@ -61,6 +63,13 @@
 | `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
 | `clone_audio_tags` | 克隆音色音频标签控制 | - |
 | `sing_voice` | 唱歌模式默认音色（下拉选择） | 空（使用当前音色） |
+| `enable_segmentation` | 启用文本分段 TTS | `false` |
+| `segment_pattern` | 分段规则（sentence/paragraph/comma/mixed） | `sentence` |
+| `segment_max_count` | 分段数量上限 | `10` |
+| `segment_voice_probability` | 分段语音输出概率（0.0~1.0） | `1.0` |
+| `enable_voice_polish` | 启用 LLM 音色润色 | `false` |
+| `polish_llm_provider` | 润色 LLM Provider（留空用当前模型） | - |
+| `polish_prompt` | 润色提示词（`{text}` 为原文占位符） | - |
 
 ### 输出模式说明
 
@@ -298,6 +307,13 @@ AstrBot/
 
 ## 更新日志
 
+- 2026年5月26日，v1.4.0更新：
+  - 新增文本分段 TTS：支持 4 种分段规则，长文本自动切分为多段独立发送，首段短文字快速回复、后续段落语音补充；
+  - 新增分段语音输出概率（0.0~1.0 滑块）与分段数量上限；
+  - 新增 LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力，支持自定义 Provider 与提示词；
+  - 润色延后至确认发语音时才执行，节省 token；
+  - 分段模式兼容 outputpro 等输出增强插件；
+  - 提升最低版本要求至 AstrBot v4.5.7。
 - 2025年4月24日，初版发布，**TTS**基本功能可以使用。目前尚未测试**VoiceDesign**与**VoiceClone**功能。
 - 2025年4月26日，v1.2.0更新：
   - 增加 **/ttsswitch**，支持在 **默认 / 设计 / 克隆** 三种输出模式之间切换；
@@ -359,9 +375,13 @@ AstrBot/
 
 试着制作了一个*webUI*，可以看看[voice_studio_webUI](https://github.com/SteveBaka/voice_studio_webUI)，后续视情况考虑并入这个插件，当前已是可以单独使用的状态（
 
+5月26日更新：吹水时看到有群u有tts分段回复的想法，所以就加入了 `分段输出` 的功能。虽然这一版发布其实有一点点问题，就是首段话的转换概率极低和不能一点点的拆分，不过还是尽力让插件有点效果，后续我尝试有没有其他方案给我一点思路（
+
 > 笑话1:使用*voiceclone*不要学习作者在测试时，上传并使用非官方支持的*中文/English*以外的语言，效果自测（就是很奇怪罢了）。「被mimo-v2.5-pro重构了一次插件，没想到效果变好了很多，这对吗？」
 
 > 笑话2：`mimo-v2.5`怎么这么喜欢`https://open.bigmodel.cn/api/paas/v4`，我真的每次改写都能看到这个问题，包括新生的webUI插件也是如此，红温了
+
+> 笑话3: `分段输出` 会加大蚊子音的出现概率，我没招了（
 
 ## 致谢
 
