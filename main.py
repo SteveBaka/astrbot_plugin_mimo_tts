@@ -1036,6 +1036,7 @@ class MiMoTTSPlugin(Star):
         # 分段模式下用 event.send() 逐段独立发送，不改写 result.chain，
         # 避免与 outputpro 等插件的分段回复冲突。
         # 润色延后到确认要发语音的分段才执行，节省 LLM token。
+        # 自然对话流程：首段纯文字快速发送，后续段落语音补充。
         if self.config.enable_segmentation:
             segments = self._split_text(plain)
             if not segments:
@@ -1047,13 +1048,18 @@ class MiMoTTSPlugin(Star):
             prob = self.config.segment_voice_probability
             polish_enabled = self.config.enable_voice_polish
 
-            for seg in segments:
+            for i, seg in enumerate(segments):
                 if len(seg) < self.config.get("min_text_length"):
                     await event.send(MessageChain().message(seg))
                     continue
 
+                # 首段：纯文字快速发送（模拟"是的"等快速回复）
+                if i == 0:
+                    await event.send(MessageChain().message(seg))
+                    continue
+
+                # 后续段落：按概率决定是否语音补充
                 if random.random() < prob:
-                    # 确定要发语音后才润色，避免浪费 token
                     tts_seg = seg
                     if polish_enabled:
                         tts_seg = await self._polish_text_with_llm(seg, uid)
