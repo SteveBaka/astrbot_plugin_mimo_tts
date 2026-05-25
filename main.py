@@ -1053,9 +1053,9 @@ class MiMoTTSPlugin(Star):
                     await event.send(MessageChain().message(seg))
                     continue
 
-                # 首段：短文本（≤30字）纯文字快速发送（模拟"是的"等快速回复）
+                # 首段：短于最小文本长度的纯文字快速发送（模拟"是的"等快速回复）
                 # 长文本仍走语音流程，避免长段落无语音
-                if i == 0 and len(seg) <= 30:
+                if i == 0 and len(seg) <= self.config.get("min_text_length"):
                     await event.send(MessageChain().message(seg))
                     continue
 
