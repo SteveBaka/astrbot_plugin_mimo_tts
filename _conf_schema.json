@@ -54,7 +54,7 @@
   "probability": {
     "type": "float",
     "description": "自动 TTS 触发概率",
-    "hint": "0 = 不触发，0.5 = 50%，1 = 每次都触发",
+    "hint": "全局开关：0 = 不触发，1 = 每次都触发。决定是否对 LLM 回复进行 TTS，不通过则直接跳过，不调用润色/分段",
     "default": 0.8
   },
   "auto_tts": {
@@ -213,6 +213,51 @@
     "description": "最大文本长度",
     "hint": "超过此字数截断（MiMO 单次上限约 5000）",
     "default": 500
+  },
+  "enable_segmentation": {
+    "type": "bool",
+    "description": "启用文本分段 TTS",
+    "hint": "长文本将按规则切分成多段输出，变为发送多个音频",
+    "default": false
+  },
+  "segment_pattern": {
+    "type": "string",
+    "description": "分段规则",
+    "hint": "sentence=按句末标点切分，paragraph=按空行切分，comma=按逗号分号切分，mixed=混合切分",
+    "default": "sentence",
+    "options": ["sentence", "paragraph", "comma", "mixed"]
+  },
+  "segment_max_count": {
+    "type": "int",
+    "description": "分段数量上限",
+    "hint": "超过此数量的分段将被合并，避免无限切分。0=不限制",
+    "default": 10
+  },
+  "segment_voice_probability": {
+    "type": "float",
+    "description": "分段语音输出概率",
+    "hint": "在全局触发概率通过后生效。1.0=全部分段语音，0.0=全部仅文字，0.5=随机约一半分段语音",
+    "default": 1.0,
+    "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
+  },
+  "enable_voice_polish": {
+    "type": "bool",
+    "description": "启用 LLM 音色润色",
+    "hint": "开启后 TTS 前调用 LLM 为文本注入 MiMO 音频标签（如 (温柔)[深呼吸]），提升语音表现力。会产生额外 LLM 调用",
+    "default": false
+  },
+  "polish_llm_provider": {
+    "type": "string",
+    "description": "润色 LLM Provider",
+    "hint": "留空则使用当前对话模型。建议选择轻量快速的模型（如 GPT-4o-mini、Qwen-turbo）以减少延迟",
+    "default": "",
+    "_special": "select_provider"
+  },
+  "polish_prompt": {
+    "type": "text",
+    "description": "润色提示词",
+    "hint": "指导 LLM 如何添加音频标签。{text} 为原文占位符",
+    "default": "你是语音润色助手。请在以下文本中适当添加 MiMO TTS 音频标签，使语音更自然生动。\n\n规则：\n1. 在文本开头添加风格标签，如 (温柔)、(磁性)、(活泼) 等\n2. 在文本中间适当位置插入音频标签，如 [深呼吸]、[叹气]、[笑]、[语速加快] 等\n3. 标签应与文本内容情感一致，不要过度使用，每段最多 2-3 个标签\n4. 保持原文内容不变，只添加标签\n5. 直接返回添加标签后的文本，不要添加任何解释\n\n原文：{text}"
   },
   "timeout": {
     "type": "int",

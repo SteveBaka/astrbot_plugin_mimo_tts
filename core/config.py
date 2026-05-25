@@ -58,6 +58,16 @@ class ConfigManager:
         "audio_format": "wav",
         "min_text_length": 5,
         "max_text_length": 500,
+        # Segmentation
+        "enable_segmentation": False,
+        "segment_pattern": "sentence",
+        "segment_max_count": 10,
+        "segment_voice_probability": 1.0,
+        # Voice polish (LLM)
+        "enable_voice_polish": False,
+        "polish_llm_provider": "",
+        "polish_prompt": "",
+        # Advanced
         "timeout": 60,
         "max_retries": 2,
     }
@@ -236,3 +246,43 @@ class ConfigManager:
         except (ValueError, TypeError):
             value = 2
         return max(0, value)
+
+    # ── Segmentation ──
+
+    @property
+    def enable_segmentation(self) -> bool:
+        return bool(self._cfg.get("enable_segmentation", False))
+
+    @property
+    def segment_pattern(self) -> str:
+        return str(self._cfg.get("segment_pattern", "sentence") or "sentence")
+
+    @property
+    def segment_max_count(self) -> int:
+        try:
+            value = int(self._cfg.get("segment_max_count", 10))
+        except (ValueError, TypeError):
+            value = 10
+        return max(0, value)
+
+    @property
+    def segment_voice_probability(self) -> float:
+        try:
+            value = float(self._cfg.get("segment_voice_probability", 1.0))
+        except (ValueError, TypeError):
+            value = 1.0
+        return max(0.0, min(1.0, value))
+
+    # ── Voice polish (LLM) ──
+
+    @property
+    def enable_voice_polish(self) -> bool:
+        return bool(self._cfg.get("enable_voice_polish", False))
+
+    @property
+    def polish_llm_provider(self) -> str:
+        return str(self._cfg.get("polish_llm_provider", "") or "")
+
+    @property
+    def polish_prompt(self) -> str:
+        return str(self._cfg.get("polish_prompt", "") or "")

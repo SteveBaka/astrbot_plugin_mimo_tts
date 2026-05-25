@@ -41,6 +41,14 @@ SKIP_PATTERNS: list[str] = [
     r"^\[Command\]",
 ]
 
+# Segmentation patterns for splitting long text before TTS
+SEGMENT_PATTERNS: dict[str, str] = {
+    "sentence": r"[。！？!?]",
+    "paragraph": r"\n{2,}",
+    "comma": r"[，,；;]",
+    "mixed": r"[。！？!?\n]",
+}
+
 # MiMO built-in voice list
 MIMO_VOICE_LIST: list[dict[str, str]] = [
     {
