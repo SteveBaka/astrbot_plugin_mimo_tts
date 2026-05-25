@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 import yaml
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.message_components import Plain, Record
 
@@ -1041,6 +1041,8 @@ class MiMoTTSPlugin(Star):
             tts_text = await self._polish_text_with_llm(plain, uid)
 
         # ── Step 3: 文本分段模式 ──
+        # 分段模式下用 event.send() 逐段独立发送，不改写 result.chain，
+        # 避免与 outputpro 等插件的分段回复冲突。
         if self.config.enable_segmentation:
             segments = self._split_text(tts_text)
             if not segments:
@@ -1050,17 +1052,10 @@ class MiMoTTSPlugin(Star):
             )
 
             prob = self.config.segment_voice_probability
-            # 先清空原 chain 中的 Plain 文本，避免二次消息
-            new_chain: list = []
-            for comp in chain:
-                if isinstance(comp, Plain):
-                    continue
-                new_chain.append(comp)
-
             for seg in segments:
                 display_seg = self._strip_audio_tags(seg) if self.config.enable_voice_polish else seg
                 if len(seg) < self.config.get("min_text_length"):
-                    new_chain.append(Plain(display_seg))
+                    await event.send(MessageChain().message(display_seg))
                     continue
                 if random.random() < prob:
                     try:
@@ -1071,18 +1066,23 @@ class MiMoTTSPlugin(Star):
                             seg, uid, emotion_override=emo_override
                         )
                         if audio_path:
-                            new_chain.append(
-                                Record.fromFileSystem(str(audio_path))
-                            )
+                            chain_msg = MessageChain()
                             if self._should_send_text_with_tts(uid):
-                                new_chain.append(Plain(display_seg))
+                                chain_msg.message(display_seg)
+                            chain_msg.file_record(str(audio_path))
+                            await event.send(chain_msg)
+                        else:
+                            await event.send(MessageChain().message(display_seg))
                     except Exception as e:
-                        new_chain.append(Plain(f"[TTS 合成失败: {e}]"))
-                        new_chain.append(Plain(display_seg))
+                        await event.send(
+                            MessageChain().message(f"[TTS 合成失败: {e}]")
+                        )
+                        await event.send(MessageChain().message(display_seg))
                 else:
-                    new_chain.append(Plain(display_seg))
+                    await event.send(MessageChain().message(display_seg))
 
-            result.chain = new_chain
+            # 清空 result.chain，阻止原始消息发出
+            result.chain = []
             return
 
         # ── Step 4: 原有逻辑 — 全文单次合成 ──
