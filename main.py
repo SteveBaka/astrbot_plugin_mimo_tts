@@ -1032,19 +1032,12 @@ class MiMoTTSPlugin(Star):
         if plain.startswith("/"):
             return
 
-        # ── Step 2: LLM 音色润色（概率通过后才执行） ──
-        # 润色后的文本仅用于 TTS 合成，Plain 显示仍用原文，
-        # 避免 outputpro 等插件的文本清洗剥离音频标签。
-        tts_text = plain
-        if self.config.enable_voice_polish:
-            logger.info("MiMO TTS: voice polish enabled, calling LLM...")
-            tts_text = await self._polish_text_with_llm(plain, uid)
-
-        # ── Step 3: 文本分段模式 ──
+        # ── Step 2: 文本分段模式 ──
         # 分段模式下用 event.send() 逐段独立发送，不改写 result.chain，
         # 避免与 outputpro 等插件的分段回复冲突。
+        # 润色延后到确认要发语音的分段才执行，节省 LLM token。
         if self.config.enable_segmentation:
-            segments = self._split_text(tts_text)
+            segments = self._split_text(plain)
             if not segments:
                 return
             logger.info(
@@ -1052,42 +1045,55 @@ class MiMoTTSPlugin(Star):
             )
 
             prob = self.config.segment_voice_probability
+            polish_enabled = self.config.enable_voice_polish
+
             for seg in segments:
-                display_seg = self._strip_audio_tags(seg) if self.config.enable_voice_polish else seg
                 if len(seg) < self.config.get("min_text_length"):
-                    await event.send(MessageChain().message(display_seg))
+                    await event.send(MessageChain().message(seg))
                     continue
+
                 if random.random() < prob:
+                    # 确定要发语音后才润色，避免浪费 token
+                    tts_seg = seg
+                    if polish_enabled:
+                        tts_seg = await self._polish_text_with_llm(seg, uid)
+
                     try:
                         emo_override: Optional[str] = None
                         if not uset["emotion"] or uset["emotion"] == "auto":
                             emo_override = detect_emotion(seg) or None
                         audio_path = await self._do_tts(
-                            seg, uid, emotion_override=emo_override
+                            tts_seg, uid, emotion_override=emo_override
                         )
                         if audio_path:
                             chain_msg = MessageChain()
                             if self._should_send_text_with_tts(uid):
-                                chain_msg.message(display_seg)
+                                chain_msg.message(seg)
                             chain_msg.chain.append(
                                 Record.fromFileSystem(str(audio_path))
                             )
                             await event.send(chain_msg)
                         else:
-                            await event.send(MessageChain().message(display_seg))
+                            await event.send(MessageChain().message(seg))
                     except Exception as e:
                         await event.send(
                             MessageChain().message(f"[TTS 合成失败: {e}]")
                         )
-                        await event.send(MessageChain().message(display_seg))
+                        await event.send(MessageChain().message(seg))
                 else:
-                    await event.send(MessageChain().message(display_seg))
+                    await event.send(MessageChain().message(seg))
 
             # 清空 result.chain，阻止原始消息发出
             result.chain = []
             return
 
-        # ── Step 4: 原有逻辑 — 全文单次合成 ──
+        # ── Step 3: 原有逻辑 — 全文单次合成 ──
+        # 润色仅在全文合成时执行
+        tts_text = plain
+        if self.config.enable_voice_polish:
+            logger.info("MiMO TTS: voice polish enabled, calling LLM...")
+            tts_text = await self._polish_text_with_llm(plain, uid)
+
         orig_emotion = uset["emotion"]
         emo_override: Optional[str] = None
         if not orig_emotion or orig_emotion == "auto":
