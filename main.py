@@ -421,6 +421,13 @@ class MiMoTTSPlugin(Star):
 
         return result
 
+    @staticmethod
+    def _strip_audio_tags(text: str) -> str:
+        """Remove MiMO audio tags for display: (风格) and [标签]."""
+        s = re.sub(r"[（\(][^）\)]{1,10}[）\)]", "", text)
+        s = re.sub(r"[\[【][^\]】]{1,20}[\]】]", "", s)
+        return re.sub(r"\s{2,}", " ", s).strip()
+
     async def _polish_text_with_llm(self, text: str, uid: str) -> str:
         """Use LLM to inject MiMO audio tags into text before TTS."""
         provider_id = self.config.polish_llm_provider
@@ -1051,8 +1058,9 @@ class MiMoTTSPlugin(Star):
                 new_chain.append(comp)
 
             for seg in segments:
+                display_seg = self._strip_audio_tags(seg) if self.config.enable_voice_polish else seg
                 if len(seg) < self.config.get("min_text_length"):
-                    new_chain.append(Plain(seg))
+                    new_chain.append(Plain(display_seg))
                     continue
                 if random.random() < prob:
                     try:
@@ -1067,12 +1075,12 @@ class MiMoTTSPlugin(Star):
                                 Record.fromFileSystem(str(audio_path))
                             )
                             if self._should_send_text_with_tts(uid):
-                                new_chain.append(Plain(seg))
+                                new_chain.append(Plain(display_seg))
                     except Exception as e:
                         new_chain.append(Plain(f"[TTS 合成失败: {e}]"))
-                        new_chain.append(Plain(seg))
+                        new_chain.append(Plain(display_seg))
                 else:
-                    new_chain.append(Plain(seg))
+                    new_chain.append(Plain(display_seg))
 
             result.chain = new_chain
             return

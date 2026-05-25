@@ -54,7 +54,7 @@
   "probability": {
     "type": "float",
     "description": "自动 TTS 触发概率",
-    "hint": "0 = 不触发，0.5 = 50%，1 = 每次都触发",
+    "hint": "全局开关：0 = 不触发，1 = 每次都触发。决定是否对 LLM 回复进行 TTS，不通过则直接跳过，不调用润色/分段",
     "default": 0.8
   },
   "auto_tts": {
@@ -236,7 +236,7 @@
   "segment_voice_probability": {
     "type": "float",
     "description": "分段语音输出概率",
-    "hint": "0.0=全部仅文字，1.0=全部语音，0.5=约一半语音。仅在分段启用时生效",
+    "hint": "在全局触发概率通过后生效。1.0=全部分段语音，0.0=全部仅文字，0.5=随机约一半分段语音",
     "default": 1.0,
     "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
   },
