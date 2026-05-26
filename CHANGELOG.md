@@ -10,16 +10,19 @@
 - 首段快速回复：首段短文本（≤min_text_length）纯文字立即发送，后续段落语音补充；
 - LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签（如 (温柔)[叹气]），增强语音表现力；
 - 润色 LLM Provider 选择器：支持指定 AstrBot 内已启用的 LLM Provider，留空使用当前对话模型；
-- 润色提示词自定义：支持 `{text}` 占位符。
+- 润色提示词自定义：支持 `{text}` 占位符；
+- 默认音色改为下拉选项（9 种内置音色）；
+- 默认语速/音高/触发概率增加滑块控件。
 
 ### 优化
 
 - 润色延后执行：仅对确认要发语音的分段调用 LLM，节省 token；
 - 分段模式用 `event.send()` 逐段独立发送，兼容 outputpro 等输出增强插件；
 - Plain 显示文本剥离音频标签，避免被 outputpro 文本清洗影响；
+- `main.py` 进一步拆分：提取 `core/text_utils.py`、`core/user_state.py`、`tts/synthesis.py`，从 1281 行降至 529 行；
 - 提升 `astrbot_version` 至 `>=4.5.7`（依赖 `llm_generate` API）。
 
-## 2026-05-12
+## 2026-05-12 v1.3.0
 
 ### 架构优化
 
