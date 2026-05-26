@@ -29,7 +29,7 @@ from .core.text_utils import (
     build_audio_only_chain,
     looks_like_hidden_prompt_or_reasoning,
 )
-from .core.user_state import UserStateManager, normalize_tts_mode as _normalize_tts_mode
+from .core.user_state import UserStateManager
 from .handlers.control import (
     handle_text,
     handle_tts_help,
