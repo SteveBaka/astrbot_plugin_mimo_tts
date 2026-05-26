@@ -20,8 +20,19 @@
   "default_voice": {
     "type": "string",
     "description": "默认音色",
-    "hint": "如 mimo_default、冰糖 等，用 /voices 查看全部",
-    "default": "mimo_default"
+    "hint": "用 /voices 查看全部音色详情",
+    "default": "mimo_default",
+    "options": [
+      "mimo_default",
+      "冰糖",
+      "茉莉",
+      "苏打",
+      "白桦",
+      "Mia",
+      "Chloe",
+      "Milo",
+      "Dean"
+    ]
   },
   "sing_voice": {
     "type": "string",
