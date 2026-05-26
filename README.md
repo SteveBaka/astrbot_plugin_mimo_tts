@@ -47,7 +47,7 @@
 |--------|------|--------|
 | `api_key` | MiMO API Key（必填） | - |
 | `api_base_url` | API 地址 | `https://api.xiaomimimo.com/v1` |
-| `model` | 模型名称 | `mimo-v2.5-tts` |
+| `model` | 默认模型名称 | `mimo-v2.5-tts` |
 | `default_voice` | 默认音色 | `mimo_default` |
 | `audio_format` | 输出格式(mp3/wav/ogg) | `wav` |
 | `auto_tts` | 自动拦截 LLM 输出 | `true` |
@@ -307,13 +307,6 @@ AstrBot/
 
 ## 更新日志
 
-- 2026年5月26日，v1.4.0更新：
-  - 新增文本分段 TTS：支持 4 种分段规则，长文本自动切分为多段独立发送，首段短文字快速回复、后续段落语音补充；
-  - 新增分段语音输出概率（0.0~1.0 滑块）与分段数量上限；
-  - 新增 LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力，支持自定义 Provider 与提示词；
-  - 润色延后至确认发语音时才执行，节省 token；
-  - 分段模式兼容 outputpro 等输出增强插件；
-  - 提升最低版本要求至 AstrBot v4.5.7。
 - 2025年4月24日，初版发布，**TTS**基本功能可以使用。目前尚未测试**VoiceDesign**与**VoiceClone**功能。
 - 2025年4月26日，v1.2.0更新：
   - 增加 **/ttsswitch**，支持在 **默认 / 设计 / 克隆** 三种输出模式之间切换；
@@ -357,11 +350,20 @@ AstrBot/
    - `tts/mimo_provider.py` 新增不可重试 HTTP 状态码处理：遇到 400（参数错误）、401（未授权）、403（鉴权失败）时立即终止重试，减少无意义的重试等待；
    - `voice/voice_manager.py` 收窄 `_backup_corrupted_file()` 的异常捕获范围，由 `except Exception` 改为 `except (OSError, shutil.Error)`，避免意外吞掉非文件系统相关异常；
    - 使用 mimo-v2.5-pro 生成。
-- v1.3.0 更新：
+- 2026年5月12日，v1.3.0更新：
    - 将 28 个命令处理器从 `main.py` 拆分至 `handlers/` 子模块，`main.py` 仅保留类结构与委托调用；
    - 默认音频输出格式从 `mp3` 改为 `wav`；
    - 删除空模块 `core/compat.py`；
    - 清理 `core/constants.py` 中未被引用的孤立常量。
+- 2026年5月26日，v1.4.0更新：
+   - 新增文本分段 TTS：支持 4 种分段规则，长文本自动切分为多段独立发送，首段短文字快速回复、后续段落语音补充；
+   - 新增分段语音输出概率（0.0~1.0 滑块）与分段数量上限；
+   - 新增 LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力，支持自定义 Provider 与提示词；
+   - 润色延后至确认发语音时才执行，节省 token；
+   - 分段模式兼容 outputpro 等输出增强插件；
+   - 默认音色改为下拉选项（9 种内置音色），默认语速/音高/触发概率增加滑块控件；
+   - `main.py` 进一步拆分：提取 `core/text_utils.py`、`core/user_state.py`、`tts/synthesis.py`，从 1281 行降至 529 行；
+   - 提升最低版本要求至 AstrBot v4.5.7。
 
 ## 作者的碎碎念
 
@@ -385,7 +387,7 @@ AstrBot/
 
 ## 致谢
 
-本项目离不开以下服务平台的支持，在此表示由衷的感谢。
+本项目的诞生离不开各个项目的支持，在此表示由衷的感谢。
 
 - **[Xiaomi MiMo](https://platform.xiaomimimo.com/)** — MiMO-V2.5-TTS 模型提供方，本项目的 TTS 核心能力基于该模型实现
 - **[AstrBot](https://github.com/Soulter/AstrBot)** — 多平台智能对话机器人框架，本项目的核心模块源自 AstrBot 插件生态
