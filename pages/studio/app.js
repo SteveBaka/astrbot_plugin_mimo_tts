@@ -94,7 +94,7 @@
       ]
     },
     {
-      title: 'TTS 参数', icon: '🎛️',
+      title: 'TTS 参数', icon: 'PAR',
       fields: [
         { key: 'default_speed', label: '默认语速', type: 'slider', min: 0.5, max: 2.0, step: 0.1 },
         { key: 'default_pitch', label: '默认音高', type: 'slider', min: -12, max: 12, step: 1 },
@@ -106,7 +106,7 @@
       ]
     },
     {
-      title: '文本分段', icon: '✂️',
+      title: '文本分段', icon: 'SPL',
       fields: [
         { key: 'enable_segmentation', label: '启用文本分段', type: 'bool' },
         { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'] },
@@ -117,7 +117,7 @@
       ]
     },
     {
-      title: '语音润色', icon: '✨',
+      title: '语音润色', icon: 'POL',
       fields: [
         { key: 'enable_voice_polish', label: '启用 LLM 润色', type: 'bool', hint: '产生额外 LLM 调用' },
         { key: 'polish_llm_provider', label: '润色 LLM Provider', type: 'text', hint: '留空使用当前对话模型' },
@@ -125,7 +125,7 @@
       ]
     },
     {
-      title: '声音克隆', icon: '🎤',
+      title: '声音克隆', icon: 'CLN',
       fields: [
         { key: 'clone_model', label: '克隆模型', type: 'text' },
         { key: 'clone_voice_id', label: '克隆音色 ID', type: 'text' },
@@ -151,7 +151,7 @@
       ]
     },
     {
-      title: '高级设置', icon: '⚙️',
+      title: '高级设置', icon: 'ADV',
       fields: [
         { key: 'timeout', label: 'API 超时(秒)', type: 'number' },
         { key: 'max_retries', label: '重试次数', type: 'number' }
@@ -380,7 +380,7 @@
           <option value="off">关闭</option>
           <option v-for="e in EMOTIONS" :key="e" :value="e">{{ e }}</option>
         </select>
-        <button class="btn-small" @click="runDetectEmotion" title="检测文本情感">🔍</button>
+        <button class="btn-small" @click="runDetectEmotion" title="检测文本情感">检测</button>
       </div>
     </div>
 
@@ -451,7 +451,7 @@
 
   <div class="section action-bar">
     <button class="btn-primary" @click="synthesize" :disabled="synthesizing">
-      {{ synthesizing ? '合成中...' : '🎙️ 合成语音' }}
+      {{ synthesizing ? '合成中...' : '合成语音' }}
     </button>
   </div>
 
@@ -593,7 +593,7 @@
   </div>
 
   <div class="section card">
-    <h3>🎤 声音克隆</h3>
+    <h3>声音克隆</h3>
     <div class="form-grid">
       <div class="control-group">
         <label class="control-label">音色 ID</label>
@@ -877,12 +877,12 @@
         </div>
       </div>
 
-      <div class="session-info">
+      <div v-if="editingUid !== uid" class="session-info">
+        <span class="info-item">模式: <b>{{ formatMode(data.settings?.tts_mode) }}</b></span>
         <span class="info-item">音色: <b>{{ data.settings?.voice || '-' }}</b></span>
         <span class="info-item">情感: <b>{{ data.settings?.emotion || '自动' }}</b></span>
         <span class="info-item">语速: <b>{{ data.settings?.speed ?? '-' }}</b></span>
         <span class="info-item">音高: <b>{{ data.settings?.pitch ?? '-' }}</b></span>
-        <span class="info-item">模式: <b>{{ formatMode(data.settings?.tts_mode) }}</b></span>
         <span class="info-item">TTS: <b>{{ data.settings?.tts_enabled !== false ? '开' : '关' }}</b></span>
         <span class="info-item">文字: <b>{{ data.settings?.text_enabled !== false ? '开' : '关' }}</b></span>
         <span class="info-item">格式: <b>{{ data.format || 'wav' }}</b></span>
@@ -890,6 +890,15 @@
 
       <div v-if="editingUid === uid" class="edit-form">
         <div class="form-grid">
+          <div class="control-group">
+            <label class="control-label">模式</label>
+            <select v-model="editForm.tts_mode" class="select-input">
+              <option value="">默认</option>
+              <option value="default">默认</option>
+              <option value="design">设计</option>
+              <option value="clone">克隆</option>
+            </select>
+          </div>
           <div class="control-group">
             <label class="control-label">音色</label>
             <input type="text" v-model="editForm.voice" class="text-input">
@@ -910,15 +919,6 @@
             <input type="range" class="slider" v-model.number="editForm.pitch" min="-12" max="12" step="1">
           </div>
           <div class="control-group">
-            <label class="control-label">模式</label>
-            <select v-model="editForm.tts_mode" class="select-input">
-              <option value="">默认</option>
-              <option value="default">默认</option>
-              <option value="design">设计</option>
-              <option value="clone">克隆</option>
-            </select>
-          </div>
-          <div class="control-group">
             <label class="control-label">格式</label>
             <select v-model="editForm.format" class="select-input">
               <option v-for="f in FORMATS" :key="f" :value="f">{{ f.toUpperCase() }}</option>
@@ -935,7 +935,7 @@
         </div>
         <div class="edit-actions">
           <button class="btn-primary" @click="saveSession(uid)">保存</button>
-          <button class="btn-secondary" @click="cancelEdit">取消</button>
+          <button class="btn-ghost" @click="cancelEdit">取消</button>
         </div>
       </div>
     </div>
@@ -978,7 +978,7 @@
   <div class="page-header"><h2>关于</h2></div>
 
   <div class="section card about-card">
-    <h3>🎙️ astrbot_plugin_mimo_tts</h3>
+    <h3>astrbot_plugin_mimo_tts</h3>
     <p class="version">版本: {{ version }}</p>
     <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件</p>
   </div>
@@ -1007,11 +1007,11 @@
       const pluginReady = ref(true);
 
       const navItems = [
-        { path: '/', label: '合成', icon: '🎙️' },
-        { path: '/voices', label: '音色', icon: '🎤' },
-        { path: '/config', label: '配置', icon: '⚙️' },
-        { path: '/sessions', label: '会话', icon: '💬' },
-        { path: '/about', label: '关于', icon: 'ℹ️' }
+        { path: '/', label: '合成', icon: 'MIC' },
+        { path: '/voices', label: '音色', icon: 'VOX' },
+        { path: '/config', label: '配置', icon: 'CFG' },
+        { path: '/sessions', label: '会话', icon: 'SES' },
+        { path: '/about', label: '关于', icon: 'INF' }
       ];
 
       function toggleTheme() {
@@ -1034,7 +1034,7 @@
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
   <aside class="sidebar" v-show="!isMobile">
     <div class="sidebar-header">
-      <h2>🎙️ Voice Studio</h2>
+      <h2>Voice Studio</h2>
     </div>
     <nav class="sidebar-nav">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
@@ -1044,7 +1044,7 @@
     </nav>
     <div class="sidebar-footer">
       <button class="theme-btn" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
-        {{ isDark ? '☀️' : '🌙' }}
+        {{ isDark ? 'LIGHT' : 'DARK' }}
       </button>
     </div>
   </aside>

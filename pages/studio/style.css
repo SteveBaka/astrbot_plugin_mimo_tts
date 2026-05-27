@@ -249,8 +249,8 @@ select.select-input { cursor: pointer; }
 .config-field .slider-value { font-size: 13px; color: var(--accent); min-width: 40px; text-align: right; }
 .config-save { margin-top: 14px; }
 .field-hint {
-  display: block; width: 100%; font-size: 11px; color: var(--text-muted);
-  margin-top: -6px; padding-left: 0; opacity: 0.7; line-height: 1.4;
+  font-size: 11px; color: var(--text-muted); opacity: 0.7; line-height: 1.4;
+  margin-left: 8px; white-space: nowrap;
 }
 
 /* Sessions */
