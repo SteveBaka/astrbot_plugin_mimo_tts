@@ -4,15 +4,13 @@
   const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
   const { createRouter, createWebHashHistory } = VueRouter;
 
-  const API = 'astrbot_plugin_mimo_tts';
-
   function getBridge() {
     return window.AstrBotPluginPage;
   }
 
   async function apiGet(endpoint) {
     try {
-      return await getBridge().apiGet(`${API}/${endpoint}`);
+      return await getBridge().apiGet(endpoint);
     } catch (e) {
       console.error(`[Studio] GET ${endpoint}`, e);
       return null;
@@ -21,7 +19,7 @@
 
   async function apiPost(endpoint, body) {
     try {
-      return await getBridge().apiPost(`${API}/${endpoint}`, body);
+      return await getBridge().apiPost(endpoint, body);
     } catch (e) {
       console.error(`[Studio] POST ${endpoint}`, e);
       return null;
@@ -30,7 +28,7 @@
 
   async function apiUpload(endpoint, fileOrFormData) {
     try {
-      return await getBridge().upload(`${API}/${endpoint}`, fileOrFormData);
+      return await getBridge().upload(endpoint, fileOrFormData);
     } catch (e) {
       console.error(`[Studio] UPLOAD ${endpoint}`, e);
       return null;
