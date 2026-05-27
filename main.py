@@ -429,6 +429,7 @@ class MiMoTTSPlugin(Star):
             sessions[uid] = {
                 "settings": settings,
                 "format": self.user_state.user_format.get(uid, "wav"),
+                "umo": self.user_state.user_umo.get(uid, ""),
             }
         return jsonify({"sessions": sessions})
 

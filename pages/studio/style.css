@@ -666,6 +666,40 @@ select.select-input { cursor: pointer; appearance: auto; }
 }
 
 /* ── Sessions ── */
+.page-header-left { display: flex; align-items: center; gap: 10px; }
+.page-header-actions { display: flex; align-items: center; gap: 6px; }
+.session-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.search-bar {
+  width: 0;
+  overflow: hidden;
+  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.search-bar.open { width: 200px; }
+.search-input {
+  width: 200px;
+  padding: 5px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font);
+  outline: none;
+}
+.search-input:focus { border-color: var(--border-focus); }
 .sessions-list { display: flex; flex-direction: column; gap: 12px; }
 .session-card { padding: 0; overflow: hidden; }
 .session-header {
@@ -678,13 +712,22 @@ select.select-input { cursor: pointer; appearance: auto; }
   align-items: center;
   justify-content: space-between;
 }
+.session-uid-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .session-uid {
   font-weight: 700;
   font-size: 13px;
   color: var(--accent);
   font-family: var(--font-mono);
 }
-.session-actions { display: flex; gap: 6px; }
+.session-umo {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .session-info {
   display: flex;
   flex-wrap: wrap;

@@ -891,6 +891,26 @@
       }
 
       const registeredVoices = ref([]);
+      const searchQuery = ref('');
+      const showSearch = ref(false);
+
+      const filteredSessions = computed(() => {
+        const q = searchQuery.value.trim().toLowerCase();
+        const entries = Object.entries(sessions.value);
+        if (!q) return entries;
+        return entries.filter(([uid, data]) => {
+          const umo = (data.umo || '').toLowerCase();
+          return uid.toLowerCase().includes(q) || umo.includes(q);
+        });
+      });
+
+      const sessionCount = computed(() => Object.keys(sessions.value).length);
+
+      function toggleSearch() {
+        showSearch.value = !showSearch.value;
+        if (!showSearch.value) searchQuery.value = '';
+      }
+
       const filteredEditVoices = computed(() => {
         if (editForm.tts_mode === 'default') return BUILTIN_VOICES;
         const type = editForm.tts_mode === 'design' ? 'design' : 'clone';
@@ -915,29 +935,42 @@
 
       return {
         sessions, loading, editingUid, editForm, errorMsg, successMsg,
+        searchQuery, showSearch, filteredSessions, sessionCount,
         loadSessions, startEdit, cancelEdit, saveSession, resetSession,
-        deleteSession, formatMode, EMOTIONS, FORMATS, BUILTIN_VOICES,
-        filteredEditVoices, icon
+        deleteSession, formatMode, toggleSearch, EMOTIONS, FORMATS,
+        BUILTIN_VOICES, filteredEditVoices, icon
       };
     },
     template: `
 <div class="page sessions-page">
   <div class="page-header">
-    <h2><span v-html="icon('messages')"></span> 会话管理</h2>
-    <button class="btn-small" @click="loadSessions">刷新</button>
+    <div class="page-header-left">
+      <h2><span v-html="icon('messages')"></span> 会话管理</h2>
+      <span class="session-badge">{{ sessionCount }}</span>
+    </div>
+    <div class="page-header-actions">
+      <div class="search-bar" :class="{ open: showSearch }">
+        <input v-if="showSearch" v-model="searchQuery" type="text" class="search-input" placeholder="搜索 UID 或 UMO...">
+      </div>
+      <button class="btn-small" @click="toggleSearch"><span v-html="icon('search')"></span></button>
+      <button class="btn-small" @click="loadSessions"><span v-html="icon('refresh')"></span> 刷新</button>
+    </div>
   </div>
 
   <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
   <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
   <div v-if="loading" class="loading">加载中...</div>
 
-  <div v-else-if="Object.keys(sessions).length === 0" class="empty-hint">暂无会话数据</div>
+  <div v-else-if="filteredSessions.length === 0" class="empty-hint">暂无{{ searchQuery ? '匹配的' : '' }}会话数据</div>
 
   <div v-else class="sessions-list">
-    <div v-for="(data, uid) in sessions" :key="uid" class="section card session-card">
+    <div v-for="[uid, data] in filteredSessions" :key="uid" class="section card session-card">
       <div class="session-header">
         <div class="session-header-top">
-          <span class="session-uid">{{ uid }}</span>
+          <div class="session-uid-group">
+            <span class="session-uid">{{ uid }}</span>
+            <span v-if="data.umo" class="session-umo">{{ data.umo }}</span>
+          </div>
           <div class="session-actions">
             <button class="btn-small" @click="startEdit(uid)"><span v-html="icon('edit')"></span> 编辑</button>
             <button class="btn-small" @click="resetSession(uid)"><span v-html="icon('reset')"></span> 重置</button>
