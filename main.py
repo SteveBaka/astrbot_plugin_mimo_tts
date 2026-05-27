@@ -106,7 +106,8 @@ class MiMoTTSPlugin(Star):
         context.register_web_api(f"/{p}/config/update", self._api_update_config, ["POST"], "更新插件配置")
         context.register_web_api(f"/{p}/tts", self._api_tts_synthesize, ["POST"], "TTS 语音合成")
         context.register_web_api(f"/{p}/voices", self._api_list_voices, ["GET"], "获取音色列表")
-        context.register_web_api(f"/{p}/voices/clone", self._api_clone_voice, ["POST"], "上传克隆音色")
+        context.register_web_api(f"/{p}/voices/clone-init", self._api_clone_init, ["POST"], "初始化克隆")
+        context.register_web_api(f"/{p}/voices/clone-file", self._api_clone_file, ["POST"], "上传克隆音频")
         context.register_web_api(f"/{p}/voices/design", self._api_design_voice, ["POST"], "注册设计音色")
         context.register_web_api(f"/{p}/voices/delete", self._api_delete_voice, ["POST"], "删除音色")
         context.register_web_api(f"/{p}/sessions", self._api_list_sessions, ["GET"], "获取会话配置列表")
@@ -349,27 +350,35 @@ class MiMoTTSPlugin(Star):
             "all": builtin + custom,
         })
 
-    async def _api_clone_voice(self):
+    async def _api_clone_init(self):
         from quart import jsonify, request
-        form = await request.form
-        files = await request.files
-        voice_id = form.get("voice_id", "").strip()
-        audio_file = files.get("file") or files.get("audio")
-        if not voice_id or not audio_file:
-            return jsonify({"error": "缺少 voice_id 或音频文件"}), 400
+        body = await request.json
+        voice_id = body.get("voice_id", "").strip()
+        if not voice_id:
+            return jsonify({"error": "缺少 voice_id"}), 400
+        self._pending_clone_voice_id = voice_id
+        return jsonify({"status": "ok"})
 
+    async def _api_clone_file(self):
+        from quart import jsonify, request
+        voice_id = getattr(self, "_pending_clone_voice_id", "")
+        if not voice_id:
+            return jsonify({"error": "请先调用 clone-init"}), 400
+        files = await request.files
+        audio_file = files.get("file")
+        if not audio_file:
+            return jsonify({"error": "缺少音频文件"}), 400
         suffix = Path(audio_file.filename or "audio.wav").suffix.lower()
         if suffix not in (".mp3", ".wav"):
             return jsonify({"error": "仅支持 mp3/wav 格式"}), 400
-
         clone_dir = self._data_dir / "clone"
         clone_dir.mkdir(parents=True, exist_ok=True)
         save_path = clone_dir / f"{voice_id}{suffix}"
         audio_file.save(str(save_path))
-
         self._voice_manager.register_voice(
             voice_id, name=voice_id, model="voiceclone", audio_path=str(save_path),
         )
+        self._pending_clone_voice_id = ""
         return jsonify({"status": "ok", "voice_id": voice_id})
 
     async def _api_design_voice(self):

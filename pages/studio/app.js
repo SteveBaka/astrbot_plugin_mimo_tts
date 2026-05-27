@@ -529,10 +529,12 @@
           showError('请选择参考音频文件');
           return;
         }
-        const fd = new FormData();
-        fd.append('voice_id', cloneId.value.trim());
-        fd.append('audio', cloneFile.value);
-        const res = await apiUpload('voices/clone', fd);
+        const initRes = await apiPost('voices/clone-init', { voice_id: cloneId.value.trim() });
+        if (!initRes || initRes.error) {
+          showError(initRes?.error || '初始化失败');
+          return;
+        }
+        const res = await apiUpload('voices/clone-file', cloneFile.value);
         if (res && res.error) {
           showError(res.error);
         } else if (res) {

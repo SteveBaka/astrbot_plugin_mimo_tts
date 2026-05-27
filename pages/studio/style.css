@@ -240,7 +240,7 @@ select.select-input { cursor: pointer; }
 /* Config sections */
 .config-section h3 { font-size: 15px; color: var(--accent); margin-bottom: 14px; }
 .config-fields { display: flex; flex-direction: column; gap: 12px; }
-.config-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.config-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .config-field .control-label { margin-bottom: 0; white-space: nowrap; min-width: 120px; font-size: 13px; color: var(--text-muted); }
 .config-field .text-input,
 .config-field .select-input { flex: 1; }
@@ -248,6 +248,10 @@ select.select-input { cursor: pointer; }
 .config-field .slider-row { flex: 1; display: flex; align-items: center; gap: 10px; }
 .config-field .slider-value { font-size: 13px; color: var(--accent); min-width: 40px; text-align: right; }
 .config-save { margin-top: 14px; }
+.field-hint {
+  display: block; width: 100%; font-size: 11px; color: var(--text-muted);
+  margin-top: -6px; padding-left: 0; opacity: 0.7; line-height: 1.4;
+}
 
 /* Sessions */
 .session-card {
