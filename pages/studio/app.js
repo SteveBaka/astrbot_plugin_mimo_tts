@@ -386,111 +386,116 @@
   <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
   <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
 
-  <div class="section">
+  <div class="card">
+    <div class="section-title"><span v-html="icon('microphone')"></span> 输入文本</div>
     <textarea v-model="text" placeholder="输入要合成的文本..." rows="5" class="text-input"></textarea>
   </div>
 
-  <div class="section controls-grid">
-    <div class="control-group">
-      <label class="control-label">音色模式</label>
-      <div class="mode-selector">
-        <button v-for="m in modes" :key="m.value"
-          :class="['mode-btn', { active: voiceMode === m.value }]"
-          @click="voiceMode = m.value">{{ m.label }}</button>
+  <div class="card">
+    <div class="section-title"><span v-html="icon('user-circle')"></span> 音色选择</div>
+    <div class="form-grid">
+      <div class="control-group">
+        <label class="control-label">音色模式</label>
+        <div class="mode-selector">
+          <button v-for="m in modes" :key="m.value"
+            :class="['mode-btn', { active: voiceMode === m.value }]"
+            @click="voiceMode = m.value">{{ m.label }}</button>
+        </div>
       </div>
-    </div>
-
-    <div class="control-group">
-      <label class="control-label">音色</label>
-      <select v-model="selectedVoice" class="select-input">
-        <option v-for="v in filteredVoices" :key="v.id" :value="v.id">{{ v.name }}</option>
-      </select>
-    </div>
-
-    <div class="control-group">
-      <label class="control-label">情感</label>
-      <div class="emotion-row">
-        <select v-model="emotion" class="select-input">
-          <option value="auto">自动检测</option>
-          <option value="off">关闭</option>
-          <option v-for="e in EMOTIONS" :key="e" :value="e">{{ e }}</option>
+      <div class="control-group">
+        <label class="control-label">音色</label>
+        <select v-model="selectedVoice" class="select-input">
+          <option v-for="v in filteredVoices" :key="v.id" :value="v.id">{{ v.name }}</option>
         </select>
-        <button class="btn-small" @click="runDetectEmotion" title="检测文本情感">检测</button>
       </div>
-    </div>
-
-    <div class="control-group">
-      <label class="control-label">音频格式</label>
-      <select v-model="audioFormat" class="select-input">
-        <option v-for="f in FORMATS" :key="f" :value="f">{{ f.toUpperCase() }}</option>
-      </select>
+      <div class="control-group">
+        <label class="control-label">情感</label>
+        <div class="emotion-row">
+          <select v-model="emotion" class="select-input">
+            <option value="auto">自动检测</option>
+            <option value="off">关闭</option>
+            <option v-for="e in EMOTIONS" :key="e" :value="e">{{ e }}</option>
+          </select>
+          <button class="btn-small" @click="runDetectEmotion" title="检测文本情感"><span v-html="icon('sparkles')"></span> 检测</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <label class="control-label">音频格式</label>
+        <select v-model="audioFormat" class="select-input">
+          <option v-for="f in FORMATS" :key="f" :value="f">{{ f.toUpperCase() }}</option>
+        </select>
+      </div>
     </div>
   </div>
 
-  <div class="section">
+  <div class="card">
+    <div class="section-title"><span v-html="icon('adjustments')"></span> 参数调节</div>
     <div class="control-group">
-      <label class="control-label">语速: {{ speed.toFixed(1) }}</label>
+      <label class="control-label">语速: <span class="slider-value">{{ speed.toFixed(1) }}</span></label>
       <input type="range" class="slider" v-model.number="speed" min="0.5" max="2.0" step="0.1">
     </div>
     <div class="control-group">
-      <label class="control-label">音高: {{ pitch >= 0 ? '+' : '' }}{{ pitch }}</label>
+      <label class="control-label">音高: <span class="slider-value">{{ pitch >= 0 ? '+' : '' }}{{ pitch }}</span></label>
       <input type="range" class="slider" v-model.number="pitch" min="-12" max="12" step="1">
     </div>
+    <div class="toggles-row">
+      <div class="toggle-item">
+        <span>呼吸声</span>
+        <label class="toggle"><input type="checkbox" v-model="breathEnabled"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-item">
+        <span>重音</span>
+        <label class="toggle"><input type="checkbox" v-model="stressEnabled"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-item">
+        <span>笑声</span>
+        <label class="toggle"><input type="checkbox" v-model="laughterEnabled"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-item">
+        <span>停顿</span>
+        <label class="toggle"><input type="checkbox" v-model="pauseEnabled"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
   </div>
 
-  <div class="section toggles-row">
-    <div class="toggle-item">
-      <span>呼吸声</span>
-      <label class="toggle"><input type="checkbox" v-model="breathEnabled"><span class="toggle-slider"></span></label>
+  <div class="card">
+    <div class="section-title"><span v-html="icon('sparkles')"></span> 预设方案</div>
+    <div class="chips-row">
+      <span class="preset-chip" v-for="p in PRESETS" :key="p.name"
+        :class="{ active: activePreset === p.name }"
+        @click="applyPreset(p)">{{ p.label }}</span>
     </div>
-    <div class="toggle-item">
-      <span>重音</span>
-      <label class="toggle"><input type="checkbox" v-model="stressEnabled"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="toggle-item">
-      <span>笑声</span>
-      <label class="toggle"><input type="checkbox" v-model="laughterEnabled"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="toggle-item">
-      <span>停顿</span>
-      <label class="toggle"><input type="checkbox" v-model="pauseEnabled"><span class="toggle-slider"></span></label>
-    </div>
-  </div>
-
-  <div class="section presets-row">
-    <span class="preset-chip" v-for="p in PRESETS" :key="p.name"
-      :class="{ active: activePreset === p.name }"
-      @click="applyPreset(p)">{{ p.label }}</span>
-  </div>
-
-  <div class="section">
-    <button class="btn-link" @click="showAdvanced = !showAdvanced">
+    <button class="btn-link" @click="showAdvanced = !showAdvanced" style="margin-top:8px;">
       {{ showAdvanced ? '收起高级设置 ▴' : '高级设置 ▾' }}
     </button>
     <div v-show="showAdvanced" class="advanced-panel">
-      <div class="control-group">
-        <label class="control-label">方言口音</label>
-        <input type="text" v-model="dialect" placeholder="留空表示无方言" class="text-input">
-      </div>
-      <div class="control-group">
-        <label class="control-label">音量</label>
-        <select v-model="volume" class="select-input">
-          <option value="">默认</option>
-          <option value="轻声">轻声</option>
-          <option value="正常">正常</option>
-          <option value="大声">大声</option>
-        </select>
+      <div class="form-grid">
+        <div class="control-group">
+          <label class="control-label">方言口音</label>
+          <input type="text" v-model="dialect" placeholder="留空表示无方言" class="text-input">
+        </div>
+        <div class="control-group">
+          <label class="control-label">音量</label>
+          <select v-model="volume" class="select-input">
+            <option value="">默认</option>
+            <option value="轻声">轻声</option>
+            <option value="正常">正常</option>
+            <option value="大声">大声</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="section action-bar">
+  <div class="action-bar">
     <button class="btn-primary" @click="synthesize" :disabled="synthesizing">
+      <span v-if="synthesizing" class="spinner"></span>
       {{ synthesizing ? '合成中...' : '合成语音' }}
     </button>
   </div>
 
-  <div v-if="audioSrc" class="section audio-section">
+  <div v-if="audioSrc" class="card audio-section">
+    <div class="section-title"><span v-html="icon('circle-check')"></span> 合成结果</div>
     <audio ref="audioRef" :src="audioSrc" controls class="audio-player"></audio>
   </div>
 </div>
@@ -620,51 +625,59 @@
   <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
   <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
 
-  <div class="section card">
-    <div class="section-title"><span v-html="icon('palette')"></span> 声音设计</div>
-    <div class="form-grid">
-      <div class="control-group">
-        <label class="control-label">音色 ID</label>
-        <input type="text" v-model="designId" placeholder="my_voice" class="text-input">
+  <div class="voice-create-row">
+    <div class="card">
+      <div class="section-title"><span v-html="icon('palette')"></span> 声音设计</div>
+      <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">
+        通过文字描述定义自定义音色，注册后可在合成页面切换到「设计」模式使用。
+      </p>
+      <div class="form-grid">
+        <div class="control-group">
+          <label class="control-label">音色 ID</label>
+          <input type="text" v-model="designId" placeholder="my_voice" class="text-input">
+        </div>
+        <div class="control-group">
+          <label class="control-label">名称（可选）</label>
+          <input type="text" v-model="designName" placeholder="显示名称" class="text-input">
+        </div>
+        <div class="control-group full-width">
+          <label class="control-label">音色描述 <span style="color:var(--accent);">*</span></label>
+          <textarea v-model="designDesc" placeholder="如：温柔甜美的年轻女声，语速适中" rows="3" class="text-input"></textarea>
+        </div>
       </div>
-      <div class="control-group">
-        <label class="control-label">名称（可选）</label>
-        <input type="text" v-model="designName" placeholder="显示名称" class="text-input">
-      </div>
-      <div class="control-group full-width">
-        <label class="control-label">音色描述</label>
-        <textarea v-model="designDesc" placeholder="如：温柔甜美的年轻女声，语速适中" rows="3" class="text-input"></textarea>
-      </div>
+      <button class="btn-primary" @click="submitDesign" style="margin-top:8px;">注册声音</button>
     </div>
-    <button class="btn-primary" @click="submitDesign">创建设计音色</button>
+
+    <div class="card">
+      <div class="section-title"><span v-html="icon('copy')"></span> 声音克隆</div>
+      <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">
+        上传参考音频文件克隆音色，注册后可在合成页面切换到「克隆」模式使用。
+      </p>
+      <div class="form-grid">
+        <div class="control-group">
+          <label class="control-label">音色 ID</label>
+          <input type="text" v-model="cloneId" placeholder="my_clone" class="text-input">
+        </div>
+        <div class="control-group">
+          <label class="control-label">参考音频（mp3/wav）</label>
+          <input type="file" accept=".mp3,.wav" @change="onCloneFileChange" class="file-input">
+        </div>
+      </div>
+      <button class="btn-primary" @click="submitClone" style="margin-top:8px;">上传并克隆</button>
+    </div>
   </div>
 
-  <div class="section card">
-    <div class="section-title"><span v-html="icon('copy')"></span> 声音克隆</div>
-    <div class="form-grid">
-      <div class="control-group">
-        <label class="control-label">音色 ID</label>
-        <input type="text" v-model="cloneId" placeholder="my_clone" class="text-input">
-      </div>
-      <div class="control-group">
-        <label class="control-label">参考音频（mp3/wav）</label>
-        <input type="file" accept=".mp3,.wav" @change="onCloneFileChange" class="file-input">
-      </div>
-    </div>
-    <button class="btn-primary" @click="submitClone">上传克隆音色</button>
-  </div>
-
-  <div class="section card">
+  <div class="card" style="margin-top:20px;">
     <div class="section-title"><span v-html="icon('list')"></span> 已注册音色</div>
-    <div v-if="loading" class="loading">加载中...</div>
+    <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
     <div v-else-if="registeredVoices.length === 0" class="empty-hint">暂无自定义音色</div>
     <div v-else class="voice-list">
       <div v-for="v in registeredVoices" :key="v.id" class="voice-card">
         <div class="voice-info">
           <span class="voice-name">{{ v.name || v.id }}</span>
-          <span class="voice-type badge" :class="v.type">{{ v.type === 'design' ? '设计' : '克隆' }}</span>
+          <span class="badge" :class="v.type">{{ v.type === 'design' ? '设计' : '克隆' }}</span>
         </div>
-        <button class="btn-danger-small" @click="deleteVoice(v.id)">删除</button>
+        <button class="btn-danger-small" @click="deleteVoice(v.id)"><span v-html="icon('trash')"></span> 删除</button>
       </div>
     </div>
   </div>
@@ -731,10 +744,10 @@
 
   <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
   <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
-  <div v-if="loading" class="loading">加载中...</div>
+  <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
 
   <template v-if="!loading">
-    <div v-for="section in sections" :key="section.title" class="section card config-section">
+    <div v-for="section in sections" :key="section.title" class="card config-section">
       <div class="section-title"><span v-html="icon(section.ic)"></span> {{ section.title }}</div>
       <div class="config-fields">
         <div v-for="field in section.fields" :key="field.key" class="config-field">
@@ -772,13 +785,14 @@
           </template>
 
           <template v-else-if="field.type === 'textarea'">
-            <textarea v-model="config[field.key]" rows="5" class="text-input"
+            <textarea v-model="config[field.key]" rows="3" class="text-input"
               :placeholder="field.hint || ''"></textarea>
           </template>
         </div>
       </div>
-      <div class="section-actions">
+      <div class="config-save">
         <button class="btn-primary" @click="saveSection(section)" :disabled="saving">
+          <span v-if="saving" class="spinner" style="width:14px;height:14px;border-width:2px;"></span>
           {{ saving ? '保存中...' : '保存' }}
         </button>
       </div>
@@ -953,18 +967,18 @@
         <input v-if="showSearch" v-model="searchQuery" type="text" class="search-input" placeholder="搜索 UID 或 UMO...">
       </div>
       <button class="btn-small" @click="toggleSearch"><span v-html="icon('search')"></span></button>
-      <button class="btn-small" @click="loadSessions"><span v-html="icon('refresh')"></span> 刷新</button>
+      <button class="btn-small" @click="loadSessions"><span v-html="icon('refresh')"></span></button>
     </div>
   </div>
 
   <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
   <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
-  <div v-if="loading" class="loading">加载中...</div>
+  <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
 
   <div v-else-if="filteredSessions.length === 0" class="empty-hint">暂无{{ searchQuery ? '匹配的' : '' }}会话数据</div>
 
   <div v-else class="sessions-list">
-    <div v-for="[uid, data] in filteredSessions" :key="uid" class="section card session-card">
+    <div v-for="[uid, data] in filteredSessions" :key="uid" class="card session-card">
       <div class="session-header">
         <div class="session-header-top">
           <div class="session-uid-group">
@@ -972,9 +986,9 @@
             <span v-if="data.umo" class="session-umo">{{ data.umo }}</span>
           </div>
           <div class="session-actions">
-            <button class="btn-small" @click="startEdit(uid)"><span v-html="icon('edit')"></span> 编辑</button>
-            <button class="btn-small" @click="resetSession(uid)"><span v-html="icon('reset')"></span> 重置</button>
-            <button class="btn-danger-small" @click="deleteSession(uid)"><span v-html="icon('trash')"></span> 删除</button>
+            <button class="btn-small" @click="startEdit(uid)"><span v-html="icon('edit')"></span></button>
+            <button class="btn-small" @click="resetSession(uid)"><span v-html="icon('reset')"></span></button>
+            <button class="btn-danger-small" @click="deleteSession(uid)"><span v-html="icon('trash')"></span></button>
           </div>
         </div>
         <div v-if="editingUid !== uid" class="session-info">
@@ -1019,11 +1033,11 @@
             </select>
           </div>
           <div class="control-group">
-            <label class="control-label">语速: {{ editForm.speed.toFixed(1) }}</label>
+            <label class="control-label">语速: <span class="slider-value">{{ editForm.speed.toFixed(1) }}</span></label>
             <input type="range" class="slider" v-model.number="editForm.speed" min="0.5" max="2.0" step="0.1">
           </div>
           <div class="control-group">
-            <label class="control-label">音高: {{ editForm.pitch >= 0 ? '+' : '' }}{{ editForm.pitch }}</label>
+            <label class="control-label">音高: <span class="slider-value">{{ editForm.pitch >= 0 ? '+' : '' }}{{ editForm.pitch }}</span></label>
             <input type="range" class="slider" v-model.number="editForm.pitch" min="-12" max="12" step="1">
           </div>
           <div class="control-group toggle-field">
@@ -1036,7 +1050,7 @@
           </div>
         </div>
         <div class="edit-actions">
-          <button class="btn-primary" @click="saveSession(uid)">保存</button>
+          <button class="btn-primary" @click="saveSession(uid)"><span v-html="icon('save')"></span> 保存</button>
           <button class="btn-ghost" @click="cancelEdit">取消</button>
         </div>
       </div>
@@ -1079,24 +1093,28 @@
 <div class="page about-page">
   <div class="page-header"><h2><span v-html="icon('info-circle')"></span> 关于</h2></div>
 
-  <div class="section card about-card">
+  <div class="card about-card">
     <div class="section-title"><span class="inline-logo-icon">TTS</span> astrbot_plugin_mimo_tts</div>
     <p class="version">版本: {{ version }}</p>
-    <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件</p>
+    <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件，为 AstrBot 提供高质量的语音合成能力。</p>
   </div>
 
-  <div class="section card">
+  <div class="card">
     <div class="section-title"><span v-html="icon('sparkles')"></span> 功能特性</div>
     <div class="feature-chips">
       <span v-for="f in features" :key="f" class="feature-chip">{{ f }}</span>
     </div>
   </div>
 
-  <div class="section card">
+  <div class="card">
     <div class="section-title"><span v-html="icon('link')"></span> 链接</div>
     <a href="https://github.com/SteveBaka/astrbot_plugin_mimo_tts" target="_blank" class="about-link">
       <span v-html="icon('github')"></span> GitHub 仓库
     </a>
+  </div>
+
+  <div class="about-footer">
+    <p>Voice Studio · Designed with ❤️ by unsuited_</p>
   </div>
 </div>
 `
@@ -1135,24 +1153,32 @@
     template: `
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
   <aside class="sidebar" v-show="!isMobile">
-    <div class="sidebar-header">
-      <div class="sidebar-logo-icon">TTS</div>
-      <div>
-        <h2>astrbot_plugin_mimo_tts</h2>
-        <div class="sidebar-sub">Voice Studio</div>
+    <div class="sidebar-module sidebar-brand">
+      <div class="sidebar-header">
+        <div class="sidebar-logo-icon">TTS</div>
+        <div>
+          <h2>astrbot_plugin_mimo_tts</h2>
+          <div class="sidebar-sub">Voice Studio</div>
+        </div>
       </div>
     </div>
-    <nav class="sidebar-nav">
-      <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
-        <span class="nav-icon" v-html="icon(item.ic)"></span>
-        <span class="nav-label">{{ item.label }}</span>
-      </router-link>
-    </nav>
-    <div class="sidebar-footer">
-      <button class="theme-btn" @click="toggleTheme">
-        <span v-html="icon(isDark ? 'sun' : 'moon')"></span>
-        {{ isDark ? 'Light' : 'Dark' }}
-      </button>
+
+    <div class="sidebar-module sidebar-nav-module">
+      <nav class="sidebar-nav">
+        <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
+          <span class="nav-icon" v-html="icon(item.ic)"></span>
+          <span class="nav-label">{{ item.label }}</span>
+        </router-link>
+      </nav>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-footer">
+        <button class="theme-btn" @click="toggleTheme">
+          <span v-html="icon(isDark ? 'sun' : 'moon')"></span>
+          {{ isDark ? 'Light' : 'Dark' }}
+        </button>
+      </div>
     </div>
   </aside>
 
