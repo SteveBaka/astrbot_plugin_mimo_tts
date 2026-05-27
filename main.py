@@ -95,6 +95,29 @@ class MiMoTTSPlugin(Star):
 
         self.user_state.load()
 
+        # ── Register Web API for Voice Studio page ──
+        self._register_web_apis(context)
+
+    def _register_web_apis(self, context: Context):
+        """Register REST API endpoints for the Voice Studio WebUI page."""
+        p = "astrbot_plugin_mimo_tts"
+
+        context.register_web_api(f"/{p}/config", self._api_get_config, ["GET"], "获取插件配置")
+        context.register_web_api(f"/{p}/config/update", self._api_update_config, ["POST"], "更新插件配置")
+        context.register_web_api(f"/{p}/tts", self._api_tts_synthesize, ["POST"], "TTS 语音合成")
+        context.register_web_api(f"/{p}/voices", self._api_list_voices, ["GET"], "获取音色列表")
+        context.register_web_api(f"/{p}/voices/clone-init", self._api_clone_init, ["POST"], "初始化克隆")
+        context.register_web_api(f"/{p}/voices/clone-file", self._api_clone_file, ["POST"], "上传克隆音频")
+        context.register_web_api(f"/{p}/voices/design", self._api_design_voice, ["POST"], "注册设计音色")
+        context.register_web_api(f"/{p}/voices/delete", self._api_delete_voice, ["POST"], "删除音色")
+        context.register_web_api(f"/{p}/sessions", self._api_list_sessions, ["GET"], "获取会话配置列表")
+        context.register_web_api(f"/{p}/sessions/update", self._api_update_session, ["POST"], "更新会话配置")
+        context.register_web_api(f"/{p}/sessions/delete", self._api_delete_session, ["POST"], "删除会话配置")
+        context.register_web_api(f"/{p}/sessions/reset", self._api_reset_session, ["POST"], "重置会话配置")
+        context.register_web_api(f"/{p}/emotions", self._api_list_emotions, ["GET"], "获取情感列表")
+        context.register_web_api(f"/{p}/constants", self._api_get_constants, ["GET"], "获取常量数据")
+        context.register_web_api(f"/{p}/health", self._api_health, ["GET"], "健康检查")
+
     # ── Proxy methods for handler compatibility ──
 
     @property
@@ -254,6 +277,218 @@ class MiMoTTSPlugin(Star):
         await self.synth.close_provider()
 
     # ═══════════════════════════════════════════════════════════
+    #  Web API for Voice Studio Page
+    # ═══════════════════════════════════════════════════════════
+
+    async def _api_health(self):
+        from quart import jsonify
+        return jsonify({"status": "ok", "version": _read_plugin_version()})
+
+    async def _api_get_config(self):
+        from quart import jsonify
+        return jsonify({"config": dict(self.config._cfg)})
+
+    async def _api_update_config(self):
+        from quart import jsonify, request
+        body = await request.json
+        allowed_keys = set(self.config._SCHEMA_DEFAULTS.keys())
+        for k, v in body.items():
+            if k in allowed_keys:
+                self.config.set(k, v)
+        return jsonify({"status": "ok"})
+
+    async def _api_tts_synthesize(self):
+        from quart import jsonify, request
+        import base64
+        body = await request.json
+        text = str(body.get("text", ""))[:5000]
+        if not text.strip():
+            return jsonify({"error": "文本不能为空"}), 400
+
+        uid = str(body.get("uid", "webui"))[:100]
+
+        # LLM 润色（仅当请求中明确启用时）
+        if body.get("voice_polish"):
+            text = await self._polish_text_with_llm(text, uid)
+
+        overrides = {}
+        for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
+                     "laughter", "pause", "dialect", "volume", "tts_mode"):
+            if key in body and body[key] is not None:
+                overrides[key] = body[key]
+
+        emotion_override = None
+        if "emotion" in overrides:
+            if overrides["emotion"] == "auto":
+                emotion_override = None
+            elif overrides["emotion"] == "off":
+                overrides["emotion"] = ""
+            else:
+                emotion_override = overrides.pop("emotion")
+
+        try:
+            audio_path = await self._do_tts(
+                text, uid, emotion_override=emotion_override,
+                settings_override=overrides or None,
+            )
+            if audio_path:
+                audio_bytes = audio_path.read_bytes()
+                b64 = base64.b64encode(audio_bytes).decode()
+                fmt = audio_path.suffix.lstrip(".")
+                mime = {"wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg"}.get(fmt, "audio/wav")
+                return jsonify({"audio_b64": b64, "format": fmt, "mime": mime})
+            return jsonify({"error": "合成失败"}), 500
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    async def _api_list_voices(self):
+        from quart import jsonify
+        from .core.constants import MIMO_VOICE_LIST
+        builtin = [{**v, "type": "default"} for v in MIMO_VOICE_LIST]
+        registered = self._voice_manager.list_voices()
+        custom = []
+        for v in registered:
+            model = v.get("model", "voiceclone")
+            vtype = "design" if model == "voicedesign" else "clone"
+            custom.append({
+                "id": v.get("voice_id", ""),
+                "name": v.get("name", ""),
+                "type": vtype,
+            })
+        return jsonify({
+            "builtin": builtin,
+            "registered": custom,
+            "all": builtin + custom,
+        })
+
+    async def _api_clone_init(self):
+        from quart import jsonify, request
+        import re as _re
+        body = await request.json
+        voice_id = body.get("voice_id", "").strip()
+        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", voice_id)
+        if not voice_id:
+            return jsonify({"error": "缺少 voice_id"}), 400
+        self._pending_clone_voice_id = voice_id
+        return jsonify({"status": "ok"})
+
+    async def _api_clone_file(self):
+        from quart import jsonify, request
+        import base64
+        import re as _re
+        voice_id = getattr(self, "_pending_clone_voice_id", "")
+        if not voice_id:
+            return jsonify({"error": "请先调用 clone-init"}), 400
+        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", voice_id)
+        if not voice_id:
+            return jsonify({"error": "无效的 voice_id"}), 400
+        body = await request.json
+        file_b64 = body.get("file_b64", "")
+        filename = body.get("filename", "audio.wav")
+        if not file_b64:
+            return jsonify({"error": "缺少音频数据"}), 400
+        if len(file_b64) > 20 * 1024 * 1024:
+            return jsonify({"error": "文件过大（最大约 15MB）"}), 400
+        suffix = Path(filename).suffix.lower()
+        if suffix not in (".mp3", ".wav"):
+            return jsonify({"error": "仅支持 mp3/wav 格式"}), 400
+        clone_dir = self._data_dir / "clone"
+        clone_dir.mkdir(parents=True, exist_ok=True)
+        save_path = clone_dir / f"{voice_id}{suffix}"
+        audio_bytes = base64.b64decode(file_b64)
+        save_path.write_bytes(audio_bytes)
+        self._voice_manager.register_voice(
+            voice_id, name=voice_id, model="voiceclone", audio_path=str(save_path),
+        )
+        self._pending_clone_voice_id = ""
+        return jsonify({"status": "ok", "voice_id": voice_id, "path": str(save_path)})
+
+    async def _api_design_voice(self):
+        from quart import jsonify, request
+        import re as _re
+        body = await request.json
+        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip())
+        description = body.get("description", "").strip()[:500]
+        name = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("name", voice_id).strip())[:50]
+        if not voice_id or not description:
+            return jsonify({"error": "缺少 voice_id 或描述"}), 400
+        self._voice_manager.register_voice(
+            voice_id, name=name, model="voicedesign", description=description,
+        )
+        return jsonify({"status": "ok", "voice_id": voice_id})
+
+    async def _api_delete_voice(self):
+        from quart import jsonify, request
+        body = await request.json
+        voice_id = body.get("voice_id", "")
+        if not voice_id:
+            return jsonify({"error": "缺少 voice_id"}), 400
+        ok = self._voice_manager.remove_voice(voice_id)
+        if ok:
+            return jsonify({"status": "ok"})
+        return jsonify({"error": f"未找到音色: {voice_id}"}), 404
+
+    async def _api_list_sessions(self):
+        from quart import jsonify
+        sessions = {}
+        for uid, settings in self.user_state.user_settings.items():
+            sessions[uid] = {
+                "settings": settings,
+                "format": self.user_state.user_format.get(uid, "wav"),
+                "umo": self.user_state.user_umo.get(uid, ""),
+            }
+        return jsonify({"sessions": sessions})
+
+    async def _api_update_session(self):
+        from quart import jsonify, request
+        body = await request.json
+        uid = body.get("uid", "")
+        settings = body.get("settings", {})
+        if not uid:
+            return jsonify({"error": "缺少 uid"}), 400
+        allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled", "text_enabled",
+                    "enable_segmentation", "enable_voice_polish"}
+        filtered = {k: v for k, v in settings.items() if k in allowed}
+        uset = self.user_state.get_settings(uid, normalize_tts_mode)
+        uset.update(filtered)
+        self.user_state.persist()
+        return jsonify({"status": "ok"})
+
+    async def _api_delete_session(self):
+        from quart import jsonify, request
+        body = await request.json
+        uid = body.get("uid", "")
+        if not uid:
+            return jsonify({"error": "缺少 uid"}), 400
+        self.user_state.user_settings.pop(uid, None)
+        self.user_state.user_format.pop(uid, None)
+        self.user_state.persist()
+        return jsonify({"status": "ok"})
+
+    async def _api_reset_session(self):
+        from quart import jsonify, request
+        body = await request.json
+        uid = body.get("uid", "")
+        if not uid:
+            return jsonify({"error": "缺少 uid"}), 400
+        self.user_state.restore(uid)
+        return jsonify({"status": "ok"})
+
+    async def _api_list_emotions(self):
+        from quart import jsonify
+        from .core.constants import SUPPORTED_EMOTIONS
+        return jsonify({"emotions": list(SUPPORTED_EMOTIONS)})
+
+    async def _api_get_constants(self):
+        from quart import jsonify
+        from .core.constants import MIMO_VOICE_LIST, SUPPORTED_EMOTIONS, SUPPORTED_AUDIO_FORMATS
+        return jsonify({
+            "voices": MIMO_VOICE_LIST,
+            "emotions": list(SUPPORTED_EMOTIONS),
+            "formats": list(SUPPORTED_AUDIO_FORMATS),
+        })
+
+    # ═══════════════════════════════════════════════════════════
     #  Event Handlers
     # ═══════════════════════════════════════════════════════════
 
@@ -291,7 +526,7 @@ class MiMoTTSPlugin(Star):
             return
 
         # ── Step 2: 文本分段模式 ──
-        if self.config.enable_segmentation:
+        if uset.get("enable_segmentation", self.config.enable_segmentation):
             segments = self._split_text(plain)
             if not segments:
                 return
@@ -300,7 +535,7 @@ class MiMoTTSPlugin(Star):
             )
 
             prob = self.config.segment_voice_probability
-            polish_enabled = self.config.enable_voice_polish
+            polish_enabled = uset.get("enable_voice_polish", self.config.enable_voice_polish)
 
             for i, seg in enumerate(segments):
                 if len(seg) < self.config.get("min_text_length"):
@@ -347,7 +582,7 @@ class MiMoTTSPlugin(Star):
 
         # ── Step 3: 原有逻辑 — 全文单次合成 ──
         tts_text = plain
-        if self.config.enable_voice_polish:
+        if uset.get("enable_voice_polish", self.config.enable_voice_polish):
             logger.info("MiMO TTS: voice polish enabled, calling LLM...")
             tts_text = await self._polish_text_with_llm(plain, uid)
 

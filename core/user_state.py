@@ -102,12 +102,17 @@ class UserStateManager:
         self._config = config
         self._user_settings: dict[str, dict] = {}
         self._user_format: dict[str, str] = {}
+        self._user_umo: dict[str, str] = {}
         self._recent_files: list[tuple[float, Path]] = []
         self._persist_lock = threading.Lock()
 
     @property
     def user_settings(self) -> dict[str, dict]:
         return self._user_settings
+
+    @property
+    def user_umo(self) -> dict[str, str]:
+        return self._user_umo
 
     @property
     def user_format(self) -> dict[str, str]:
@@ -232,6 +237,8 @@ class UserStateManager:
                 "tts_mode": normalize_tts_mode(cfg.tts_output_mode),
                 "tts_enabled": True,
                 "text_enabled": None,
+                "enable_segmentation": cfg.enable_segmentation,
+                "enable_voice_polish": cfg.enable_voice_polish,
             }
         self.touch_user(uid)
         return self._user_settings[uid]
@@ -259,6 +266,11 @@ class UserStateManager:
         """Get settings dict for current event, migrating legacy keys if needed."""
         scope_key = get_user_scope_key(event)
         legacy_sender_key = safe_event_value(event, "get_sender_id", "sender_id")
+
+        # Store UMO for session identification
+        umo = safe_event_value(event, "unified_msg_origin")
+        if umo and scope_key not in self._user_umo:
+            self._user_umo[scope_key] = umo
 
         if (
             scope_key not in self._user_settings
