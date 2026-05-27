@@ -248,6 +248,7 @@
       const stressEnabled = ref(false);
       const laughterEnabled = ref(false);
       const pauseEnabled = ref(false);
+      const voicePolishEnabled = ref(false);
       const dialect = ref('');
       const volume = ref('');
       const showAdvanced = ref(false);
@@ -338,7 +339,8 @@
           stress: stressEnabled.value,
           laughter: laughterEnabled.value,
           pause: pauseEnabled.value,
-          format: audioFormat.value
+          format: audioFormat.value,
+          voice_polish: voicePolishEnabled.value
         };
 
         if (emotion.value && emotion.value !== 'auto') {
@@ -368,11 +370,19 @@
         }
       }
 
-      onMounted(() => { loadVoices(); });
+      async function loadSynthConfig() {
+        const res = await apiGet('config');
+        if (res && res.config) {
+          voicePolishEnabled.value = !!res.config.enable_voice_polish;
+        }
+      }
+
+      onMounted(() => { loadVoices(); loadSynthConfig(); });
 
       return {
         text, voiceMode, selectedVoice, emotion, speed, pitch, audioFormat,
         breathEnabled, stressEnabled, laughterEnabled, pauseEnabled,
+        voicePolishEnabled,
         dialect, volume, showAdvanced, activePreset, synthesizing,
         audioSrc, audioRef, errorMsg, successMsg, registeredVoices,
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
@@ -454,6 +464,10 @@
       <div class="toggle-item">
         <span>停顿</span>
         <label class="toggle"><input type="checkbox" v-model="pauseEnabled"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-item">
+        <span>LLM润色</span>
+        <label class="toggle"><input type="checkbox" v-model="voicePolishEnabled"><span class="toggle-slider"></span></label>
       </div>
     </div>
   </div>
@@ -809,7 +823,8 @@
       const editingUid = ref('');
       const editForm = reactive({
         voice: '', emotion: '', speed: 1.0, pitch: 0,
-        tts_mode: '', tts_enabled: true, text_enabled: true, format: 'wav'
+        tts_mode: '', tts_enabled: true, text_enabled: true, format: 'wav',
+        enable_segmentation: false, enable_voice_polish: false
       });
       const errorMsg = ref('');
       const successMsg = ref('');
@@ -846,6 +861,8 @@
           editForm.tts_enabled = settings.tts_enabled !== false;
           editForm.text_enabled = settings.text_enabled !== false;
           editForm.format = s.format || 'wav';
+          editForm.enable_segmentation = settings.enable_segmentation === true;
+          editForm.enable_voice_polish = settings.enable_voice_polish === true;
         }
       }
 
@@ -863,7 +880,9 @@
             pitch: editForm.pitch,
             tts_mode: editForm.tts_mode,
             tts_enabled: editForm.tts_enabled,
-            text_enabled: editForm.text_enabled
+            text_enabled: editForm.text_enabled,
+            enable_segmentation: editForm.enable_segmentation,
+            enable_voice_polish: editForm.enable_voice_polish
           }
         };
         const res = await apiPost('sessions/update', payload);
@@ -1040,13 +1059,21 @@
             <label class="control-label">音高: <span class="slider-value">{{ editForm.pitch >= 0 ? '+' : '' }}{{ editForm.pitch }}</span></label>
             <input type="range" class="slider" v-model.number="editForm.pitch" min="-12" max="12" step="1">
           </div>
-          <div class="control-group toggle-field">
+          <div class="control-group toggle-field full-width">
             <span>当前对话自动 TTS</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.tts_enabled"><span class="toggle-slider"></span></label>
           </div>
-          <div class="control-group toggle-field">
+          <div class="control-group toggle-field full-width">
             <span>TTS时文字同步输出</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.text_enabled"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="control-group toggle-field full-width">
+            <span>启用文本分段</span>
+            <label class="toggle"><input type="checkbox" v-model="editForm.enable_segmentation"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="control-group toggle-field full-width">
+            <span>启用 LLM 润色</span>
+            <label class="toggle"><input type="checkbox" v-model="editForm.enable_voice_polish"><span class="toggle-slider"></span></label>
           </div>
         </div>
         <div class="edit-actions">

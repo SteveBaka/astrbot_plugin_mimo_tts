@@ -306,6 +306,11 @@ class MiMoTTSPlugin(Star):
             return jsonify({"error": "文本不能为空"}), 400
 
         uid = str(body.get("uid", "webui"))[:100]
+
+        # LLM 润色（仅当请求中明确启用时）
+        if body.get("voice_polish"):
+            text = await self._polish_text_with_llm(text, uid)
+
         overrides = {}
         for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
                      "laughter", "pause", "dialect", "volume", "tts_mode"):
@@ -441,7 +446,8 @@ class MiMoTTSPlugin(Star):
         settings = body.get("settings", {})
         if not uid:
             return jsonify({"error": "缺少 uid"}), 400
-        allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled", "text_enabled"}
+        allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled", "text_enabled",
+                    "enable_segmentation", "enable_voice_polish"}
         filtered = {k: v for k, v in settings.items() if k in allowed}
         uset = self.user_state.get_settings(uid, normalize_tts_mode)
         uset.update(filtered)

@@ -886,8 +886,9 @@ select.select-input { cursor: pointer; appearance: auto; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 38px;
 }
-.toggle-field span { font-size: 13px; color: var(--text-secondary); }
+.toggle-field span { font-size: 13px; color: var(--text-secondary); line-height: 24px; }
 .inline-logo-icon {
   display: inline-flex;
   align-items: center;
