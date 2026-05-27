@@ -104,7 +104,7 @@ body {
 .sidebar {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
-  background: var(--bg-sidebar);
+  background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -112,15 +112,12 @@ body {
   overflow-y: auto;
   scrollbar-width: none;
   border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
-  transition: width var(--transition-smooth), min-width var(--transition-smooth),
-              background-color var(--transition-smooth), border-color var(--transition-smooth);
+  transition: background-color var(--transition-smooth), border-color var(--transition-smooth);
 }
 .sidebar::-webkit-scrollbar { display: none; }
 
 :root[data-theme="light"] .sidebar {
-  background: linear-gradient(180deg, rgba(244,246,252,0.98), rgba(241,247,255,0.95));
   box-shadow: 19px 0 42px rgba(148, 163, 184, 0.14);
-  border-right-color: rgba(206, 219, 243, 0.6);
 }
 
 /* ── Island Modules ── */

@@ -206,17 +206,46 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
     """/voicegen <ID> <描述文本> — 用文字描述生成全新音色"""
     arg = plugin._parse_cmd(event, "/voicegen")
     if not arg:
-        yield MessageEventResult().message(
-            "用法: /voicegen <ID> <音色描述>\n"
-            '示例: /voicegen my_voice "温柔甜美的年轻女声，语速适中"'
-        )
+        voices = [
+            v
+            for v in plugin._voice_manager.list_voices()
+            if v.get("model") == "voicedesign"
+        ]
+        lines = [
+            "用法:",
+            "  /voicegen <ID> <音色描述>  — 注册新设计音色",
+            "  /voicegen <音色名>         — 切换到已注册的设计音色",
+        ]
+        if voices:
+            lines.append("\n已注册的设计音色:")
+            for v in voices:
+                lines.append(f"  {v['voice_id']}")
+        yield MessageEventResult().message("\n".join(lines))
         return
 
     parts = arg.split(maxsplit=1)
-    if len(parts) < 2:
-        yield MessageEventResult().message("用法: /voicegen <ID> <音色描述>")
+
+    # /voicegen <音色名> — 切换到已注册的设计音色
+    if len(parts) == 1:
+        vid = parts[0]
+        info = plugin._voice_manager.get_voice(vid)
+        if not info or info.get("model") != "voicedesign":
+            yield MessageEventResult().message(
+                f"[X] 未找到已注册的设计音色: {vid}\n"
+                "请先使用 /voicegen <ID> <音色描述> 注册"
+            )
+            return
+        uid, _ = plugin._get_event_settings(event)
+        uset = plugin._get_user_settings(uid)
+        uset["voice"] = vid
+        uset["tts_mode"] = "design"
+        plugin._persist_current_state()
+        yield MessageEventResult().message(
+            f"[✓] 已切换当前音色为: {vid}\n  输出模式已自动切换为「设计」，可直接使用 TTS"
+        )
         return
 
+    # /voicegen <ID> <描述文本> — 注册新设计音色
     vid, desc = parts[0], parts[1]
 
     provider = plugin._ensure_provider()
@@ -235,12 +264,13 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
         plugin.config.design_voice_id = vid
         plugin.config.set("design_voice_description", desc)
         uid, _ = plugin._get_event_settings(event)
-        plugin._get_user_settings(uid)["voice"] = vid
+        uset = plugin._get_user_settings(uid)
+        uset["voice"] = vid
+        uset["tts_mode"] = "design"
         plugin._persist_current_state()
         yield MessageEventResult().message(
             f"[✓] 已登记设计音色: {vid}\n"
-            f"  可用 /ttsswitch design 切换到设计模式\n"
-            f"  也可用 /voice {vid} 将这条描述设为当前设计音色\n"
+            f"  输出模式已自动切换为「设计」，可直接使用 TTS\n"
             f"  配置面板已同步更新描述信息"
         )
     else:
