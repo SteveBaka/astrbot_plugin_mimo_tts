@@ -133,7 +133,7 @@
       fields: [
         { key: 'default_speed', label: '默认语速', type: 'slider', min: 0.5, max: 2.0, step: 0.1 },
         { key: 'default_pitch', label: '默认音高', type: 'slider', min: -12, max: 12, step: 1 },
-        { key: 'style_hint', label: '风格提示', type: 'text', hint: '温柔甜美、活泼可爱...' },
+        { key: 'style_hint', label: '风格提示', type: 'text', hint: '如：温柔甜美（嵌入 prompt）控制声音风格' },
         { key: 'breath_enabled', label: '呼吸声', type: 'bool' },
         { key: 'stress_enabled', label: '重音模式', type: 'bool' },
         { key: 'laughter_enabled', label: '笑声', type: 'bool' },
@@ -763,8 +763,6 @@
             <textarea v-model="config[field.key]" rows="5" class="text-input"
               :placeholder="field.hint || ''"></textarea>
           </template>
-
-          <small v-if="field.hint" class="field-hint">{{ field.hint }}</small>
         </div>
       </div>
       <div class="section-actions">
@@ -1070,7 +1068,11 @@
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
   <aside class="sidebar" v-show="!isMobile">
     <div class="sidebar-header">
-      <h2>Voice Studio</h2>
+      <img src="./logo.png" alt="logo" class="sidebar-logo">
+      <div>
+        <h2>astrbot_plugin_mimo_tts</h2>
+        <div class="sidebar-sub">Voice Studio</div>
+      </div>
     </div>
     <nav class="sidebar-nav">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
