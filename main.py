@@ -107,6 +107,7 @@ class MiMoTTSPlugin(Star):
         context.register_web_api(f"/{p}/tts", self._api_tts_synthesize, ["POST"], "TTS 语音合成")
         context.register_web_api(f"/{p}/voices", self._api_list_voices, ["GET"], "获取音色列表")
         context.register_web_api(f"/{p}/voices/clone", self._api_clone_voice, ["POST"], "上传克隆音色")
+        context.register_web_api(f"/{p}/voices/design", self._api_design_voice, ["POST"], "注册设计音色")
         context.register_web_api(f"/{p}/voices/delete", self._api_delete_voice, ["POST"], "删除音色")
         context.register_web_api(f"/{p}/sessions", self._api_list_sessions, ["GET"], "获取会话配置列表")
         context.register_web_api(f"/{p}/sessions/update", self._api_update_session, ["POST"], "更新会话配置")
@@ -291,7 +292,6 @@ class MiMoTTSPlugin(Star):
         body = await request.json
         for k, v in body.items():
             self.config.set(k, v)
-        self.config.save_config()
         return jsonify({"status": "ok"})
 
     async def _api_tts_synthesize(self):
@@ -351,11 +351,10 @@ class MiMoTTSPlugin(Star):
 
     async def _api_clone_voice(self):
         from quart import jsonify, request
-        import uuid
         form = await request.form
         files = await request.files
         voice_id = form.get("voice_id", "").strip()
-        audio_file = files.get("audio")
+        audio_file = files.get("file") or files.get("audio")
         if not voice_id or not audio_file:
             return jsonify({"error": "缺少 voice_id 或音频文件"}), 400
 
@@ -370,6 +369,19 @@ class MiMoTTSPlugin(Star):
 
         self._voice_manager.register_voice(
             voice_id, name=voice_id, model="voiceclone", audio_path=str(save_path),
+        )
+        return jsonify({"status": "ok", "voice_id": voice_id})
+
+    async def _api_design_voice(self):
+        from quart import jsonify, request
+        body = await request.json
+        voice_id = body.get("voice_id", "").strip()
+        description = body.get("description", "").strip()
+        name = body.get("name", voice_id).strip()
+        if not voice_id or not description:
+            return jsonify({"error": "缺少 voice_id 或描述"}), 400
+        self._voice_manager.register_voice(
+            voice_id, name=name, model="voicedesign", description=description,
         )
         return jsonify({"status": "ok", "voice_id": voice_id})
 

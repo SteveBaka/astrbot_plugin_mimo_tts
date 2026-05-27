@@ -241,8 +241,12 @@ select.select-input { cursor: pointer; }
 .config-section h3 { font-size: 15px; color: var(--accent); margin-bottom: 14px; }
 .config-fields { display: flex; flex-direction: column; gap: 12px; }
 .config-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.config-field .control-label { margin-bottom: 0; white-space: nowrap; min-width: 120px; }
-.config-field .text-input, config-field .select-input { flex: 1; }
+.config-field .control-label { margin-bottom: 0; white-space: nowrap; min-width: 120px; font-size: 13px; color: var(--text-muted); }
+.config-field .text-input,
+.config-field .select-input { flex: 1; }
+.config-field .toggle { flex-shrink: 0; }
+.config-field .slider-row { flex: 1; display: flex; align-items: center; gap: 10px; }
+.config-field .slider-value { font-size: 13px; color: var(--accent); min-width: 40px; text-align: right; }
 .config-save { margin-top: 14px; }
 
 /* Sessions */
