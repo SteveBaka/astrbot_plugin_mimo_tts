@@ -112,13 +112,15 @@ body {
   overflow-y: auto;
   scrollbar-width: none;
   border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
-  transition: width var(--transition-smooth), min-width var(--transition-smooth);
+  transition: width var(--transition-smooth), min-width var(--transition-smooth),
+              background-color var(--transition-smooth), border-color var(--transition-smooth);
 }
 .sidebar::-webkit-scrollbar { display: none; }
 
 :root[data-theme="light"] .sidebar {
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,247,255,0.95));
+  background: linear-gradient(180deg, rgba(244,246,252,0.98), rgba(241,247,255,0.95));
   box-shadow: 19px 0 42px rgba(148, 163, 184, 0.14);
+  border-right-color: rgba(206, 219, 243, 0.6);
 }
 
 /* ── Island Modules ── */
@@ -1008,8 +1010,14 @@ select.select-input { cursor: pointer; appearance: auto; }
    ABOUT
    ═══════════════════════════════════════ */
 .about-card .section-title { font-size: 16px; }
-.about-card .version { font-family: var(--font-mono); color: var(--accent); margin: 4px 0; }
-.about-card .desc { color: var(--text-secondary); }
+.about-card .version {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  margin: 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.about-card .desc { color: var(--text-secondary); font-size: 13px; }
 .feature-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .feature-chip {
   padding: 4px 12px;

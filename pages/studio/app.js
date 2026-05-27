@@ -103,7 +103,7 @@
 
   const CONFIG_SECTIONS = [
     {
-      title: 'API 设置', icon: '🔑',
+      title: 'API 设置', ic: 'settings',
       fields: [
         { key: 'api_key', label: 'MiMO API Key', type: 'password', hint: '从 MiMO 开放平台获取' },
         { key: 'api_base_url', label: 'API Base URL', type: 'text', hint: '默认 https://api.xiaomimimo.com/v1' },
@@ -111,7 +111,7 @@
       ]
     },
     {
-      title: '音色设置', icon: '🎵',
+      title: '音色设置', ic: 'microphone',
       fields: [
         { key: 'default_voice', label: '默认音色', type: 'select', options: ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean'] },
         { key: 'sing_voice', label: '唱歌默认音色', type: 'select', options: ['', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean'] },
@@ -119,7 +119,7 @@
       ]
     },
     {
-      title: '输出设置', icon: '🔊',
+      title: '输出设置', ic: 'adjustments',
       fields: [
         { key: 'auto_tts', label: '自动 TTS', type: 'bool', hint: '拦截 LLM 回复生成语音' },
         { key: 'send_text_with_tts', label: 'TTS 同步发送文字', type: 'bool' },
@@ -169,14 +169,14 @@
       ]
     },
     {
-      title: '声音设计', icon: '🎨',
+      title: '声音设计', ic: 'palette',
       fields: [
         { key: 'design_model', label: '设计模型', type: 'text' },
         { key: 'design_voice_description', label: '设计音色描述', type: 'textarea' }
       ]
     },
     {
-      title: '预设描述', icon: '📝',
+      title: '预设描述', ic: 'list',
       fields: [
         { key: 'preset_gentle_female', label: '温柔女生', type: 'text' },
         { key: 'preset_serious_male', label: '严肃男声', type: 'text' },
