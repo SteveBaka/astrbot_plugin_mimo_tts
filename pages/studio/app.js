@@ -94,7 +94,7 @@
       ]
     },
     {
-      title: 'TTS 参数', icon: 'PAR',
+      title: 'TTS 参数', icon: 'ti ti-adjustments',
       fields: [
         { key: 'default_speed', label: '默认语速', type: 'slider', min: 0.5, max: 2.0, step: 0.1 },
         { key: 'default_pitch', label: '默认音高', type: 'slider', min: -12, max: 12, step: 1 },
@@ -106,7 +106,7 @@
       ]
     },
     {
-      title: '文本分段', icon: 'SPL',
+      title: '文本分段', icon: 'ti ti-scissors',
       fields: [
         { key: 'enable_segmentation', label: '启用文本分段', type: 'bool' },
         { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'] },
@@ -117,7 +117,7 @@
       ]
     },
     {
-      title: '语音润色', icon: 'POL',
+      title: '语音润色', icon: 'ti ti-sparkles',
       fields: [
         { key: 'enable_voice_polish', label: '启用 LLM 润色', type: 'bool', hint: '产生额外 LLM 调用' },
         { key: 'polish_llm_provider', label: '润色 LLM Provider', type: 'text', hint: '留空使用当前对话模型' },
@@ -125,7 +125,7 @@
       ]
     },
     {
-      title: '声音克隆', icon: 'CLN',
+      title: '声音克隆', icon: 'ti ti-copy',
       fields: [
         { key: 'clone_model', label: '克隆模型', type: 'text' },
         { key: 'clone_voice_id', label: '克隆音色 ID', type: 'text' },
@@ -151,7 +151,7 @@
       ]
     },
     {
-      title: '高级设置', icon: 'ADV',
+      title: '高级设置', icon: 'ti ti-tool',
       fields: [
         { key: 'timeout', label: 'API 超时(秒)', type: 'number' },
         { key: 'max_retries', label: '重试次数', type: 'number' }
@@ -346,10 +346,10 @@
     },
     template: `
 <div class="page synthesis-page">
-  <div class="page-header"><h2>语音合成</h2></div>
+  <div class="page-header"><h2><i class="ti ti-microphone"></i> 语音合成</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error">{{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success">{{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
 
   <div class="section">
     <textarea v-model="text" placeholder="输入要合成的文本..." rows="5" class="text-input"></textarea>
@@ -568,13 +568,13 @@
     },
     template: `
 <div class="page voices-page">
-  <div class="page-header"><h2>音色管理</h2></div>
+  <div class="page-header"><h2><i class="ti ti-user-circle"></i> 音色管理</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error">{{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success">{{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
 
   <div class="section card">
-    <h3>🎨 声音设计</h3>
+    <div class="section-title"><i class="ti ti-palette"></i> 声音设计</div>
     <div class="form-grid">
       <div class="control-group">
         <label class="control-label">音色 ID</label>
@@ -593,7 +593,7 @@
   </div>
 
   <div class="section card">
-    <h3>声音克隆</h3>
+    <div class="section-title"><i class="ti ti-copy"></i> 声音克隆</div>
     <div class="form-grid">
       <div class="control-group">
         <label class="control-label">音色 ID</label>
@@ -608,7 +608,7 @@
   </div>
 
   <div class="section card">
-    <h3>📋 已注册音色</h3>
+    <div class="section-title"><i class="ti ti-list"></i> 已注册音色</div>
     <div v-if="loading" class="loading">加载中...</div>
     <div v-else-if="registeredVoices.length === 0" class="empty-hint">暂无自定义音色</div>
     <div v-else class="voice-list">
@@ -680,15 +680,15 @@
     },
     template: `
 <div class="page config-page">
-  <div class="page-header"><h2>插件配置</h2></div>
+  <div class="page-header"><h2><i class="ti ti-settings"></i> 插件配置</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error">{{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success">{{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
   <div v-if="loading" class="loading">加载中...</div>
 
   <template v-if="!loading">
     <div v-for="section in sections" :key="section.title" class="section card config-section">
-      <h3>{{ section.icon }} {{ section.title }}</h3>
+      <div class="section-title"><i :class="section.icon"></i> {{ section.title }}</div>
       <div class="config-fields">
         <div v-for="field in section.fields" :key="field.key" class="config-field">
           <label class="control-label">{{ field.label }}</label>
@@ -856,12 +856,12 @@
     template: `
 <div class="page sessions-page">
   <div class="page-header">
-    <h2>会话管理</h2>
+    <h2><i class="ti ti-messages"></i> 会话管理</h2>
     <button class="btn-small" @click="loadSessions">刷新</button>
   </div>
 
-  <div v-if="errorMsg" class="alert alert-error">{{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success">{{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
   <div v-if="loading" class="loading">加载中...</div>
 
   <div v-else-if="Object.keys(sessions).length === 0" class="empty-hint">暂无会话数据</div>
@@ -975,26 +975,26 @@
     },
     template: `
 <div class="page about-page">
-  <div class="page-header"><h2>关于</h2></div>
+  <div class="page-header"><h2><i class="ti ti-info-circle"></i> 关于</h2></div>
 
   <div class="section card about-card">
-    <h3>astrbot_plugin_mimo_tts</h3>
+    <div class="section-title"><i class="ti ti-code"></i> astrbot_plugin_mimo_tts</div>
     <p class="version">版本: {{ version }}</p>
     <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件</p>
   </div>
 
   <div class="section card">
-    <h3>功能特性</h3>
-    <ul class="feature-list">
-      <li v-for="f in features" :key="f">{{ f }}</li>
-    </ul>
+    <div class="section-title"><i class="ti ti-sparkles"></i> 功能特性</div>
+    <div class="feature-chips">
+      <span v-for="f in features" :key="f" class="feature-chip">{{ f }}</span>
+    </div>
   </div>
 
   <div class="section card">
-    <h3>链接</h3>
-    <div class="links">
-      <a href="https://github.com/SteveBaka/astrbot_plugin_mimo_tts" target="_blank" class="link">GitHub 仓库</a>
-    </div>
+    <div class="section-title"><i class="ti ti-link"></i> 链接</div>
+    <a href="https://github.com/SteveBaka/astrbot_plugin_mimo_tts" target="_blank" class="about-link">
+      <i class="ti ti-brand-github"></i> GitHub 仓库
+    </a>
   </div>
 </div>
 `
@@ -1007,11 +1007,11 @@
       const pluginReady = ref(true);
 
       const navItems = [
-        { path: '/', label: '合成', icon: 'MIC' },
-        { path: '/voices', label: '音色', icon: 'VOX' },
-        { path: '/config', label: '配置', icon: 'CFG' },
-        { path: '/sessions', label: '会话', icon: 'SES' },
-        { path: '/about', label: '关于', icon: 'INF' }
+        { path: '/', label: '合成', icon: 'ti ti-microphone' },
+        { path: '/voices', label: '音色', icon: 'ti ti-user-circle' },
+        { path: '/config', label: '配置', icon: 'ti ti-settings' },
+        { path: '/sessions', label: '会话', icon: 'ti ti-messages' },
+        { path: '/about', label: '关于', icon: 'ti ti-info-circle' }
       ];
 
       function toggleTheme() {
@@ -1038,13 +1038,14 @@
     </div>
     <nav class="sidebar-nav">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
-        <span class="nav-icon">{{ item.icon }}</span>
+        <i :class="item.icon" class="nav-icon"></i>
         <span class="nav-label">{{ item.label }}</span>
       </router-link>
     </nav>
     <div class="sidebar-footer">
-      <button class="theme-btn" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
-        {{ isDark ? 'LIGHT' : 'DARK' }}
+      <button class="theme-btn" @click="toggleTheme">
+        <i :class="isDark ? 'ti ti-sun' : 'ti ti-moon'"></i>
+        {{ isDark ? 'Light' : 'Dark' }}
       </button>
     </div>
   </aside>
@@ -1055,11 +1056,11 @@
 
   <nav class="mobile-bar" v-show="isMobile">
     <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="mobile-link">
-      <span class="mobile-icon">{{ item.icon }}</span>
+      <i :class="item.icon"></i>
       <span class="mobile-label">{{ item.label }}</span>
     </router-link>
     <button class="mobile-link" @click="toggleTheme">
-      <span class="mobile-icon">{{ isDark ? '☀️' : '🌙' }}</span>
+      <i :class="isDark ? 'ti ti-sun' : 'ti ti-moon'"></i>
       <span class="mobile-label">主题</span>
     </button>
   </nav>
