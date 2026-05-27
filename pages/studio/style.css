@@ -19,9 +19,9 @@
   --success-bg: rgba(74, 222, 128, 0.1);
   --warn: #fbbf24;
   --warn-bg: rgba(251, 191, 36, 0.1);
-  --radius: 10px;
-  --radius-sm: 6px;
-  --radius-lg: 14px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
   --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
   --shadow-lg: 0 4px 24px rgba(0,0,0,0.4);
   --sidebar-w: 220px;
@@ -67,6 +67,20 @@ body {
 }
 
 #studio-root { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── SVG Icons ── */
+.icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 /* ── Sidebar ── */
 .sidebar {
@@ -565,12 +579,14 @@ select.select-input { cursor: pointer; appearance: auto; }
 .sessions-list { display: flex; flex-direction: column; gap: 12px; }
 .session-card { padding: 0; overflow: hidden; }
 .session-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   padding: 14px 20px;
   background: var(--accent-subtle);
   border-bottom: 1px solid var(--border);
+}
+.session-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .session-uid {
   font-weight: 700;
@@ -579,7 +595,14 @@ select.select-input { cursor: pointer; appearance: auto; }
   font-family: var(--font-mono);
 }
 .session-actions { display: flex; gap: 6px; }
-.session-body { padding: 16px 20px; }
+.session-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
 .session-info {
   display: flex;
   flex-wrap: wrap;
@@ -594,9 +617,7 @@ select.select-input { cursor: pointer; appearance: auto; }
 }
 .info-item b { color: var(--text); font-weight: 600; }
 .edit-form {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  padding: 16px 20px;
 }
 .edit-actions {
   display: flex;

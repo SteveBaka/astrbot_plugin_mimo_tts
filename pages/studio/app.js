@@ -1,8 +1,43 @@
 (function () {
   'use strict';
 
-  const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+  const { createApp, ref, reactive, computed, watch, onMounted, nextTick, h } = Vue;
   const { createRouter, createWebHashHistory } = VueRouter;
+
+  const ICONS = {
+    microphone: '<path d="M9 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M12 12v4a6 6 0 0 1-12 0v-4" transform="translate(6,0)"/><path d="M8 19v3" transform="translate(6,0)"/>',
+    'user-circle': '<circle cx="12" cy="10" r="4"/><path d="M19.998 18a8 8 0 0 0-15.996 0"/>',
+    settings: '<path d="M10.325 4.317a1.724 1.724 0 0 1 3.35 0l.143.482a1.724 1.724 0 0 0 2.573.82l.413-.268a1.724 1.724 0 0 1 2.37 2.37l-.267.413a1.724 1.724 0 0 0 .82 2.573l.482.143a1.724 1.724 0 0 1 0 3.35l-.482.143a1.724 1.724 0 0 0-.82 2.573l.268.413a1.724 1.724 0 0 1-2.37 2.37l-.413-.267a1.724 1.724 0 0 0-2.573.82l-.143.482a1.724 1.724 0 0 1-3.35 0l-.143-.482a1.724 1.724 0 0 0-2.573-.82l-.413.268a1.724 1.724 0 0 1-2.37-2.37l.267-.413a1.724 1.724 0 0 0-.82-2.573l-.482-.143a1.724 1.724 0 0 1 0-3.35l.482-.143a1.724 1.724 0 0 0 .82-2.573l-.268-.413a1.724 1.724 0 0 1 2.37-2.37l.413.267a1.724 1.724 0 0 0 2.573-.82z"/><circle cx="12" cy="12" r="3"/>',
+    messages: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+    'info-circle': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    adjustments: '<path d="M4 10h16"/><path d="M4 14h16"/><path d="M9 4v16"/><path d="M15 4v16"/>',
+    scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88"/><path d="M14.47 14.48L20 20"/><path d="M8.12 8.12L12 12"/>',
+    sparkles: '<path d="M12 2l1.09 3.26L16 6l-2.91.74L12 10l-1.09-3.26L8 6l2.91-.74z"/><path d="M18 12l.6 1.8L20.4 14.4l-1.8.6L18 16.8l-.6-1.8-1.8-.6 1.8-.6z"/><path d="M7 16l.4 1.2 1.2.4-1.2.4L7 19.2l-.4-1.2-1.2-.4 1.2-.4z"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    palette: '<circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+    list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+    code: '<path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    sun: '<circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/>',
+    moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+    'alert-circle': '<circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+    'circle-check': '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>',
+    refresh: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>',
+    edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+    reset: '<path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>',
+    x: '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+    github: '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
+  };
+
+  function icon(name, cls) {
+    const svg = ICONS[name] || '';
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ${cls || ''}">${svg}</svg>`;
+  }
 
   function getBridge() {
     return window.AstrBotPluginPage;
@@ -94,7 +129,7 @@
       ]
     },
     {
-      title: 'TTS 参数', icon: 'ti ti-adjustments',
+      title: 'TTS 参数', ic: 'adjustments',
       fields: [
         { key: 'default_speed', label: '默认语速', type: 'slider', min: 0.5, max: 2.0, step: 0.1 },
         { key: 'default_pitch', label: '默认音高', type: 'slider', min: -12, max: 12, step: 1 },
@@ -106,7 +141,7 @@
       ]
     },
     {
-      title: '文本分段', icon: 'ti ti-scissors',
+      title: '文本分段', ic: 'scissors',
       fields: [
         { key: 'enable_segmentation', label: '启用文本分段', type: 'bool' },
         { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'] },
@@ -117,7 +152,7 @@
       ]
     },
     {
-      title: '语音润色', icon: 'ti ti-sparkles',
+      title: '语音润色', ic: 'sparkles',
       fields: [
         { key: 'enable_voice_polish', label: '启用 LLM 润色', type: 'bool', hint: '产生额外 LLM 调用' },
         { key: 'polish_llm_provider', label: '润色 LLM Provider', type: 'text', hint: '留空使用当前对话模型' },
@@ -125,7 +160,7 @@
       ]
     },
     {
-      title: '声音克隆', icon: 'ti ti-copy',
+      title: '声音克隆', ic: 'copy',
       fields: [
         { key: 'clone_model', label: '克隆模型', type: 'text' },
         { key: 'clone_voice_id', label: '克隆音色 ID', type: 'text' },
@@ -151,7 +186,7 @@
       ]
     },
     {
-      title: '高级设置', icon: 'ti ti-tool',
+      title: '高级设置', ic: 'tool',
       fields: [
         { key: 'timeout', label: 'API 超时(秒)', type: 'number' },
         { key: 'max_retries', label: '重试次数', type: 'number' }
@@ -341,15 +376,15 @@
         dialect, volume, showAdvanced, activePreset, synthesizing,
         audioSrc, audioRef, errorMsg, successMsg, registeredVoices,
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
-        applyPreset, runDetectEmotion, synthesize
+        applyPreset, runDetectEmotion, synthesize, icon
       };
     },
     template: `
 <div class="page synthesis-page">
-  <div class="page-header"><h2><i class="ti ti-microphone"></i> 语音合成</h2></div>
+  <div class="page-header"><h2><span v-html="icon('microphone')"></span> 语音合成</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
 
   <div class="section">
     <textarea v-model="text" placeholder="输入要合成的文本..." rows="5" class="text-input"></textarea>
@@ -563,18 +598,18 @@
       return {
         designId, designName, designDesc, cloneId, cloneFile,
         registeredVoices, loading, errorMsg, successMsg,
-        submitDesign, onCloneFileChange, submitClone, deleteVoice
+        submitDesign, onCloneFileChange, submitClone, deleteVoice, icon
       };
     },
     template: `
 <div class="page voices-page">
-  <div class="page-header"><h2><i class="ti ti-user-circle"></i> 音色管理</h2></div>
+  <div class="page-header"><h2><span v-html="icon('user-circle')"></span> 音色管理</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
 
   <div class="section card">
-    <div class="section-title"><i class="ti ti-palette"></i> 声音设计</div>
+    <div class="section-title"><span v-html="icon('palette')"></span> 声音设计</div>
     <div class="form-grid">
       <div class="control-group">
         <label class="control-label">音色 ID</label>
@@ -593,7 +628,7 @@
   </div>
 
   <div class="section card">
-    <div class="section-title"><i class="ti ti-copy"></i> 声音克隆</div>
+    <div class="section-title"><span v-html="icon('copy')"></span> 声音克隆</div>
     <div class="form-grid">
       <div class="control-group">
         <label class="control-label">音色 ID</label>
@@ -608,7 +643,7 @@
   </div>
 
   <div class="section card">
-    <div class="section-title"><i class="ti ti-list"></i> 已注册音色</div>
+    <div class="section-title"><span v-html="icon('list')"></span> 已注册音色</div>
     <div v-if="loading" class="loading">加载中...</div>
     <div v-else-if="registeredVoices.length === 0" class="empty-hint">暂无自定义音色</div>
     <div v-else class="voice-list">
@@ -676,19 +711,19 @@
 
       onMounted(() => { loadConfig(); });
 
-      return { config, loading, saving, errorMsg, successMsg, sections, saveSection };
+      return { config, loading, saving, errorMsg, successMsg, sections, saveSection, icon };
     },
     template: `
 <div class="page config-page">
-  <div class="page-header"><h2><i class="ti ti-settings"></i> 插件配置</h2></div>
+  <div class="page-header"><h2><span v-html="icon('settings')"></span> 插件配置</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
   <div v-if="loading" class="loading">加载中...</div>
 
   <template v-if="!loading">
     <div v-for="section in sections" :key="section.title" class="section card config-section">
-      <div class="section-title"><i :class="section.icon"></i> {{ section.title }}</div>
+      <div class="section-title"><span v-html="icon(section.ic)"></span> {{ section.title }}</div>
       <div class="config-fields">
         <div v-for="field in section.fields" :key="field.key" class="config-field">
           <label class="control-label">{{ field.label }}</label>
@@ -850,18 +885,18 @@
       return {
         sessions, loading, editingUid, editForm, errorMsg, successMsg,
         loadSessions, startEdit, cancelEdit, saveSession, resetSession,
-        deleteSession, formatMode, EMOTIONS, FORMATS
+        deleteSession, formatMode, EMOTIONS, FORMATS, icon
       };
     },
     template: `
 <div class="page sessions-page">
   <div class="page-header">
-    <h2><i class="ti ti-messages"></i> 会话管理</h2>
+    <h2><span v-html="icon('messages')"></span> 会话管理</h2>
     <button class="btn-small" @click="loadSessions">刷新</button>
   </div>
 
-  <div v-if="errorMsg" class="alert alert-error"><i class="ti ti-alert-circle"></i> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><i class="ti ti-circle-check"></i> {{ successMsg }}</div>
+  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
+  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
   <div v-if="loading" class="loading">加载中...</div>
 
   <div v-else-if="Object.keys(sessions).length === 0" class="empty-hint">暂无会话数据</div>
@@ -869,23 +904,24 @@
   <div v-else class="sessions-list">
     <div v-for="(data, uid) in sessions" :key="uid" class="section card session-card">
       <div class="session-header">
-        <span class="session-uid">{{ uid }}</span>
-        <div class="session-actions">
-          <button class="btn-small" @click="startEdit(uid)">编辑</button>
-          <button class="btn-small" @click="resetSession(uid)">重置</button>
-          <button class="btn-danger-small" @click="deleteSession(uid)">删除</button>
+        <div class="session-header-top">
+          <span class="session-uid">{{ uid }}</span>
+          <div class="session-actions">
+            <button class="btn-small" @click="startEdit(uid)"><span v-html="icon('edit')"></span> 编辑</button>
+            <button class="btn-small" @click="resetSession(uid)"><span v-html="icon('reset')"></span> 重置</button>
+            <button class="btn-danger-small" @click="deleteSession(uid)"><span v-html="icon('trash')"></span> 删除</button>
+          </div>
         </div>
-      </div>
-
-      <div v-if="editingUid !== uid" class="session-info">
-        <span class="info-item">模式: <b>{{ formatMode(data.settings?.tts_mode) }}</b></span>
-        <span class="info-item">音色: <b>{{ data.settings?.voice || '-' }}</b></span>
-        <span class="info-item">情感: <b>{{ data.settings?.emotion || '自动' }}</b></span>
-        <span class="info-item">语速: <b>{{ data.settings?.speed ?? '-' }}</b></span>
-        <span class="info-item">音高: <b>{{ data.settings?.pitch ?? '-' }}</b></span>
-        <span class="info-item">TTS: <b>{{ data.settings?.tts_enabled !== false ? '开' : '关' }}</b></span>
-        <span class="info-item">文字: <b>{{ data.settings?.text_enabled !== false ? '开' : '关' }}</b></span>
-        <span class="info-item">格式: <b>{{ data.format || 'wav' }}</b></span>
+        <div v-if="editingUid !== uid" class="session-info">
+          <span class="info-item">模式: <b>{{ formatMode(data.settings?.tts_mode) }}</b></span>
+          <span class="info-item">音色: <b>{{ data.settings?.voice || '-' }}</b></span>
+          <span class="info-item">情感: <b>{{ data.settings?.emotion || '自动' }}</b></span>
+          <span class="info-item">语速: <b>{{ data.settings?.speed ?? '-' }}</b></span>
+          <span class="info-item">音高: <b>{{ data.settings?.pitch ?? '-' }}</b></span>
+          <span class="info-item">TTS: <b>{{ data.settings?.tts_enabled !== false ? '开' : '关' }}</b></span>
+          <span class="info-item">文字: <b>{{ data.settings?.text_enabled !== false ? '开' : '关' }}</b></span>
+          <span class="info-item">格式: <b>{{ data.format || 'wav' }}</b></span>
+        </div>
       </div>
 
       <div v-if="editingUid === uid" class="edit-form">
@@ -971,29 +1007,29 @@
 
       onMounted(() => { loadVersion(); });
 
-      return { version, features };
+      return { version, features, icon };
     },
     template: `
 <div class="page about-page">
-  <div class="page-header"><h2><i class="ti ti-info-circle"></i> 关于</h2></div>
+  <div class="page-header"><h2><span v-html="icon('info-circle')"></span> 关于</h2></div>
 
   <div class="section card about-card">
-    <div class="section-title"><i class="ti ti-code"></i> astrbot_plugin_mimo_tts</div>
+    <div class="section-title"><span v-html="icon('code')"></span> astrbot_plugin_mimo_tts</div>
     <p class="version">版本: {{ version }}</p>
     <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件</p>
   </div>
 
   <div class="section card">
-    <div class="section-title"><i class="ti ti-sparkles"></i> 功能特性</div>
+    <div class="section-title"><span v-html="icon('sparkles')"></span> 功能特性</div>
     <div class="feature-chips">
       <span v-for="f in features" :key="f" class="feature-chip">{{ f }}</span>
     </div>
   </div>
 
   <div class="section card">
-    <div class="section-title"><i class="ti ti-link"></i> 链接</div>
+    <div class="section-title"><span v-html="icon('link')"></span> 链接</div>
     <a href="https://github.com/SteveBaka/astrbot_plugin_mimo_tts" target="_blank" class="about-link">
-      <i class="ti ti-brand-github"></i> GitHub 仓库
+      <span v-html="icon('github')"></span> GitHub 仓库
     </a>
   </div>
 </div>
@@ -1007,11 +1043,11 @@
       const pluginReady = ref(true);
 
       const navItems = [
-        { path: '/', label: '合成', icon: 'ti ti-microphone' },
-        { path: '/voices', label: '音色', icon: 'ti ti-user-circle' },
-        { path: '/config', label: '配置', icon: 'ti ti-settings' },
-        { path: '/sessions', label: '会话', icon: 'ti ti-messages' },
-        { path: '/about', label: '关于', icon: 'ti ti-info-circle' }
+        { path: '/', label: '合成', ic: 'microphone' },
+        { path: '/voices', label: '音色', ic: 'user-circle' },
+        { path: '/config', label: '配置', ic: 'settings' },
+        { path: '/sessions', label: '会话', ic: 'messages' },
+        { path: '/about', label: '关于', ic: 'info-circle' }
       ];
 
       function toggleTheme() {
@@ -1028,7 +1064,7 @@
         window.addEventListener('resize', checkMobile);
       });
 
-      return { isDark, isMobile, pluginReady, navItems, toggleTheme };
+      return { isDark, isMobile, pluginReady, navItems, toggleTheme, icon };
     },
     template: `
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
@@ -1038,13 +1074,13 @@
     </div>
     <nav class="sidebar-nav">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="nav-link">
-        <i :class="item.icon" class="nav-icon"></i>
+        <span class="nav-icon" v-html="icon(item.ic)"></span>
         <span class="nav-label">{{ item.label }}</span>
       </router-link>
     </nav>
     <div class="sidebar-footer">
       <button class="theme-btn" @click="toggleTheme">
-        <i :class="isDark ? 'ti ti-sun' : 'ti ti-moon'"></i>
+        <span v-html="icon(isDark ? 'sun' : 'moon')"></span>
         {{ isDark ? 'Light' : 'Dark' }}
       </button>
     </div>
@@ -1056,11 +1092,11 @@
 
   <nav class="mobile-bar" v-show="isMobile">
     <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="mobile-link">
-      <i :class="item.icon"></i>
+      <span v-html="icon(item.ic)"></span>
       <span class="mobile-label">{{ item.label }}</span>
     </router-link>
     <button class="mobile-link" @click="toggleTheme">
-      <i :class="isDark ? 'ti ti-sun' : 'ti ti-moon'"></i>
+      <span v-html="icon(isDark ? 'sun' : 'moon')"></span>
       <span class="mobile-label">主题</span>
     </button>
   </nav>
@@ -1091,6 +1127,7 @@
     }
     const app = createApp(App);
     app.use(router);
+    app.config.globalProperties.icon = icon;
     app.mount('#app');
   }
 
