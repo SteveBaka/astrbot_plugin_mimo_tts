@@ -1002,9 +1002,9 @@
 
   const App = {
     setup() {
-      const isDark = ref(false);
-      const isMobile = ref(false);
-      const pluginReady = ref(false);
+      const isDark = ref(true);
+      const isMobile = ref(window.innerWidth < 768);
+      const pluginReady = ref(true);
 
       const navItems = [
         { path: '/', label: '合成', icon: '🎙️' },
@@ -1016,8 +1016,7 @@
 
       function toggleTheme() {
         isDark.value = !isDark.value;
-        localStorage.setItem('studio-theme', isDark.value ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', isDark.value ? '' : 'light');
       }
 
       function checkMobile() {
@@ -1025,14 +1024,8 @@
       }
 
       onMounted(() => {
-        const saved = localStorage.getItem('studio-theme');
-        if (saved === 'dark') {
-          isDark.value = true;
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
         checkMobile();
         window.addEventListener('resize', checkMobile);
-        pluginReady.value = true;
       });
 
       return { isDark, isMobile, pluginReady, navItems, toggleTheme };
