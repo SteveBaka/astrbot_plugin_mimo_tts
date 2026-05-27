@@ -890,12 +890,34 @@
         return '默认';
       }
 
-      onMounted(() => { loadSessions(); });
+      const registeredVoices = ref([]);
+      const filteredEditVoices = computed(() => {
+        if (editForm.tts_mode === 'default') return BUILTIN_VOICES;
+        const type = editForm.tts_mode === 'design' ? 'design' : 'clone';
+        const custom = registeredVoices.value.filter(v => v.type === type);
+        if (custom.length === 0) return [{ id: '', name: '— 无可用音色 —' }];
+        return custom.map(v => ({ id: v.id, name: v.name || v.id }));
+      });
+
+      watch(() => editForm.tts_mode, () => {
+        const list = filteredEditVoices.value;
+        if (list.length > 0 && !list.find(v => v.id === editForm.voice)) {
+          editForm.voice = list[0].id;
+        }
+      });
+
+      async function loadRegisteredVoices() {
+        const res = await apiGet('voices');
+        if (res && res.all) registeredVoices.value = res.all;
+      }
+
+      onMounted(() => { loadSessions(); loadRegisteredVoices(); });
 
       return {
         sessions, loading, editingUid, editForm, errorMsg, successMsg,
         loadSessions, startEdit, cancelEdit, saveSession, resetSession,
-        deleteSession, formatMode, EMOTIONS, FORMATS, BUILTIN_VOICES, icon
+        deleteSession, formatMode, EMOTIONS, FORMATS, BUILTIN_VOICES,
+        filteredEditVoices, icon
       };
     },
     template: `
@@ -947,7 +969,7 @@
           <div class="control-group">
             <label class="control-label">音色</label>
             <select v-model="editForm.voice" class="select-input">
-              <option v-for="v in BUILTIN_VOICES" :key="v.id" :value="v.id">{{ v.name }}</option>
+              <option v-for="v in filteredEditVoices" :key="v.id" :value="v.id">{{ v.name }}</option>
             </select>
           </div>
           <div class="control-group">
@@ -972,11 +994,11 @@
             <input type="range" class="slider" v-model.number="editForm.pitch" min="-12" max="12" step="1">
           </div>
           <div class="control-group toggle-field">
-            <span>自动 TTS</span>
+            <span>当前对话自动 TTS</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.tts_enabled"><span class="toggle-slider"></span></label>
           </div>
           <div class="control-group toggle-field">
-            <span>文字同步</span>
+            <span>TTS时文字同步输出</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.text_enabled"><span class="toggle-slider"></span></label>
           </div>
         </div>

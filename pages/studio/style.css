@@ -708,6 +708,11 @@ select.select-input { cursor: pointer; appearance: auto; }
 .info-item b { color: var(--text); font-weight: 600; }
 .edit-form {
   padding: 16px 20px;
+  animation: editSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes editSlideIn {
+  0% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+  100% { opacity: 1; max-height: 600px; padding-top: 16px; padding-bottom: 16px; overflow: visible; }
 }
 .edit-actions {
   display: flex;
