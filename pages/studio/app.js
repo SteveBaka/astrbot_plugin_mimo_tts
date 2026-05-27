@@ -1123,7 +1123,7 @@
   <div class="card about-card">
     <div class="section-title"><span class="inline-logo-icon">TTS</span> astrbot_plugin_mimo_tts</div>
     <p class="version">版本: {{ version }}</p>
-    <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件，为 AstrBot 提供高质量的语音合成能力。</p>
+    <p class="desc">调用 MiMO-V2.5-TTS series 模型，为 AstrBot 提供高度自定义的语音消息能力。</p>
   </div>
 
   <div class="card">

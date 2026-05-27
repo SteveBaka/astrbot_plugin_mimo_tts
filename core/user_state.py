@@ -237,6 +237,8 @@ class UserStateManager:
                 "tts_mode": normalize_tts_mode(cfg.tts_output_mode),
                 "tts_enabled": True,
                 "text_enabled": None,
+                "enable_segmentation": cfg.enable_segmentation,
+                "enable_voice_polish": cfg.enable_voice_polish,
             }
         self.touch_user(uid)
         return self._user_settings[uid]

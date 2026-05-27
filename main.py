@@ -526,7 +526,7 @@ class MiMoTTSPlugin(Star):
             return
 
         # ── Step 2: 文本分段模式 ──
-        if self.config.enable_segmentation:
+        if uset.get("enable_segmentation", self.config.enable_segmentation):
             segments = self._split_text(plain)
             if not segments:
                 return
@@ -535,7 +535,7 @@ class MiMoTTSPlugin(Star):
             )
 
             prob = self.config.segment_voice_probability
-            polish_enabled = self.config.enable_voice_polish
+            polish_enabled = uset.get("enable_voice_polish", self.config.enable_voice_polish)
 
             for i, seg in enumerate(segments):
                 if len(seg) < self.config.get("min_text_length"):
@@ -582,7 +582,7 @@ class MiMoTTSPlugin(Star):
 
         # ── Step 3: 原有逻辑 — 全文单次合成 ──
         tts_text = plain
-        if self.config.enable_voice_polish:
+        if uset.get("enable_voice_polish", self.config.enable_voice_polish):
             logger.info("MiMO TTS: voice polish enabled, calling LLM...")
             tts_text = await self._polish_text_with_llm(plain, uid)
 
