@@ -95,6 +95,27 @@ class MiMoTTSPlugin(Star):
 
         self.user_state.load()
 
+        # ── Register Web API for Voice Studio page ──
+        self._register_web_apis(context)
+
+    def _register_web_apis(self, context: Context):
+        """Register REST API endpoints for the Voice Studio WebUI page."""
+        p = "astrbot_plugin_mimo_tts"
+
+        context.register_web_api(f"/{p}/config", self._api_get_config, ["GET"], "获取插件配置")
+        context.register_web_api(f"/{p}/config/update", self._api_update_config, ["POST"], "更新插件配置")
+        context.register_web_api(f"/{p}/tts", self._api_tts_synthesize, ["POST"], "TTS 语音合成")
+        context.register_web_api(f"/{p}/voices", self._api_list_voices, ["GET"], "获取音色列表")
+        context.register_web_api(f"/{p}/voices/clone", self._api_clone_voice, ["POST"], "上传克隆音色")
+        context.register_web_api(f"/{p}/voices/delete", self._api_delete_voice, ["POST"], "删除音色")
+        context.register_web_api(f"/{p}/sessions", self._api_list_sessions, ["GET"], "获取会话配置列表")
+        context.register_web_api(f"/{p}/sessions/update", self._api_update_session, ["POST"], "更新会话配置")
+        context.register_web_api(f"/{p}/sessions/delete", self._api_delete_session, ["POST"], "删除会话配置")
+        context.register_web_api(f"/{p}/sessions/reset", self._api_reset_session, ["POST"], "重置会话配置")
+        context.register_web_api(f"/{p}/emotions", self._api_list_emotions, ["GET"], "获取情感列表")
+        context.register_web_api(f"/{p}/constants", self._api_get_constants, ["GET"], "获取常量数据")
+        context.register_web_api(f"/{p}/health", self._api_health, ["GET"], "健康检查")
+
     # ── Proxy methods for handler compatibility ──
 
     @property
@@ -252,6 +273,172 @@ class MiMoTTSPlugin(Star):
     async def terminate(self) -> None:
         """Clean up resources when unloaded."""
         await self.synth.close_provider()
+
+    # ═══════════════════════════════════════════════════════════
+    #  Web API for Voice Studio Page
+    # ═══════════════════════════════════════════════════════════
+
+    async def _api_health(self):
+        from quart import jsonify
+        return jsonify({"status": "ok", "version": _read_plugin_version()})
+
+    async def _api_get_config(self):
+        from quart import jsonify
+        return jsonify({"config": dict(self.config._cfg)})
+
+    async def _api_update_config(self):
+        from quart import jsonify, request
+        body = await request.json
+        for k, v in body.items():
+            self.config.set(k, v)
+        self.config.save_config()
+        return jsonify({"status": "ok"})
+
+    async def _api_tts_synthesize(self):
+        from quart import jsonify, request, send_file
+        import io
+        body = await request.json
+        text = body.get("text", "")
+        if not text:
+            return jsonify({"error": "文本不能为空"}), 400
+
+        uid = body.get("uid", "webui")
+        overrides = {}
+        for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
+                     "laughter", "pause", "dialect", "volume", "tts_mode"):
+            if key in body and body[key] is not None:
+                overrides[key] = body[key]
+
+        emotion_override = None
+        if "emotion" in overrides:
+            if overrides["emotion"] == "auto":
+                emotion_override = None
+            elif overrides["emotion"] == "off":
+                overrides["emotion"] = ""
+            else:
+                emotion_override = overrides.pop("emotion")
+
+        try:
+            audio_path = await self._do_tts(
+                text, uid, emotion_override=emotion_override,
+                settings_override=overrides or None,
+            )
+            if audio_path:
+                return await send_file(str(audio_path), mimetype="audio/wav")
+            return jsonify({"error": "合成失败"}), 500
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    async def _api_list_voices(self):
+        from quart import jsonify
+        from .core.constants import MIMO_VOICE_LIST
+        builtin = [{**v, "type": "default"} for v in MIMO_VOICE_LIST]
+        registered = self._voice_manager.list_voices()
+        custom = []
+        for v in registered:
+            model = v.get("model", "voiceclone")
+            vtype = "design" if model == "voicedesign" else "clone"
+            custom.append({
+                "id": v.get("voice_id", ""),
+                "name": v.get("name", ""),
+                "type": vtype,
+            })
+        return jsonify({
+            "builtin": builtin,
+            "registered": custom,
+            "all": builtin + custom,
+        })
+
+    async def _api_clone_voice(self):
+        from quart import jsonify, request
+        import uuid
+        form = await request.form
+        files = await request.files
+        voice_id = form.get("voice_id", "").strip()
+        audio_file = files.get("audio")
+        if not voice_id or not audio_file:
+            return jsonify({"error": "缺少 voice_id 或音频文件"}), 400
+
+        suffix = Path(audio_file.filename or "audio.wav").suffix.lower()
+        if suffix not in (".mp3", ".wav"):
+            return jsonify({"error": "仅支持 mp3/wav 格式"}), 400
+
+        clone_dir = self._data_dir / "clone"
+        clone_dir.mkdir(parents=True, exist_ok=True)
+        save_path = clone_dir / f"{voice_id}{suffix}"
+        audio_file.save(str(save_path))
+
+        self._voice_manager.register_voice(
+            voice_id, name=voice_id, model="voiceclone", audio_path=str(save_path),
+        )
+        return jsonify({"status": "ok", "voice_id": voice_id})
+
+    async def _api_delete_voice(self):
+        from quart import jsonify, request
+        body = await request.json
+        voice_id = body.get("voice_id", "")
+        if not voice_id:
+            return jsonify({"error": "缺少 voice_id"}), 400
+        ok = self._voice_manager.remove_voice(voice_id)
+        if ok:
+            return jsonify({"status": "ok"})
+        return jsonify({"error": f"未找到音色: {voice_id}"}), 404
+
+    async def _api_list_sessions(self):
+        from quart import jsonify
+        sessions = {}
+        for uid, settings in self.user_state.user_settings.items():
+            sessions[uid] = {
+                "settings": settings,
+                "format": self.user_state.user_format.get(uid, "wav"),
+            }
+        return jsonify({"sessions": sessions})
+
+    async def _api_update_session(self):
+        from quart import jsonify, request
+        body = await request.json
+        uid = body.get("uid", "")
+        settings = body.get("settings", {})
+        if not uid:
+            return jsonify({"error": "缺少 uid"}), 400
+        uset = self.user_state.get_settings(uid, normalize_tts_mode)
+        uset.update(settings)
+        self.user_state.persist()
+        return jsonify({"status": "ok"})
+
+    async def _api_delete_session(self):
+        from quart import jsonify, request
+        body = await request.json
+        uid = body.get("uid", "")
+        if not uid:
+            return jsonify({"error": "缺少 uid"}), 400
+        self.user_state.user_settings.pop(uid, None)
+        self.user_state.user_format.pop(uid, None)
+        self.user_state.persist()
+        return jsonify({"status": "ok"})
+
+    async def _api_reset_session(self):
+        from quart import jsonify, request
+        body = await request.json
+        uid = body.get("uid", "")
+        if not uid:
+            return jsonify({"error": "缺少 uid"}), 400
+        self.user_state.restore(uid)
+        return jsonify({"status": "ok"})
+
+    async def _api_list_emotions(self):
+        from quart import jsonify
+        from .core.constants import SUPPORTED_EMOTIONS
+        return jsonify({"emotions": list(SUPPORTED_EMOTIONS)})
+
+    async def _api_get_constants(self):
+        from quart import jsonify
+        from .core.constants import MIMO_VOICE_LIST, SUPPORTED_EMOTIONS, SUPPORTED_AUDIO_FORMATS
+        return jsonify({
+            "voices": MIMO_VOICE_LIST,
+            "emotions": list(SUPPORTED_EMOTIONS),
+            "formats": list(SUPPORTED_AUDIO_FORMATS),
+        })
 
     # ═══════════════════════════════════════════════════════════
     #  Event Handlers
