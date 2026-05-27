@@ -105,6 +105,7 @@ class MiMoTTSPlugin(Star):
         context.register_web_api(f"/{p}/config", self._api_get_config, ["GET"], "获取插件配置")
         context.register_web_api(f"/{p}/config/update", self._api_update_config, ["POST"], "更新插件配置")
         context.register_web_api(f"/{p}/tts", self._api_tts_synthesize, ["POST"], "TTS 语音合成")
+        context.register_web_api(f"/{p}/tts/audio", self._api_tts_audio, ["GET"], "获取合成音频")
         context.register_web_api(f"/{p}/voices", self._api_list_voices, ["GET"], "获取音色列表")
         context.register_web_api(f"/{p}/voices/clone-init", self._api_clone_init, ["POST"], "初始化克隆")
         context.register_web_api(f"/{p}/voices/clone-file", self._api_clone_file, ["POST"], "上传克隆音频")
@@ -296,8 +297,7 @@ class MiMoTTSPlugin(Star):
         return jsonify({"status": "ok"})
 
     async def _api_tts_synthesize(self):
-        from quart import jsonify, request, send_file
-        import io
+        from quart import jsonify, request
         body = await request.json
         text = body.get("text", "")
         if not text:
@@ -325,10 +325,17 @@ class MiMoTTSPlugin(Star):
                 settings_override=overrides or None,
             )
             if audio_path:
-                return await send_file(str(audio_path), mimetype="audio/wav")
+                return jsonify({"audio_path": str(audio_path), "format": audio_path.suffix.lstrip(".")})
             return jsonify({"error": "合成失败"}), 500
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    async def _api_tts_audio(self):
+        from quart import request, send_file
+        path = request.args.get("path", "")
+        if not path or not Path(path).exists():
+            return "Not found", 404
+        return await send_file(path)
 
     async def _api_list_voices(self):
         from quart import jsonify

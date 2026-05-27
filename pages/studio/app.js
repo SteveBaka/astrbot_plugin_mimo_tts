@@ -353,8 +353,9 @@
             showError('合成失败：无响应');
           } else if (result.error) {
             showError(result.error);
-          } else {
-            audioSrc.value = resolveAudioSrc(result);
+          } else if (result.audio_path) {
+            const base = window.location.pathname.replace(/\/[^/]*$/, '');
+            audioSrc.value = `tts/audio?path=${encodeURIComponent(result.audio_path)}`;
             await nextTick();
             if (audioRef.value) {
               audioRef.value.load();
@@ -1013,7 +1014,7 @@
   <div class="page-header"><h2><span v-html="icon('info-circle')"></span> 关于</h2></div>
 
   <div class="section card about-card">
-    <div class="section-title"><img src="./logo.png" alt="" class="inline-logo"> astrbot_plugin_mimo_tts</div>
+    <div class="section-title"><span class="inline-logo-icon">TTS</span> astrbot_plugin_mimo_tts</div>
     <p class="version">版本: {{ version }}</p>
     <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件</p>
   </div>
@@ -1069,7 +1070,7 @@
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
   <aside class="sidebar" v-show="!isMobile">
     <div class="sidebar-header">
-      <img src="./logo.png" alt="logo" class="sidebar-logo">
+      <div class="sidebar-logo-icon">TTS</div>
       <div>
         <h2>astrbot_plugin_mimo_tts</h2>
         <div class="sidebar-sub">Voice Studio</div>

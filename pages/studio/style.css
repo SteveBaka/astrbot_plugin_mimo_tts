@@ -101,12 +101,19 @@ body {
   align-items: center;
   gap: 10px;
 }
-.sidebar-header .sidebar-logo {
+.sidebar-header .sidebar-logo-icon {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
-  object-fit: contain;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  letter-spacing: -0.5px;
 }
 .sidebar-header h2 {
   font-size: 14px;
@@ -308,6 +315,7 @@ select.select-input { cursor: pointer; appearance: auto; }
 .file-input {
   width: 100%;
   padding: 9px 13px;
+  min-height: 38px;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -316,6 +324,8 @@ select.select-input { cursor: pointer; appearance: auto; }
   font-family: var(--font);
   cursor: pointer;
   transition: border-color var(--transition), box-shadow var(--transition);
+  display: flex;
+  align-items: center;
 }
 .file-input:focus {
   border-color: var(--border-focus);
@@ -639,7 +649,21 @@ select.select-input { cursor: pointer; appearance: auto; }
 .config-save { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .toggle-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .toggle-field span { font-size: 13px; color: var(--text-secondary); }
-.inline-logo { width: 20px; height: 20px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.inline-logo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  vertical-align: middle;
+  margin-right: 6px;
+  letter-spacing: -0.5px;
+}
 
 /* ── Sessions ── */
 .sessions-list { display: flex; flex-direction: column; gap: 12px; }
