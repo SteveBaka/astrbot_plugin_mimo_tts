@@ -883,7 +883,7 @@
       return {
         sessions, loading, editingUid, editForm, errorMsg, successMsg,
         loadSessions, startEdit, cancelEdit, saveSession, resetSession,
-        deleteSession, formatMode, EMOTIONS, FORMATS, icon
+        deleteSession, formatMode, EMOTIONS, FORMATS, BUILTIN_VOICES, icon
       };
     },
     template: `
@@ -927,7 +927,6 @@
           <div class="control-group">
             <label class="control-label">模式</label>
             <select v-model="editForm.tts_mode" class="select-input">
-              <option value="">默认</option>
               <option value="default">默认</option>
               <option value="design">设计</option>
               <option value="clone">克隆</option>
@@ -935,13 +934,21 @@
           </div>
           <div class="control-group">
             <label class="control-label">音色</label>
-            <input type="text" v-model="editForm.voice" class="text-input">
+            <select v-model="editForm.voice" class="select-input">
+              <option v-for="v in BUILTIN_VOICES" :key="v.id" :value="v.id">{{ v.name }}</option>
+            </select>
           </div>
           <div class="control-group">
             <label class="control-label">情感</label>
             <select v-model="editForm.emotion" class="select-input">
               <option value="">自动</option>
               <option v-for="e in EMOTIONS" :key="e" :value="e">{{ e }}</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label class="control-label">格式</label>
+            <select v-model="editForm.format" class="select-input">
+              <option v-for="f in FORMATS" :key="f" :value="f">{{ f.toUpperCase() }}</option>
             </select>
           </div>
           <div class="control-group">
@@ -952,17 +959,11 @@
             <label class="control-label">音高: {{ editForm.pitch >= 0 ? '+' : '' }}{{ editForm.pitch }}</label>
             <input type="range" class="slider" v-model.number="editForm.pitch" min="-12" max="12" step="1">
           </div>
-          <div class="control-group">
-            <label class="control-label">格式</label>
-            <select v-model="editForm.format" class="select-input">
-              <option v-for="f in FORMATS" :key="f" :value="f">{{ f.toUpperCase() }}</option>
-            </select>
-          </div>
-          <div class="control-group">
+          <div class="control-group toggle-field">
             <span>自动 TTS</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.tts_enabled"><span class="toggle-slider"></span></label>
           </div>
-          <div class="control-group">
+          <div class="control-group toggle-field">
             <span>文字同步</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.text_enabled"><span class="toggle-slider"></span></label>
           </div>
@@ -1012,7 +1013,7 @@
   <div class="page-header"><h2><span v-html="icon('info-circle')"></span> 关于</h2></div>
 
   <div class="section card about-card">
-    <div class="section-title"><span v-html="icon('code')"></span> astrbot_plugin_mimo_tts</div>
+    <div class="section-title"><img src="./logo.png" alt="" class="inline-logo"> astrbot_plugin_mimo_tts</div>
     <p class="version">版本: {{ version }}</p>
     <p class="desc">基于 MiMO-V2.5-TTS 的精细化语音合成插件</p>
   </div>

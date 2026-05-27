@@ -637,6 +637,9 @@ select.select-input { cursor: pointer; appearance: auto; }
 .config-field .select-input { flex: 1; }
 .config-field .toggle { flex-shrink: 0; }
 .config-save { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.toggle-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.toggle-field span { font-size: 13px; color: var(--text-secondary); }
+.inline-logo { width: 20px; height: 20px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
 
 /* ── Sessions ── */
 .sessions-list { display: flex; flex-direction: column; gap: 12px; }
