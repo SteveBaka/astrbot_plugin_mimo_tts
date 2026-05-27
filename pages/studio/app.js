@@ -4,12 +4,15 @@
   const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
   const { createRouter, createWebHashHistory } = VueRouter;
 
-  const bridge = window.AstrBotPluginPage;
   const API = 'astrbot_plugin_mimo_tts';
+
+  function getBridge() {
+    return window.AstrBotPluginPage;
+  }
 
   async function apiGet(endpoint) {
     try {
-      return await bridge.apiGet(`${API}/${endpoint}`);
+      return await getBridge().apiGet(`${API}/${endpoint}`);
     } catch (e) {
       console.error(`[Studio] GET ${endpoint}`, e);
       return null;
@@ -18,7 +21,7 @@
 
   async function apiPost(endpoint, body) {
     try {
-      return await bridge.apiPost(`${API}/${endpoint}`, body);
+      return await getBridge().apiPost(`${API}/${endpoint}`, body);
     } catch (e) {
       console.error(`[Studio] POST ${endpoint}`, e);
       return null;
@@ -27,7 +30,7 @@
 
   async function apiUpload(endpoint, fileOrFormData) {
     try {
-      return await bridge.upload(`${API}/${endpoint}`, fileOrFormData);
+      return await getBridge().upload(`${API}/${endpoint}`, fileOrFormData);
     } catch (e) {
       console.error(`[Studio] UPLOAD ${endpoint}`, e);
       return null;
@@ -1083,8 +1086,14 @@
   });
 
   async function init() {
-    if (bridge && typeof bridge.ready === 'function') {
-      await bridge.ready();
+    let retries = 0;
+    while (!window.AstrBotPluginPage && retries < 50) {
+      await new Promise(r => setTimeout(r, 100));
+      retries++;
+    }
+    const br = window.AstrBotPluginPage;
+    if (br && typeof br.ready === 'function') {
+      await br.ready();
     }
     const app = createApp(App);
     app.use(router);
