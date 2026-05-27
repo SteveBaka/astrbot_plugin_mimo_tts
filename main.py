@@ -301,11 +301,11 @@ class MiMoTTSPlugin(Star):
         from quart import jsonify, request
         import base64
         body = await request.json
-        text = body.get("text", "")
-        if not text:
+        text = str(body.get("text", ""))[:5000]
+        if not text.strip():
             return jsonify({"error": "文本不能为空"}), 400
 
-        uid = body.get("uid", "webui")
+        uid = str(body.get("uid", "webui"))[:100]
         overrides = {}
         for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
                      "laughter", "pause", "dialect", "volume", "tts_mode"):
@@ -400,10 +400,11 @@ class MiMoTTSPlugin(Star):
 
     async def _api_design_voice(self):
         from quart import jsonify, request
+        import re as _re
         body = await request.json
-        voice_id = body.get("voice_id", "").strip()
-        description = body.get("description", "").strip()
-        name = body.get("name", voice_id).strip()
+        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip())
+        description = body.get("description", "").strip()[:500]
+        name = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("name", voice_id).strip())[:50]
         if not voice_id or not description:
             return jsonify({"error": "缺少 voice_id 或描述"}), 400
         self._voice_manager.register_voice(
@@ -440,8 +441,10 @@ class MiMoTTSPlugin(Star):
         settings = body.get("settings", {})
         if not uid:
             return jsonify({"error": "缺少 uid"}), 400
+        allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled", "text_enabled"}
+        filtered = {k: v for k, v in settings.items() if k in allowed}
         uset = self.user_state.get_settings(uid, normalize_tts_mode)
-        uset.update(settings)
+        uset.update(filtered)
         self.user_state.persist()
         return jsonify({"status": "ok"})
 
