@@ -372,18 +372,39 @@ select.select-input { cursor: pointer; appearance: auto; }
 .btn-primary {
   background: var(--accent);
   color: #fff;
+  padding: 9px 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 4px 12px var(--accent-glow); }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-ghost {
-  background: transparent;
+  padding: 9px 22px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 
-.btn-sm {
+.btn-small, .btn-sm {
   padding: 5px 12px;
   font-size: 12px;
   border-radius: var(--radius-sm);
@@ -395,11 +416,12 @@ select.select-input { cursor: pointer; appearance: auto; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: var(--font);
 }
-.btn-sm i { font-size: 14px; }
-.btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+.btn-small i, .btn-sm i { font-size: 14px; }
+.btn-small:hover, .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
 
-.btn-danger-sm {
+.btn-danger-small, .btn-danger-sm {
   padding: 5px 12px;
   font-size: 12px;
   border-radius: var(--radius-sm);
@@ -411,9 +433,10 @@ select.select-input { cursor: pointer; appearance: auto; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: var(--font);
 }
-.btn-danger-sm i { font-size: 14px; }
-.btn-danger-sm:hover { background: var(--danger); color: #fff; }
+.btn-danger-small i, .btn-danger-sm i { font-size: 14px; }
+.btn-danger-small:hover, .btn-danger-sm:hover { background: var(--danger); color: #fff; }
 
 .btn-link {
   background: none;
@@ -427,13 +450,14 @@ select.select-input { cursor: pointer; appearance: auto; }
 .btn-link:hover { text-decoration: underline; }
 
 /* ── Chips ── */
-.chip {
+.chip, .preset-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 20px;
   font-size: 12px;
+  font-weight: 500;
   background: var(--bg-input);
   border: 1px solid var(--border);
   color: var(--text-secondary);
@@ -441,7 +465,8 @@ select.select-input { cursor: pointer; appearance: auto; }
   transition: all var(--transition);
   margin: 0 4px 6px 0;
 }
-.chip:hover, .chip.active {
+.chip:hover, .chip.active,
+.preset-chip:hover, .preset-chip.active {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-glow);
