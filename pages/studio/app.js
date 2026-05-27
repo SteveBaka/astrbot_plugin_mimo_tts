@@ -353,9 +353,8 @@
             showError('合成失败：无响应');
           } else if (result.error) {
             showError(result.error);
-          } else if (result.audio_path) {
-            const base = window.location.pathname.replace(/\/[^/]*$/, '');
-            audioSrc.value = `tts/audio?path=${encodeURIComponent(result.audio_path)}`;
+          } else if (result.audio_b64) {
+            audioSrc.value = `data:${result.mime || 'audio/wav'};base64,${result.audio_b64}`;
             await nextTick();
             if (audioRef.value) {
               audioRef.value.load();
@@ -570,16 +569,28 @@
           showError(initRes?.error || '初始化失败');
           return;
         }
-        const res = await apiUpload('voices/clone-file', cloneFile.value);
-        if (res && res.error) {
-          showError(res.error);
-        } else if (res) {
-          showSuccessNotification('克隆音色已上传');
-          cloneId.value = '';
-          cloneFile.value = null;
-          loadVoices();
-        } else {
-          showError('上传失败');
+        try {
+          const arrayBuf = await cloneFile.value.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuf);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          const b64 = btoa(binary);
+          const res = await apiPost('voices/clone-file', {
+            file_b64: b64,
+            filename: cloneFile.value.name || 'audio.wav',
+          });
+          if (res && res.error) {
+            showError(res.error);
+          } else if (res) {
+            showSuccessNotification('克隆音色已上传: ' + (res.path || ''));
+            cloneId.value = '';
+            cloneFile.value = null;
+            loadVoices();
+          } else {
+            showError('上传失败');
+          }
+        } catch (e) {
+          showError('文件读取失败: ' + e.message);
         }
       }
 
