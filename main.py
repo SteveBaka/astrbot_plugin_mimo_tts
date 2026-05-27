@@ -291,8 +291,10 @@ class MiMoTTSPlugin(Star):
     async def _api_update_config(self):
         from quart import jsonify, request
         body = await request.json
+        allowed_keys = set(self.config._SCHEMA_DEFAULTS.keys())
         for k, v in body.items():
-            self.config.set(k, v)
+            if k in allowed_keys:
+                self.config.set(k, v)
         return jsonify({"status": "ok"})
 
     async def _api_tts_synthesize(self):
@@ -356,8 +358,10 @@ class MiMoTTSPlugin(Star):
 
     async def _api_clone_init(self):
         from quart import jsonify, request
+        import re as _re
         body = await request.json
         voice_id = body.get("voice_id", "").strip()
+        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", voice_id)
         if not voice_id:
             return jsonify({"error": "缺少 voice_id"}), 400
         self._pending_clone_voice_id = voice_id
@@ -366,14 +370,20 @@ class MiMoTTSPlugin(Star):
     async def _api_clone_file(self):
         from quart import jsonify, request
         import base64
+        import re as _re
         voice_id = getattr(self, "_pending_clone_voice_id", "")
         if not voice_id:
             return jsonify({"error": "请先调用 clone-init"}), 400
+        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", voice_id)
+        if not voice_id:
+            return jsonify({"error": "无效的 voice_id"}), 400
         body = await request.json
         file_b64 = body.get("file_b64", "")
         filename = body.get("filename", "audio.wav")
         if not file_b64:
             return jsonify({"error": "缺少音频数据"}), 400
+        if len(file_b64) > 20 * 1024 * 1024:
+            return jsonify({"error": "文件过大（最大约 15MB）"}), 400
         suffix = Path(filename).suffix.lower()
         if suffix not in (".mp3", ".wav"):
             return jsonify({"error": "仅支持 mp3/wav 格式"}), 400
