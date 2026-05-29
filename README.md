@@ -397,7 +397,7 @@ AstrBot/
 
 > 笑话3: `分段输出` 会加大蚊子音的出现概率，所以不建议开启 *comma* 分段，而且我也没招了（
 
-> 笑话4: 不得不说让 `mimo-v2.5-pro` 独立设计前端还是有点一般，甚至让 `longcat-v2-preview` 协助了一手，才接近[voice_studio_webUI]的设计（
+> 笑话4: 不得不说让 `mimo-v2.5-pro` 独立设计前端还是有点一般，甚至让 `longcat-v2-preview` 协助了一手，才接近 `voice_studio_webUI` 的设计（
 
 ## 致谢
 

@@ -286,7 +286,7 @@ class MiMoTTSPlugin(Star):
 
     async def _api_get_config(self):
         from quart import jsonify
-        return jsonify({"config": dict(self.config._cfg)})
+        return jsonify({"config": dict(self.config._flat)})
 
     async def _api_update_config(self):
         from quart import jsonify, request

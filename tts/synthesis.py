@@ -335,6 +335,8 @@ class TTSSynthesizer:
             audio_format=fmt,
             model=model_override,
             clone_audio_path=clone_audio_path,
+            temperature=self._config.temperature,
+            top_p=self._config.top_p,
         )
         if not raw:
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")

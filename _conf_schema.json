@@ -1,286 +1,343 @@
 {
-  "api_key": {
-    "type": "string",
-    "description": "MiMO API Key",
-    "hint": "从 MiMO 开放平台获取",
-    "default": ""
+  "api_settings": {
+    "description": "API 设置",
+    "type": "object",
+    "items": {
+      "api_key": {
+        "type": "string",
+        "description": "MiMO API Key",
+        "hint": "从 MiMO 开放平台获取",
+        "default": ""
+      },
+      "api_base_url": {
+        "type": "string",
+        "description": "API Base URL",
+        "hint": "默认 https://api.xiaomimimo.com/v1",
+        "default": "https://api.xiaomimimo.com/v1"
+      },
+      "model": {
+        "type": "string",
+        "description": "默认模型名称",
+        "hint": "当前仅支持 mimo-v2.5-tts",
+        "default": "mimo-v2.5-tts"
+      }
+    }
   },
-  "api_base_url": {
-    "type": "string",
-    "description": "API Base URL",
-    "hint": "默认 https://api.xiaomimimo.com/v1",
-    "default": "https://api.xiaomimimo.com/v1"
+  "voice_settings": {
+    "description": "音色设置",
+    "type": "object",
+    "items": {
+      "default_voice": {
+        "type": "string",
+        "description": "默认音色",
+        "hint": "在default模式下利用预置的音色进行语音合成",
+        "default": "mimo_default",
+        "options": ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
+      },
+      "sing_voice": {
+        "type": "string",
+        "description": "唱歌模式默认音色",
+        "hint": "留空则使用当前 default_voice",
+        "default": "",
+        "options": ["", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
+      },
+      "tts_output_mode": {
+        "type": "string",
+        "description": "TTS 输出音色来源",
+        "default": "default",
+        "options": ["default", "design", "clone"],
+        "hint": "default=预置音色，design=文字描述设计，clone=音频样本复刻"
+      }
+    }
   },
-  "model": {
-    "type": "string",
-    "description": "默认模型名称",
-    "hint": "当前仅支持 mimo-v2.5-tts",
-    "default": "mimo-v2.5-tts"
+  "tts_parameters": {
+    "description": "TTS 参数",
+    "type": "object",
+    "items": {
+      "emotion_override": {
+        "type": "string",
+        "description": "默认情感覆盖",
+        "hint": "留空=自动检测，或填 happy/sad/angry/neutral/whisper 等",
+        "default": ""
+      },
+      "default_speed": {
+        "type": "float",
+        "description": "默认语速",
+        "hint": "0.5~2.0，1.0 为正常语速",
+        "default": 1.0,
+        "slider": {"min": 0.5, "max": 2.0, "step": 0.1}
+      },
+      "default_pitch": {
+        "type": "int",
+        "description": "默认音高",
+        "hint": "-12~+12，0 为原始音高",
+        "default": 0,
+        "slider": {"min": -12, "max": 12, "step": 1}
+      },
+      "style_hint": {
+        "type": "string",
+        "description": "全局风格提示",
+        "hint": "如：温柔甜美（嵌入 prompt）控制声音风格",
+        "default": ""
+      },
+      "breath_enabled": {
+        "type": "bool",
+        "description": "呼吸声",
+        "hint": "启用自然呼吸声，增强真实感",
+        "default": false
+      },
+      "stress_enabled": {
+        "type": "bool",
+        "description": "重音模式",
+        "hint": "强调重音节奏，适合播音/朗读",
+        "default": false
+      },
+      "laughter_enabled": {
+        "type": "bool",
+        "description": "笑声",
+        "hint": "允许自然笑声融入语音",
+        "default": false
+      },
+      "pause_enabled": {
+        "type": "bool",
+        "description": "停顿模式",
+        "hint": "增加句间停顿，适合有感情的朗读",
+        "default": false
+      }
+    }
   },
-  "default_voice": {
-    "type": "string",
-    "description": "默认音色",
-    "hint": "在default模式下利用预置的音色进行语音合成",
-    "default": "mimo_default",
-    "options": [
-      "mimo_default",
-      "冰糖",
-      "茉莉",
-      "苏打",
-      "白桦",
-      "Mia",
-      "Chloe",
-      "Milo",
-      "Dean"
-    ]
+  "output_settings": {
+    "description": "输出设置",
+    "type": "object",
+    "items": {
+      "probability": {
+        "type": "float",
+        "description": "自动 TTS 触发概率",
+        "hint": "全局开关：0=不触发，1=每次都触发。不通过则跳过润色/分段",
+        "default": 0.8,
+        "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
+      },
+      "auto_tts": {
+        "type": "bool",
+        "description": "自动 TTS",
+        "hint": "拦截 LLM 回复生成语音",
+        "default": true
+      },
+      "send_text_with_tts": {
+        "type": "bool",
+        "description": "TTS 输出时同步发送文字",
+        "hint": "开启时保留原文本并附加语音；关闭时尽量只发送语音",
+        "default": true
+      },
+      "audio_format": {
+        "type": "string",
+        "description": "音频输出格式",
+        "hint": "wav（推荐）/ mp3 / ogg",
+        "default": "wav"
+      },
+      "min_text_length": {
+        "type": "int",
+        "description": "最小文本长度",
+        "hint": "低于此字数不触发自动 TTS",
+        "default": 5
+      },
+      "max_text_length": {
+        "type": "int",
+        "description": "最大文本长度",
+        "hint": "超过此字数截断（MiMO 单次上限约 5000）",
+        "default": 500
+      }
+    }
   },
-  "sing_voice": {
-    "type": "string",
-    "description": "🎤 唱歌模式默认音色",
-    "hint": "留空则使用当前 default_voice",
-    "default": "",
-    "options": [
-      "",
-      "冰糖",
-      "茉莉",
-      "苏打",
-      "白桦",
-      "Mia",
-      "Chloe",
-      "Milo",
-      "Dean"
-    ]
+  "segmentation": {
+    "description": "文本分段",
+    "type": "object",
+    "items": {
+      "enable_segmentation": {
+        "type": "bool",
+        "description": "启用文本分段 TTS",
+        "hint": "长文本将按规则切分成多段输出，变为发送多个音频",
+        "default": false
+      },
+      "segment_pattern": {
+        "type": "string",
+        "description": "分段规则",
+        "hint": "sentence=句末标点，paragraph=空行，comma=逗号分号，mixed=混合",
+        "default": "sentence",
+        "options": ["sentence", "paragraph", "comma", "mixed"]
+      },
+      "segment_max_count": {
+        "type": "int",
+        "description": "分段数量上限",
+        "hint": "超过此数量的分段将被合并。0=不限制",
+        "default": 10
+      },
+      "segment_voice_probability": {
+        "type": "float",
+        "description": "分段语音输出概率",
+        "hint": "全局触发通过后生效。1.0=全部语音，0.0=全部文字",
+        "default": 1.0,
+        "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
+      }
+    }
   },
-  "tts_output_mode": {
-    "type": "string",
-    "description": "🔊 TTS 输出音色来源",
-    "default": "default",
-    "options": [
-      "default",
-      "design",
-      "clone"
-    ],
-    "hint": "default：使用默认音色。\ndesign：使用设计音色。\nclone：使用克隆音色。"
+  "voice_polish": {
+    "description": "语音润色（LLM）",
+    "type": "object",
+    "items": {
+      "enable_voice_polish": {
+        "type": "bool",
+        "description": "启用 LLM 音色润色",
+        "hint": "TTS 前调用 LLM 注入 MiMO 音频标签，提升表现力。会产生额外 LLM 调用",
+        "default": false
+      },
+      "polish_llm_provider": {
+        "type": "string",
+        "description": "润色 LLM Provider",
+        "hint": "留空则使用当前对话模型。建议选择轻量快速的模型以减少延迟",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "polish_prompt": {
+        "type": "text",
+        "description": "润色提示词",
+        "hint": "指导 LLM 如何添加音频标签。{text} 为原文占位符",
+        "default": "你是语音润色助手。请在以下文本中适当添加 MiMO TTS 音频标签，使语音更自然生动。\n\n规则：\n1. 在文本开头添加风格标签，如 (温柔)、(磁性)、(活泼) 等\n2. 在文本中间适当位置插入音频标签，如 [深呼吸]、[叹气]、[笑]、[语速加快] 等\n3. 标签应与文本内容情感一致，不要过度使用，每段最多 2-3 个标签\n4. 保持原文内容不变，只添加标签\n5. 直接返回添加标签后的文本，不要添加任何解释\n\n原文：{text}"
+      }
+    }
   },
-  "probability": {
-    "type": "float",
-    "description": "自动 TTS 触发概率",
-    "hint": "全局开关：0 = 不触发，1 = 每次都触发。决定是否对 LLM 回复进行 TTS，不通过则直接跳过，不调用润色/分段",
-    "default": 0.8,
-    "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
+  "clone_settings": {
+    "description": "声音克隆",
+    "type": "object",
+    "items": {
+      "clone_enabled": {
+        "type": "bool",
+        "description": "启用声音克隆",
+        "hint": "通过参考音频克隆特定声音",
+        "default": true,
+        "invisible": true
+      },
+      "clone_model": {
+        "type": "string",
+        "description": "克隆模型名称",
+        "hint": "当前仅支持 mimo-v2.5-tts-voiceclone",
+        "default": "mimo-v2.5-tts-voiceclone"
+      },
+      "clone_voice_id": {
+        "type": "string",
+        "description": "克隆音色 ID",
+        "hint": "先用 /voiceclone <ID> <音频路径> 创建",
+        "default": ""
+      },
+      "clone_style_prompt": {
+        "type": "string",
+        "description": "克隆音色风格控制",
+        "hint": "自然语言描述，如：温柔、成熟、带故事感地朗读",
+        "default": ""
+      },
+      "clone_audio_tags": {
+        "type": "string",
+        "description": "克隆音色音频标签",
+        "hint": "多个标签用空格/逗号分隔",
+        "default": ""
+      }
+    }
   },
-  "auto_tts": {
-    "type": "bool",
-    "description": "自动 TTS（拦截 LLM 回复生成语音）",
-    "default": true
+  "design_settings": {
+    "description": "声音设计",
+    "type": "object",
+    "items": {
+      "design_enabled": {
+        "type": "bool",
+        "description": "启用声音设计",
+        "hint": "通过文字描述自动生成全新音色",
+        "default": true,
+        "invisible": true
+      },
+      "design_model": {
+        "type": "string",
+        "description": "设计模型名称",
+        "hint": "当前仅支持 mimo-v2.5-tts-voicedesign",
+        "default": "mimo-v2.5-tts-voicedesign"
+      },
+      "design_voice_description": {
+        "type": "string",
+        "description": "设计音色描述",
+        "hint": "如：温柔甜美的年轻女声，语速适中",
+        "default": ""
+      }
+    }
   },
-  "send_text_with_tts": {
-    "type": "bool",
-    "description": "TTS 输出时是否同步发送文字",
-    "hint": "开启时保留原文本并附加语音；关闭时自动 TTS 将尽量只发送语音，减少消息占用",
-    "default": true
+  "presets": {
+    "description": "预设描述",
+    "type": "object",
+    "items": {
+      "preset_gentle_female": {
+        "type": "string",
+        "description": "预设·温柔女生",
+        "hint": "声音描述词",
+        "default": "温柔的女生音色，轻柔细腻"
+      },
+      "preset_serious_male": {
+        "type": "string",
+        "description": "预设·严肃男声",
+        "hint": "声音描述词",
+        "default": "成熟男声，严肃有力"
+      },
+      "preset_cute_girl": {
+        "type": "string",
+        "description": "预设·可爱女孩",
+        "hint": "声音描述词",
+        "default": "年轻女孩的声音，活泼甜美"
+      },
+      "preset_storyteller": {
+        "type": "string",
+        "description": "预设·讲故事",
+        "hint": "声音描述词",
+        "default": "温和的讲述者声音，抑扬顿挫"
+      },
+      "preset_news_anchor": {
+        "type": "string",
+        "description": "预设·新闻播报",
+        "hint": "声音描述词",
+        "default": "标准普通话，字正腔圆，专业权威"
+      }
+    }
   },
-  "emotion_override": {
-    "type": "string",
-    "description": "默认情感覆盖",
-    "hint": "留空=自动检测，或填 happy/sad/angry/neutral/whisper 等",
-    "default": ""
+  "model_hyperparameters": {
+    "description": "模型超参",
+    "type": "object",
+    "items": {
+      "temperature": {
+        "type": "float",
+        "description": "采样温度",
+        "hint": "较高值(0.8)使输出更随机，较低值(0.2)使输出更确定。TTS 推荐 0.6",
+        "default": 0.6,
+        "slider": {"min": 0.0, "max": 1.5, "step": 0.1}
+      },
+      "top_p": {
+        "type": "float",
+        "description": "核采样阈值",
+        "hint": "控制生成多样性。值越高多样性越高。推荐 0.95",
+        "default": 0.95,
+        "slider": {"min": 0.01, "max": 1.0, "step": 0.01}
+      }
+    }
   },
-  "default_speed": {
-    "type": "float",
-    "description": "默认语速",
-    "hint": "0.5~2.0，1.0 为正常语速",
-    "default": 1.0,
-    "slider": {"min": 0.5, "max": 2.0, "step": 0.1}
-  },
-  "default_pitch": {
-    "type": "int",
-    "description": "默认音高",
-    "hint": "-12~+12，0 为原始音高",
-    "default": 0,
-    "slider": {"min": -12, "max": 12, "step": 1}
-  },
-    "style_hint": {
-    "type": "string",
-    "description": "🎛️ 全局风格提示",
-    "hint": "如：温柔甜美、活泼可爱、专业播音（嵌入 prompt 控制声音风格）",
-    "default": ""
-  },
-  "breath_enabled": {
-    "type": "bool",
-    "description": "🎛️ 呼吸声",
-    "hint": "启用自然呼吸声，增强真实感",
-    "default": false
-  },
-  "stress_enabled": {
-    "type": "bool",
-    "description": "🎛️ 重音模式",
-    "hint": "强调重音节奏，适合播音/朗读",
-    "default": false
-  },
-  "laughter_enabled": {
-    "type": "bool",
-    "description": "🎛️ 笑声",
-    "hint": "允许自然笑声融入语音",
-    "default": false
-  },
-  "pause_enabled": {
-    "type": "bool",
-    "description": "🎛️ 停顿模式",
-    "hint": "增加句间停顿，适合有感情的朗读",
-    "default": false
-  },
-  "clone_enabled": {
-    "type": "bool",
-    "description": "🔊 启用声音克隆",
-    "hint": "通过参考音频克隆特定声音",
-    "default": true,
-    "invisible": true
-  },
-  "clone_model": {
-    "type": "string",
-    "description": "🔊 克隆模型名称",
-    "hint": "当前仅支持 mimo-v2.5-tts-voiceclone",
-    "default": "mimo-v2.5-tts-voiceclone"
-  },
-  "clone_voice_id": {
-    "type": "string",
-    "description": "🔊 克隆音色 ID",
-    "hint": "先用 /voiceclone <ID> <音频路径> 创建",
-    "default": ""
-  },
-  "clone_style_prompt": {
-    "type": "string",
-    "description": "🔊 克隆音色自然语言风格控制",
-    "hint": "留空则按官方 API 默认方式处理；可填如：温柔、成熟、带故事感地朗读",
-    "default": ""
-  },
-  "clone_audio_tags": {
-    "type": "string",
-    "description": "🔊 克隆音色音频标签控制",
-    "hint": "留空则按官方 API 默认方式处理；可填标签，多个标签建议用空格/逗号分隔",
-    "default": ""
-  },
-  "design_enabled": {
-    "type": "bool",
-    "description": "🔊 启用声音设计",
-    "hint": "通过文字描述自动生成全新音色",
-    "default": true,
-    "invisible": true
-  },
-  "design_model": {
-    "type": "string",
-    "description": "🔊 设计模型名称",
-    "hint": "当前仅支持 mimo-v2.5-tts-voicedesign",
-    "default": "mimo-v2.5-tts-voicedesign"
-  },
-  "design_voice_description": {
-    "type": "string",
-    "description": "🔊 设计音色描述",
-    "hint": "用于全局音色控制的描述文本，如：温柔甜美的年轻女声，语速适中",
-    "default": ""
-  },
-  "preset_gentle_female": {
-    "type": "string",
-    "description": "🎨 预设·温柔女生",
-    "hint": "声音描述词",
-    "default": "温柔的女生音色，轻柔细腻"
-  },
-  "preset_serious_male": {
-    "type": "string",
-    "description": "🎨 预设·严肃男声",
-    "hint": "声音描述词",
-    "default": "成熟男声，严肃有力"
-  },
-  "preset_cute_girl": {
-    "type": "string",
-    "description": "🎨 预设·可爱女孩",
-    "hint": "声音描述词",
-    "default": "年轻女孩的声音，活泼甜美"
-  },
-  "preset_storyteller": {
-    "type": "string",
-    "description": "🎨 预设·讲故事",
-    "hint": "声音描述词",
-    "default": "温和的讲述者声音，抑扬顿挫"
-  },
-  "preset_news_anchor": {
-    "type": "string",
-    "description": "🎨 预设·新闻播报",
-    "hint": "声音描述词",
-    "default": "标准普通话，字正腔圆，专业权威"
-  },
-  "audio_format": {
-    "type": "string",
-    "description": "音频输出格式",
-    "hint": "wav（推荐，兼容性最佳）/ mp3 / ogg。若平台不支持 wav 会自动回退 mp3 并输出日志提醒",
-    "default": "wav"
-  },
-  "min_text_length": {
-    "type": "int",
-    "description": "最小文本长度",
-    "hint": "低于此字数不触发自动 TTS",
-    "default": 5
-  },
-  "max_text_length": {
-    "type": "int",
-    "description": "最大文本长度",
-    "hint": "超过此字数截断（MiMO 单次上限约 5000）",
-    "default": 500
-  },
-  "enable_segmentation": {
-    "type": "bool",
-    "description": "启用文本分段 TTS",
-    "hint": "长文本将按规则切分成多段输出，变为发送多个音频",
-    "default": false
-  },
-  "segment_pattern": {
-    "type": "string",
-    "description": "分段规则",
-    "hint": "sentence=按句末标点切分，paragraph=按空行切分，comma=按逗号分号切分，mixed=混合切分",
-    "default": "sentence",
-    "options": ["sentence", "paragraph", "comma", "mixed"]
-  },
-  "segment_max_count": {
-    "type": "int",
-    "description": "分段数量上限",
-    "hint": "超过此数量的分段将被合并，避免无限切分。0=不限制",
-    "default": 10
-  },
-  "segment_voice_probability": {
-    "type": "float",
-    "description": "分段语音输出概率",
-    "hint": "在全局触发概率通过后生效。1.0=全部分段语音，0.0=全部仅文字，0.5=随机约一半分段语音",
-    "default": 1.0,
-    "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
-  },
-  "enable_voice_polish": {
-    "type": "bool",
-    "description": "启用 LLM 音色润色",
-    "hint": "开启后 TTS 前调用 LLM 为文本注入 MiMO 音频标签（如 (温柔)[深呼吸]），提升语音表现力。会产生额外 LLM 调用",
-    "default": false
-  },
-  "polish_llm_provider": {
-    "type": "string",
-    "description": "润色 LLM Provider",
-    "hint": "留空则使用当前对话模型。建议选择轻量快速的模型（如 GPT-4o-mini、Qwen-turbo）以减少延迟",
-    "default": "",
-    "_special": "select_provider"
-  },
-  "polish_prompt": {
-    "type": "text",
-    "description": "润色提示词",
-    "hint": "指导 LLM 如何添加音频标签。{text} 为原文占位符",
-    "default": "你是语音润色助手。请在以下文本中适当添加 MiMO TTS 音频标签，使语音更自然生动。\n\n规则：\n1. 在文本开头添加风格标签，如 (温柔)、(磁性)、(活泼) 等\n2. 在文本中间适当位置插入音频标签，如 [深呼吸]、[叹气]、[笑]、[语速加快] 等\n3. 标签应与文本内容情感一致，不要过度使用，每段最多 2-3 个标签\n4. 保持原文内容不变，只添加标签\n5. 直接返回添加标签后的文本，不要添加任何解释\n\n原文：{text}"
-  },
-  "timeout": {
-    "type": "int",
-    "description": "API 请求超时（秒）",
-    "default": 60
-  },
-  "max_retries": {
-    "type": "int",
-    "description": "失败重试次数",
-    "default": 2
+  "advanced": {
+    "description": "高级设置",
+    "type": "object",
+    "items": {
+      "timeout": {
+        "type": "int",
+        "description": "API 请求超时（秒）",
+        "default": 60
+      },
+      "max_retries": {
+        "type": "int",
+        "description": "失败重试次数",
+        "default": 2
+      }
+    }
   }
 }
