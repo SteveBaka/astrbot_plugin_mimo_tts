@@ -1240,8 +1240,8 @@
 
   async function init() {
     let retries = 0;
-    while (!window.AstrBotPluginPage && retries < 50) {
-      await new Promise(r => setTimeout(r, 100));
+    while (!window.AstrBotPluginPage && retries < 30) {
+      await new Promise(r => setTimeout(r, 50));
       retries++;
     }
     const br = window.AstrBotPluginPage;
@@ -1252,6 +1252,8 @@
     app.use(router);
     app.config.globalProperties.icon = icon;
     app.mount('#app');
+    const el = document.getElementById('loading');
+    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
   }
 
   if (document.readyState === 'loading') {
