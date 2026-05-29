@@ -93,6 +93,11 @@ class MiMoTTSPlugin(Star):
         self.user_state = UserStateManager(self._data_dir, self.config)
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
 
+        # ── Plugin logger (WebUI log page) ──
+        from .core.plugin_logger import PluginLogger
+        self.plog = PluginLogger(self._data_dir, config_ref=self.config)
+        self.plog.cleanup_old_logs()
+
         self.user_state.load()
 
         # ── Register Web API for Voice Studio page ──
@@ -117,6 +122,8 @@ class MiMoTTSPlugin(Star):
         context.register_web_api(f"/{p}/emotions", self._api_list_emotions, ["GET"], "获取情感列表")
         context.register_web_api(f"/{p}/constants", self._api_get_constants, ["GET"], "获取常量数据")
         context.register_web_api(f"/{p}/health", self._api_health, ["GET"], "健康检查")
+        context.register_web_api(f"/{p}/logs", self._api_get_logs, ["GET"], "获取插件日志")
+        context.register_web_api(f"/{p}/logs/stats", self._api_log_stats, ["GET"], "日志统计")
 
     # ── Proxy methods for handler compatibility ──
 
@@ -258,22 +265,30 @@ class MiMoTTSPlugin(Star):
         settings_override: Optional[dict] = None,
     ) -> Optional[Path]:
         """Run TTS and return the audio file path."""
-        audio_path = await self.synth.do_tts(
-            text=text,
-            uid=uid,
-            get_user_settings=self._get_user_settings,
-            get_effective_audio_format=self._get_effective_audio_format,
-            format_override=format_override,
-            emotion_override=emotion_override,
-            settings_override=settings_override,
-        )
+        self.plog.info("TTS", f"合成开始 uid={uid} len={len(text)}")
+        try:
+            audio_path = await self.synth.do_tts(
+                text=text,
+                uid=uid,
+                get_user_settings=self._get_user_settings,
+                get_effective_audio_format=self._get_effective_audio_format,
+                format_override=format_override,
+                emotion_override=emotion_override,
+                settings_override=settings_override,
+            )
+        except Exception as e:
+            self.plog.error("TTS", f"合成失败: {e}")
+            raise
         if audio_path:
+            size_kb = round(audio_path.stat().st_size / 1024, 1)
+            self.plog.info("TTS", f"合成完成 {size_kb}KB → {audio_path.name}")
             self.user_state.recent_files.append((time.time(), audio_path))
             self.user_state.cleanup_recent_files()
         return audio_path
 
     async def terminate(self) -> None:
         """Clean up resources when unloaded."""
+        self.plog.info("Lifecycle", "插件卸载，清理资源")
         await self.synth.close_provider()
 
     # ═══════════════════════════════════════════════════════════
@@ -286,7 +301,7 @@ class MiMoTTSPlugin(Star):
 
     async def _api_get_config(self):
         from quart import jsonify
-        return jsonify({"config": dict(self.config._cfg)})
+        return jsonify({"config": dict(self.config._flat)})
 
     async def _api_update_config(self):
         from quart import jsonify, request
@@ -306,6 +321,7 @@ class MiMoTTSPlugin(Star):
             return jsonify({"error": "文本不能为空"}), 400
 
         uid = str(body.get("uid", "webui"))[:100]
+        self.plog.info("WebUI-TTS", f"合成请求 uid={uid} len={len(text)} polish={body.get('voice_polish', False)}")
 
         # LLM 润色（仅当请求中明确启用时）
         if body.get("voice_polish"):
@@ -488,13 +504,25 @@ class MiMoTTSPlugin(Star):
             "formats": list(SUPPORTED_AUDIO_FORMATS),
         })
 
+    async def _api_get_logs(self):
+        from quart import jsonify, request
+        args = request.args
+        limit = min(int(args.get("limit", 200)), 500)
+        level = args.get("level")
+        logs = self.plog.read_logs(limit=limit, level=level)
+        return jsonify({"logs": logs, "enabled": self.plog.enabled})
+
+    async def _api_log_stats(self):
+        from quart import jsonify
+        return jsonify(self.plog.get_stats())
+
     # ═══════════════════════════════════════════════════════════
     #  Event Handlers
     # ═══════════════════════════════════════════════════════════
 
     @filter.on_decorating_result(priority=100)
     async def on_decorating_result(self, event: AstrMessageEvent):
-        """Auto TTS: intercept LLM output and generate voice reply."""
+        """回复消息前拦截 LLM 输出，自动生成语音回复。支持文本分段、LLM 音色润色、概率触发。"""
         uid, uset = self._get_event_settings(event)
 
         # ── Step 1: 概率判断（最先执行，不通过则直接跳出，节省资源） ──
@@ -533,6 +561,7 @@ class MiMoTTSPlugin(Star):
             logger.info(
                 "MiMO TTS: segmentation enabled, split into %d segments", len(segments)
             )
+            self.plog.info("Segmentation", f"分段触发 uid={uid} 段数={len(segments)} prob={self.config.segment_voice_probability}")
 
             prob = self.config.segment_voice_probability
             polish_enabled = uset.get("enable_voice_polish", self.config.enable_voice_polish)
@@ -584,6 +613,7 @@ class MiMoTTSPlugin(Star):
         tts_text = plain
         if uset.get("enable_voice_polish", self.config.enable_voice_polish):
             logger.info("MiMO TTS: voice polish enabled, calling LLM...")
+            self.plog.info("Polish", f"LLM 润色触发 uid={uid}")
             tts_text = await self._polish_text_with_llm(plain, uid)
 
         orig_emotion = uset["emotion"]
@@ -607,6 +637,8 @@ class MiMoTTSPlugin(Star):
 
     # ── Command Handlers (delegated to handlers/) ──
 
+    # ── Public commands (no permission required) ──
+
     @filter.command("mimo_say")
     async def cmd_mimo_say(self, event: AstrMessageEvent):
         """即时合成语音 /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]"""
@@ -619,160 +651,187 @@ class MiMoTTSPlugin(Star):
         async for item in handle_sing(self, event):
             yield item
 
+    @filter.command("ttsinfo")
+    async def cmd_ttsinfo(self, event: AstrMessageEvent):
+        """查看插件版本与功能信息"""
+        async for item in handle_ttsinfo(self, event):
+            yield item
+
+    # ── Admin commands (requires AstrBot admin permission) ──
+
     @filter.command("ttsraw")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsraw(self, event: AstrMessageEvent):
         """纯文本合成（不带情感） /ttsraw <文本>"""
         async for item in handle_ttsraw(self, event):
             yield item
 
     @filter.command("tts_off")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_off(self, event: AstrMessageEvent):
         """关闭当前对话自动 TTS"""
         async for item in handle_tts_off(self, event):
             yield item
 
     @filter.command("tts_on")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_on(self, event: AstrMessageEvent):
         """开启当前对话自动 TTS"""
         async for item in handle_tts_on(self, event):
             yield item
 
     @filter.command("text")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_text(self, event: AstrMessageEvent):
         """控制自动 TTS 是否同步发送文字 /text <on|off>"""
         async for item in handle_text(self, event):
             yield item
 
     @filter.command("tts_help")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_help(self, event: AstrMessageEvent):
         """快速查看常用 TTS 指令"""
         async for item in handle_tts_help(self, event):
             yield item
 
     @filter.command("tts_restore")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_restore(self, event: AstrMessageEvent):
         """将当前对话配置恢复为插件默认设置"""
         async for item in handle_tts_restore(self, event):
             yield item
 
     @filter.command("emotion")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_emotion(self, event: AstrMessageEvent):
         """设置情感 /emotion <情感名|auto|off>"""
         async for item in handle_emotion(self, event):
             yield item
 
     @filter.command("emotions")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_emotions(self, event: AstrMessageEvent):
         """列出所有支持的情感"""
         async for item in handle_emotions(self, event):
             yield item
 
     @filter.command("speed")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_speed(self, event: AstrMessageEvent):
         """设置语速 /speed <0.5~2.0>"""
         async for item in handle_speed(self, event):
             yield item
 
     @filter.command("pitch")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_pitch(self, event: AstrMessageEvent):
         """设置音高 /pitch <-12~+12>"""
         async for item in handle_pitch(self, event):
             yield item
 
     @filter.command("breath")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_breath(self, event: AstrMessageEvent):
         """开关呼吸声 /breath <on|off>"""
         async for item in handle_breath(self, event):
             yield item
 
     @filter.command("stress")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_stress(self, event: AstrMessageEvent):
         """开关重音模式 /stress <on|off>"""
         async for item in handle_stress(self, event):
             yield item
 
     @filter.command("dialect")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_dialect(self, event: AstrMessageEvent):
         """设置方言口音 /dialect <方言名|off>"""
         async for item in handle_dialect(self, event):
             yield item
 
     @filter.command("volume")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_volume(self, event: AstrMessageEvent):
         """设置音量 /volume <轻声|正常|大声|off>"""
         async for item in handle_volume(self, event):
             yield item
 
     @filter.command("laughter")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_laughter(self, event: AstrMessageEvent):
         """开关笑声 /laughter <on|off>"""
         async for item in handle_laughter(self, event):
             yield item
 
     @filter.command("pause")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_pause(self, event: AstrMessageEvent):
         """开关停顿模式 /pause <on|off>"""
         async for item in handle_pause(self, event):
             yield item
 
     @filter.command("preset")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_preset(self, event: AstrMessageEvent):
         """查看/应用预设 /preset [预设名]"""
         async for item in handle_preset(self, event):
             yield item
 
     @filter.command("presetlist")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_presetlist(self, event: AstrMessageEvent):
         """列出所有预设"""
         async for item in handle_presetlist(self, event):
             yield item
 
     @filter.command("voice")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voice(self, event: AstrMessageEvent):
         """查看/切换音色 /voice [音色ID]"""
         async for item in handle_voice(self, event):
             yield item
 
     @filter.command("voices")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voices(self, event: AstrMessageEvent):
         """列出所有内置音色"""
         async for item in handle_voices(self, event):
             yield item
 
     @filter.command("ttsswitch")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsswitch(self, event: AstrMessageEvent):
         """切换 TTS 输出模式 /ttsswitch <default|design|clone>"""
         async for item in handle_ttsswitch(self, event):
             yield item
 
     @filter.command("voiceclone")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voiceclone(self, event: AstrMessageEvent):
         """声音克隆 /voiceclone <ID> <音频路径> 或 /voiceclone <音色名> 切换"""
         async for item in handle_voiceclone(self, event):
             yield item
 
     @filter.command("voicegen")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voicegen(self, event: AstrMessageEvent):
         """声音设计 /voicegen <ID> <描述文本>"""
         async for item in handle_voicegen(self, event):
             yield item
 
     @filter.command("ttsformat")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsformat(self, event: AstrMessageEvent):
         """设置音频输出格式 /ttsformat <mp3|wav|ogg>"""
         async for item in handle_ttsformat(self, event):
             yield item
 
     @filter.command("ttsconfig")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsconfig(self, event: AstrMessageEvent):
         """查看当前会话 TTS 配置"""
         async for item in handle_ttsconfig(self, event):
-            yield item
-
-    @filter.command("ttsinfo")
-    async def cmd_ttsinfo(self, event: AstrMessageEvent):
-        """查看插件版本与功能信息"""
-        async for item in handle_ttsinfo(self, event):
             yield item
 
     # ── Helpers (private) ──

@@ -4,6 +4,22 @@
   const { createApp, ref, reactive, computed, watch, onMounted, nextTick, h } = Vue;
   const { createRouter, createWebHashHistory } = VueRouter;
 
+  // ── Global Toast System ──
+  const toastState = reactive({ message: '', type: 'info', visible: false });
+  let _toastTimer = null;
+
+  function showToast(msg, type) {
+    if (type === undefined) type = 'info';
+    if (_toastTimer) clearTimeout(_toastTimer);
+    toastState.message = msg;
+    toastState.type = type;
+    toastState.visible = true;
+    _toastTimer = setTimeout(function() { toastState.visible = false; }, 3000);
+  }
+
+  function showError(msg) { showToast(msg, 'error'); }
+  function showSuccess(msg) { showToast(msg, 'success'); }
+
   const ICONS = {
     microphone: '<path d="M9 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M12 12v4a6 6 0 0 1-12 0v-4" transform="translate(6,0)"/><path d="M8 19v3" transform="translate(6,0)"/>',
     'user-circle': '<circle cx="12" cy="10" r="4"/><path d="M19.998 18a8 8 0 0 0-15.996 0"/>',
@@ -43,11 +59,11 @@
     return window.AstrBotPluginPage;
   }
 
-  async function apiGet(endpoint) {
+  async function apiGet(endpoint, params) {
     try {
-      return await getBridge().apiGet(endpoint);
+      return await getBridge().apiGet(endpoint, params);
     } catch (e) {
-      console.error(`[Studio] GET ${endpoint}`, e);
+      console.error('[Studio] GET ' + endpoint, e);
       return null;
     }
   }
@@ -188,8 +204,11 @@
     {
       title: '高级设置', ic: 'tool',
       fields: [
-        { key: 'timeout', label: 'API 超时(秒)', type: 'number' },
-        { key: 'max_retries', label: '重试次数', type: 'number' }
+        { key: 'temperature', label: '采样温度（temperature）', type: 'slider', min: 0, max: 1.5, step: 0.1 },
+        { key: 'top_p', label: '核采样阈值（top_p）', type: 'slider', min: 0.01, max: 1.0, step: 0.01 },
+        { key: 'timeout', label: 'API 超时（timeout）', type: 'number' },
+        { key: 'max_retries', label: '重试次数（max_retries）', type: 'number' },
+        { key: 'enable_plugin_log', label: '启用插件日志（WebUI）', type: 'bool' }
       ]
     }
   ];
@@ -256,8 +275,6 @@
       const synthesizing = ref(false);
       const audioSrc = ref('');
       const audioRef = ref(null);
-      const errorMsg = ref('');
-      const successMsg = ref('');
       const registeredVoices = ref([]);
 
       const modes = [
@@ -288,16 +305,6 @@
         }
       }
 
-      function showError(msg) {
-        errorMsg.value = msg;
-        setTimeout(() => { errorMsg.value = ''; }, 4000);
-      }
-
-      function showSuccessNotification(msg) {
-        successMsg.value = msg;
-        setTimeout(() => { successMsg.value = ''; }, 3000);
-      }
-
       function applyPreset(preset) {
         activePreset.value = preset.name;
         voiceMode.value = 'default';
@@ -316,7 +323,7 @@
         }
         const detected = detectEmotionClient(text.value);
         emotion.value = detected;
-        showSuccessNotification(`检测到情感: ${detected}`);
+        showSuccess(`检测到情感: ${detected}`);
       }
 
       async function synthesize() {
@@ -325,7 +332,6 @@
           return;
         }
         synthesizing.value = true;
-        errorMsg.value = '';
         audioSrc.value = '';
 
         const body = {
@@ -384,7 +390,7 @@
         breathEnabled, stressEnabled, laughterEnabled, pauseEnabled,
         voicePolishEnabled,
         dialect, volume, showAdvanced, activePreset, synthesizing,
-        audioSrc, audioRef, errorMsg, successMsg, registeredVoices,
+        audioSrc, audioRef, registeredVoices,
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
         applyPreset, runDetectEmotion, synthesize, icon
       };
@@ -392,9 +398,6 @@
     template: `
 <div class="page synthesis-page">
   <div class="page-header"><h2><span v-html="icon('microphone')"></span> 语音合成</h2></div>
-
-  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
 
   <div class="card">
     <div class="section-title"><span v-html="icon('microphone')"></span> 输入文本</div>
@@ -525,18 +528,6 @@
       const cloneFile = ref(null);
       const registeredVoices = ref([]);
       const loading = ref(false);
-      const errorMsg = ref('');
-      const successMsg = ref('');
-
-      function showError(msg) {
-        errorMsg.value = msg;
-        setTimeout(() => { errorMsg.value = ''; }, 4000);
-      }
-
-      function showSuccessNotification(msg) {
-        successMsg.value = msg;
-        setTimeout(() => { successMsg.value = ''; }, 3000);
-      }
 
       async function loadVoices() {
         loading.value = true;
@@ -560,7 +551,7 @@
         if (res && res.error) {
           showError(res.error);
         } else if (res) {
-          showSuccessNotification('设计音色已创建');
+          showSuccess('设计音色已创建');
           designId.value = '';
           designName.value = '';
           designDesc.value = '';
@@ -601,7 +592,7 @@
           if (res && res.error) {
             showError(res.error);
           } else if (res) {
-            showSuccessNotification('克隆音色已上传: ' + (res.path || ''));
+            showSuccess('克隆音色已上传: ' + (res.path || ''));
             cloneId.value = '';
             cloneFile.value = null;
             loadVoices();
@@ -619,7 +610,7 @@
         if (res && res.error) {
           showError(res.error);
         } else {
-          showSuccessNotification('已删除: ' + voiceId);
+          showSuccess('已删除: ' + voiceId);
           loadVoices();
         }
       }
@@ -628,16 +619,13 @@
 
       return {
         designId, designName, designDesc, cloneId, cloneFile,
-        registeredVoices, loading, errorMsg, successMsg,
+        registeredVoices, loading,
         submitDesign, onCloneFileChange, submitClone, deleteVoice, icon
       };
     },
     template: `
 <div class="page voices-page">
   <div class="page-header"><h2><span v-html="icon('user-circle')"></span> 音色管理</h2></div>
-
-  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
 
   <div class="voice-create-row">
     <div class="card">
@@ -704,19 +692,7 @@
       const config = reactive({});
       const loading = ref(false);
       const saving = ref(false);
-      const errorMsg = ref('');
-      const successMsg = ref('');
       const sections = CONFIG_SECTIONS;
-
-      function showError(msg) {
-        errorMsg.value = msg;
-        setTimeout(() => { errorMsg.value = ''; }, 4000);
-      }
-
-      function showSuccessNotification(msg) {
-        successMsg.value = msg;
-        setTimeout(() => { successMsg.value = ''; }, 3000);
-      }
 
       async function loadConfig() {
         loading.value = true;
@@ -741,7 +717,13 @@
         if (res && res.error) {
           showError(res.error);
         } else if (res) {
-          showSuccessNotification(section.title + ' 已保存');
+          const needsReload = section.fields.some(f =>
+            ['enable_plugin_log', 'timeout', 'max_retries'].includes(f.key)
+          );
+          const msg = needsReload
+            ? section.title + ' 已保存（部分配置需重载插件后生效）'
+            : section.title + ' 已保存';
+          showSuccess(msg);
         } else {
           showError('保存失败');
         }
@@ -750,14 +732,12 @@
 
       onMounted(() => { loadConfig(); });
 
-      return { config, loading, saving, errorMsg, successMsg, sections, saveSection, icon };
+      return { config, loading, saving, sections, saveSection, icon };
     },
     template: `
 <div class="page config-page">
   <div class="page-header"><h2><span v-html="icon('settings')"></span> 插件配置</h2></div>
 
-  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
   <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
 
   <template v-if="!loading">
@@ -826,18 +806,6 @@
         tts_mode: '', tts_enabled: true, text_enabled: true, format: 'wav',
         enable_segmentation: false, enable_voice_polish: false
       });
-      const errorMsg = ref('');
-      const successMsg = ref('');
-
-      function showError(msg) {
-        errorMsg.value = msg;
-        setTimeout(() => { errorMsg.value = ''; }, 4000);
-      }
-
-      function showSuccessNotification(msg) {
-        successMsg.value = msg;
-        setTimeout(() => { successMsg.value = ''; }, 3000);
-      }
 
       async function loadSessions() {
         loading.value = true;
@@ -889,7 +857,7 @@
         if (res && res.error) {
           showError(res.error);
         } else {
-          showSuccessNotification('会话已更新');
+          showSuccess('会话已更新');
           editingUid.value = '';
           loadSessions();
         }
@@ -901,7 +869,7 @@
         if (res && res.error) {
           showError(res.error);
         } else {
-          showSuccessNotification('会话已重置');
+          showSuccess('会话已重置');
           loadSessions();
         }
       }
@@ -912,7 +880,7 @@
         if (res && res.error) {
           showError(res.error);
         } else {
-          showSuccessNotification('会话已删除');
+          showSuccess('会话已删除');
           delete sessions.value[uid];
         }
       }
@@ -967,7 +935,7 @@
       onMounted(() => { loadSessions(); loadRegisteredVoices(); });
 
       return {
-        sessions, loading, editingUid, editForm, errorMsg, successMsg,
+        sessions, loading, editingUid, editForm,
         searchQuery, showSearch, filteredSessions, sessionCount,
         loadSessions, startEdit, cancelEdit, saveSession, resetSession,
         deleteSession, formatMode, toggleSearch, EMOTIONS, FORMATS,
@@ -990,8 +958,6 @@
     </div>
   </div>
 
-  <div v-if="errorMsg" class="alert alert-error"><span v-html="icon('alert-circle')"></span> {{ errorMsg }}</div>
-  <div v-if="successMsg" class="alert alert-success"><span v-html="icon('circle-check')"></span> {{ successMsg }}</div>
   <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
 
   <div v-else-if="filteredSessions.length === 0" class="empty-hint">暂无{{ searchQuery ? '匹配的' : '' }}会话数据</div>
@@ -1158,6 +1124,7 @@
         { path: '/voices', label: '音色', ic: 'user-circle' },
         { path: '/config', label: '配置', ic: 'settings' },
         { path: '/sessions', label: '会话', ic: 'messages' },
+        { path: '/logs', label: '日志', ic: 'list' },
         { path: '/about', label: '关于', ic: 'info-circle' }
       ];
 
@@ -1175,7 +1142,7 @@
         window.addEventListener('resize', checkMobile);
       });
 
-      return { isDark, isMobile, pluginReady, navItems, toggleTheme, icon };
+      return { isDark, isMobile, pluginReady, navItems, toggleTheme, icon, toast: toastState };
     },
     template: `
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
@@ -1213,6 +1180,14 @@
     <router-view></router-view>
   </main>
 
+  <!-- Global Toast -->
+  <transition name="toast">
+    <div v-if="toast.visible" class="toast" :class="'toast-' + toast.type">
+      <span v-html="icon(toast.type === 'error' ? 'alert-circle' : 'circle-check')"></span>
+      <span>{{ toast.message }}</span>
+    </div>
+  </transition>
+
   <nav class="mobile-bar" v-show="isMobile">
     <router-link v-for="item in navItems" :key="item.path" :to="item.path" class="mobile-link">
       <span v-html="icon(item.ic)"></span>
@@ -1227,6 +1202,75 @@
 `
   };
 
+  const LogsPage = {
+    setup() {
+      const logs = ref([]);
+      const loading = ref(false);
+      const logEnabled = ref(false);
+      const filterLevel = ref('');
+
+      async function loadLogs() {
+        loading.value = true;
+        try {
+          const params = { limit: 200 };
+          if (filterLevel.value) params.level = filterLevel.value;
+          const res = await apiGet('logs', params);
+          if (res) {
+            logs.value = res.logs || [];
+            logEnabled.value = res.enabled;
+          }
+        } catch (e) {
+          showError('加载失败');
+        } finally {
+          loading.value = false;
+        }
+      }
+
+      function clearFilter() {
+        filterLevel.value = '';
+        loadLogs();
+      }
+
+      onMounted(() => { loadLogs(); });
+
+      return { logs, loading, logEnabled, filterLevel, loadLogs, clearFilter, icon };
+    },
+    template: `
+<div class="page logs-page">
+  <div class="page-header">
+    <h2><span v-html="icon('list')"></span> 运行日志</h2>
+    <div class="page-header-actions">
+      <select v-model="filterLevel" @change="loadLogs" class="select-input" style="width:auto;padding:5px 10px;font-size:12px">
+        <option value="">全部</option>
+        <option value="INFO">INFO</option>
+        <option value="WARN">WARN</option>
+        <option value="ERROR">ERROR</option>
+      </select>
+      <button class="btn-small" @click="loadLogs"><span v-html="icon('refresh')"></span> 刷新</button>
+    </div>
+  </div>
+
+  <div v-if="!logEnabled" class="card">
+    <div class="empty-hint">日志未启用。请在「配置 → 高级设置」中开启「启用插件日志（WebUI）」。</div>
+  </div>
+
+  <div v-else-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
+
+  <div v-else-if="logs.length === 0" class="empty-hint">暂无日志</div>
+
+  <div v-else class="log-list">
+    <div v-for="(entry, i) in logs" :key="i" class="log-entry" :class="'log-' + (entry.level || 'INFO').toLowerCase()">
+      <span class="log-time">{{ entry.ts }}</span>
+      <span class="log-level" :class="'level-' + (entry.level || 'INFO').toLowerCase()">{{ entry.level }}</span>
+      <span class="log-cat">{{ entry.cat }}</span>
+      <span class="log-msg">{{ entry.msg }}</span>
+      <span v-if="entry.detail" class="log-detail">{{ entry.detail }}</span>
+    </div>
+  </div>
+</div>
+`
+  };
+
   const router = createRouter({
     history: createWebHashHistory(),
     routes: [
@@ -1234,14 +1278,15 @@
       { path: '/voices', component: VoicesPage },
       { path: '/config', component: ConfigPage },
       { path: '/sessions', component: SessionsPage },
+      { path: '/logs', component: LogsPage },
       { path: '/about', component: AboutPage }
     ]
   });
 
   async function init() {
     let retries = 0;
-    while (!window.AstrBotPluginPage && retries < 50) {
-      await new Promise(r => setTimeout(r, 100));
+    while (!window.AstrBotPluginPage && retries < 30) {
+      await new Promise(r => setTimeout(r, 50));
       retries++;
     }
     const br = window.AstrBotPluginPage;
@@ -1252,6 +1297,8 @@
     app.use(router);
     app.config.globalProperties.icon = icon;
     app.mount('#app');
+    const el = document.getElementById('loading');
+    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
   }
 
   if (document.readyState === 'loading') {

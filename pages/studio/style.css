@@ -99,6 +99,33 @@ body {
 }
 
 /* ═══════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════ */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  pointer-events: none;
+}
+.toast .icon { width: 16px; height: 16px; flex-shrink: 0; }
+.toast-success { background: rgba(74, 222, 128, 0.15); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.3); }
+.toast-error { background: rgba(255, 92, 106, 0.15); color: var(--danger); border: 1px solid rgba(255, 92, 106, 0.3); }
+.toast-info { background: rgba(108, 138, 255, 0.15); color: var(--accent); border: 1px solid rgba(108, 138, 255, 0.3); }
+.toast-enter-active { transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+.toast-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 1, 1); }
+.toast-enter-from { opacity: 0; transform: translateX(40px); }
+.toast-leave-to { opacity: 0; transform: translateX(40px); }
+
+/* ═══════════════════════════════════════
    SIDEBAR — Island Module Design
    ═══════════════════════════════════════ */
 .sidebar {
@@ -211,6 +238,7 @@ body {
   .sidebar .nav-link:nth-child(3) { animation-delay: 0.36s; }
   .sidebar .nav-link:nth-child(4) { animation-delay: 0.44s; }
   .sidebar .nav-link:nth-child(5) { animation-delay: 0.52s; }
+  .sidebar .nav-link:nth-child(6) { animation-delay: 0.60s; }
 }
 
 @keyframes sidebar-slide-in {
@@ -1003,6 +1031,44 @@ select.select-input { cursor: pointer; appearance: auto; }
   gap: 10px;
   margin-top: 16px;
 }
+
+/* ═══════════════════════════════════════
+   LOGS
+   ═══════════════════════════════════════ */
+.log-list { display: flex; flex-direction: column; gap: 2px; }
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid transparent;
+  transition: background var(--transition);
+  line-height: 1.5;
+  overflow-x: auto;
+}
+.log-entry:hover { background: var(--bg-hover); }
+.log-entry.log-error { border-left: 3px solid var(--danger); }
+.log-entry.log-warn { border-left: 3px solid var(--warn); }
+.log-time { color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+.log-level {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.level-info { background: var(--accent-subtle); color: var(--accent); }
+.level-warn { background: var(--warn-bg); color: var(--warn); }
+.level-error { background: var(--danger-bg); color: var(--danger); }
+.log-cat { color: var(--accent); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.log-msg { color: var(--text); flex: 1; min-width: 0; }
+.log-detail { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
 
 /* ═══════════════════════════════════════
    ABOUT

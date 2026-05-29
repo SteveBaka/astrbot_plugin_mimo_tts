@@ -197,6 +197,8 @@ class MiMOProvider:
         audio_format: Optional[str] = None,
         model: Optional[str] = None,
         clone_audio_path: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
     ) -> Optional[bytes]:
         """Synthesize text to audio bytes.
 
@@ -261,6 +263,12 @@ class MiMOProvider:
             "audio": audio,
             "stream": False,
         }
+
+        # Model hyperparameters (temperature/top_p)
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if top_p is not None:
+            payload["top_p"] = top_p
 
         backoff = 1.0
         self._set_last_error("")
