@@ -59,11 +59,11 @@
     return window.AstrBotPluginPage;
   }
 
-  async function apiGet(endpoint) {
+  async function apiGet(endpoint, params) {
     try {
-      return await getBridge().apiGet(endpoint);
+      return await getBridge().apiGet(endpoint, params);
     } catch (e) {
-      console.error(`[Studio] GET ${endpoint}`, e);
+      console.error('[Studio] GET ' + endpoint, e);
       return null;
     }
   }
@@ -1214,8 +1214,7 @@
         try {
           const params = { limit: 200 };
           if (filterLevel.value) params.level = filterLevel.value;
-          const qs = new URLSearchParams(params).toString();
-          const res = await apiGet(`logs?${qs}`);
+          const res = await apiGet('logs', params);
           if (res) {
             logs.value = res.logs || [];
             logEnabled.value = res.enabled;
