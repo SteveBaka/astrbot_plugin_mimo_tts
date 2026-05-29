@@ -494,7 +494,7 @@ class MiMoTTSPlugin(Star):
 
     @filter.on_decorating_result(priority=100)
     async def on_decorating_result(self, event: AstrMessageEvent):
-        """Auto TTS: intercept LLM output and generate voice reply."""
+        """回复消息前拦截 LLM 输出，自动生成语音回复。支持文本分段、LLM 音色润色、概率触发。"""
         uid, uset = self._get_event_settings(event)
 
         # ── Step 1: 概率判断（最先执行，不通过则直接跳出，节省资源） ──
