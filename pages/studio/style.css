@@ -211,6 +211,7 @@ body {
   .sidebar .nav-link:nth-child(3) { animation-delay: 0.36s; }
   .sidebar .nav-link:nth-child(4) { animation-delay: 0.44s; }
   .sidebar .nav-link:nth-child(5) { animation-delay: 0.52s; }
+  .sidebar .nav-link:nth-child(6) { animation-delay: 0.60s; }
 }
 
 @keyframes sidebar-slide-in {

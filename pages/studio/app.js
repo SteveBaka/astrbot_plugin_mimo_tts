@@ -188,8 +188,11 @@
     {
       title: '高级设置', ic: 'tool',
       fields: [
-        { key: 'timeout', label: 'API 超时(秒)', type: 'number' },
-        { key: 'max_retries', label: '重试次数', type: 'number' }
+        { key: 'temperature', label: '采样温度（temperature）', type: 'slider', min: 0, max: 1.5, step: 0.1 },
+        { key: 'top_p', label: '核采样阈值（top_p）', type: 'slider', min: 0.01, max: 1.0, step: 0.01 },
+        { key: 'timeout', label: 'API 超时（timeout）', type: 'number' },
+        { key: 'max_retries', label: '重试次数（max_retries）', type: 'number' },
+        { key: 'enable_plugin_log', label: '启用插件日志（WebUI）', type: 'bool' }
       ]
     }
   ];
@@ -741,7 +744,13 @@
         if (res && res.error) {
           showError(res.error);
         } else if (res) {
-          showSuccessNotification(section.title + ' 已保存');
+          const needsReload = section.fields.some(f =>
+            ['enable_plugin_log', 'timeout', 'max_retries'].includes(f.key)
+          );
+          const msg = needsReload
+            ? section.title + ' 已保存（部分配置需重载插件后生效）'
+            : section.title + ' 已保存';
+          showSuccessNotification(msg);
         } else {
           showError('保存失败');
         }

@@ -95,7 +95,7 @@ class MiMoTTSPlugin(Star):
 
         # ── Plugin logger (WebUI log page) ──
         from .core.plugin_logger import PluginLogger
-        self.plog = PluginLogger(self._data_dir, enabled=self.config.enable_plugin_log)
+        self.plog = PluginLogger(self._data_dir, config_ref=self.config)
         self.plog.cleanup_old_logs()
 
         self.user_state.load()
@@ -310,8 +310,6 @@ class MiMoTTSPlugin(Star):
         for k, v in body.items():
             if k in allowed_keys:
                 self.config.set(k, v)
-        # Sync plugin logger state
-        self.plog.enabled = self.config.enable_plugin_log
         return jsonify({"status": "ok"})
 
     async def _api_tts_synthesize(self):

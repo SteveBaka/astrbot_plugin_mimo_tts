@@ -22,19 +22,30 @@ _MAX_LOG_LINES = 2000
 class PluginLogger:
     """File-based plugin logger with 7-day rolling cleanup."""
 
-    def __init__(self, data_dir: Path, enabled: bool = False):
+    def __init__(self, data_dir: Path, config_ref=None):
         self._log_dir = data_dir / "logs"
-        self._enabled = enabled
+        self._config_ref = config_ref
         self._lock = threading.Lock()
         self._log_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def enabled(self) -> bool:
-        return self._enabled
+        """Dynamically read enable_plugin_log from config."""
+        if self._config_ref is not None:
+            try:
+                return bool(self._config_ref.get("enable_plugin_log", False))
+            except Exception:
+                pass
+        return False
 
     @enabled.setter
     def enabled(self, value: bool) -> None:
-        self._enabled = bool(value)
+        """Sync back to config (for API update path)."""
+        if self._config_ref is not None:
+            try:
+                self._config_ref.set("enable_plugin_log", bool(value))
+            except Exception:
+                pass
 
     def _log_file(self) -> Path:
         """Return today's log file path."""
