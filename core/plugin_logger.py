@@ -54,7 +54,7 @@ class PluginLogger:
 
     def write(self, level: str, category: str, message: str, detail: Optional[str] = None) -> None:
         """Write a log entry if logging is enabled."""
-        if not self._enabled:
+        if not self.enabled:
             return
         entry = {
             "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -140,7 +140,7 @@ class PluginLogger:
         except Exception:
             pass
         return {
-            "enabled": self._enabled,
+            "enabled": self.enabled,
             "log_dir": str(self._log_dir),
             "total_files": total_files,
             "total_size_kb": round(total_size / 1024, 1),

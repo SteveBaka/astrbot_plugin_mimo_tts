@@ -99,6 +99,33 @@ body {
 }
 
 /* ═══════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════ */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  pointer-events: none;
+}
+.toast .icon { width: 16px; height: 16px; flex-shrink: 0; }
+.toast-success { background: rgba(74, 222, 128, 0.15); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.3); }
+.toast-error { background: rgba(255, 92, 106, 0.15); color: var(--danger); border: 1px solid rgba(255, 92, 106, 0.3); }
+.toast-info { background: rgba(108, 138, 255, 0.15); color: var(--accent); border: 1px solid rgba(108, 138, 255, 0.3); }
+.toast-enter-active { transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+.toast-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 1, 1); }
+.toast-enter-from { opacity: 0; transform: translateX(40px); }
+.toast-leave-to { opacity: 0; transform: translateX(40px); }
+
+/* ═══════════════════════════════════════
    SIDEBAR — Island Module Design
    ═══════════════════════════════════════ */
 .sidebar {
