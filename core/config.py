@@ -79,6 +79,8 @@ class ConfigManager:
         # Advanced
         "timeout": 60,
         "max_retries": 2,
+        # Plugin log
+        "enable_plugin_log": False,
     }
 
     # ── Map flat keys to their nested path in the config dict ──
@@ -290,6 +292,10 @@ class ConfigManager:
         except (ValueError, TypeError):
             value = 2
         return max(0, value)
+
+    @property
+    def enable_plugin_log(self) -> bool:
+        return bool(self._flat.get("enable_plugin_log", False))
 
     # ── Segmentation ──
 

@@ -332,6 +332,12 @@
         "type": "int",
         "description": "失败重试次数（max_retries）",
         "default": 2
+      },
+      "enable_plugin_log": {
+        "type": "bool",
+        "description": "启用插件日志（WebUI）",
+        "hint": "开启后记录插件运行日志，7 天滚动清理。仅用于 WebUI 日志页面查看，不影响 AstrBot 日志",
+        "default": false
       }
     }
   }

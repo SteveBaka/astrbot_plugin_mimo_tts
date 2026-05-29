@@ -94,7 +94,7 @@ class UserStateManager:
     """Manages per-user TTS settings with persistence and LRU eviction."""
 
     _MAX_IDLE_USERS = 500
-    _CLEANUP_MAX_TOTAL_BYTES = 500 * 1024 * 1024
+    _CLEANUP_MAX_TOTAL_BYTES = 100 * 1024 * 1024
 
     def __init__(self, data_dir: Path, config):
         self._data_dir = data_dir

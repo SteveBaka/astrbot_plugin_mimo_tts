@@ -93,6 +93,11 @@ class MiMoTTSPlugin(Star):
         self.user_state = UserStateManager(self._data_dir, self.config)
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
 
+        # ── Plugin logger (WebUI log page) ──
+        from .core.plugin_logger import PluginLogger
+        self.plog = PluginLogger(self._data_dir, enabled=self.config.enable_plugin_log)
+        self.plog.cleanup_old_logs()
+
         self.user_state.load()
 
         # ── Register Web API for Voice Studio page ──
@@ -117,6 +122,8 @@ class MiMoTTSPlugin(Star):
         context.register_web_api(f"/{p}/emotions", self._api_list_emotions, ["GET"], "获取情感列表")
         context.register_web_api(f"/{p}/constants", self._api_get_constants, ["GET"], "获取常量数据")
         context.register_web_api(f"/{p}/health", self._api_health, ["GET"], "健康检查")
+        context.register_web_api(f"/{p}/logs", self._api_get_logs, ["GET"], "获取插件日志")
+        context.register_web_api(f"/{p}/logs/stats", self._api_log_stats, ["GET"], "日志统计")
 
     # ── Proxy methods for handler compatibility ──
 
@@ -258,22 +265,30 @@ class MiMoTTSPlugin(Star):
         settings_override: Optional[dict] = None,
     ) -> Optional[Path]:
         """Run TTS and return the audio file path."""
-        audio_path = await self.synth.do_tts(
-            text=text,
-            uid=uid,
-            get_user_settings=self._get_user_settings,
-            get_effective_audio_format=self._get_effective_audio_format,
-            format_override=format_override,
-            emotion_override=emotion_override,
-            settings_override=settings_override,
-        )
+        self.plog.info("TTS", f"合成开始 uid={uid} len={len(text)}")
+        try:
+            audio_path = await self.synth.do_tts(
+                text=text,
+                uid=uid,
+                get_user_settings=self._get_user_settings,
+                get_effective_audio_format=self._get_effective_audio_format,
+                format_override=format_override,
+                emotion_override=emotion_override,
+                settings_override=settings_override,
+            )
+        except Exception as e:
+            self.plog.error("TTS", f"合成失败: {e}")
+            raise
         if audio_path:
+            size_kb = round(audio_path.stat().st_size / 1024, 1)
+            self.plog.info("TTS", f"合成完成 {size_kb}KB → {audio_path.name}")
             self.user_state.recent_files.append((time.time(), audio_path))
             self.user_state.cleanup_recent_files()
         return audio_path
 
     async def terminate(self) -> None:
         """Clean up resources when unloaded."""
+        self.plog.info("Lifecycle", "插件卸载，清理资源")
         await self.synth.close_provider()
 
     # ═══════════════════════════════════════════════════════════
@@ -295,6 +310,8 @@ class MiMoTTSPlugin(Star):
         for k, v in body.items():
             if k in allowed_keys:
                 self.config.set(k, v)
+        # Sync plugin logger state
+        self.plog.enabled = self.config.enable_plugin_log
         return jsonify({"status": "ok"})
 
     async def _api_tts_synthesize(self):
@@ -306,6 +323,7 @@ class MiMoTTSPlugin(Star):
             return jsonify({"error": "文本不能为空"}), 400
 
         uid = str(body.get("uid", "webui"))[:100]
+        self.plog.info("WebUI-TTS", f"合成请求 uid={uid} len={len(text)} polish={body.get('voice_polish', False)}")
 
         # LLM 润色（仅当请求中明确启用时）
         if body.get("voice_polish"):
@@ -488,6 +506,18 @@ class MiMoTTSPlugin(Star):
             "formats": list(SUPPORTED_AUDIO_FORMATS),
         })
 
+    async def _api_get_logs(self):
+        from quart import jsonify, request
+        args = request.args
+        limit = min(int(args.get("limit", 200)), 500)
+        level = args.get("level")
+        logs = self.plog.read_logs(limit=limit, level=level)
+        return jsonify({"logs": logs, "enabled": self.plog.enabled})
+
+    async def _api_log_stats(self):
+        from quart import jsonify
+        return jsonify(self.plog.get_stats())
+
     # ═══════════════════════════════════════════════════════════
     #  Event Handlers
     # ═══════════════════════════════════════════════════════════
@@ -533,6 +563,7 @@ class MiMoTTSPlugin(Star):
             logger.info(
                 "MiMO TTS: segmentation enabled, split into %d segments", len(segments)
             )
+            self.plog.info("Segmentation", f"分段触发 uid={uid} 段数={len(segments)} prob={self.config.segment_voice_probability}")
 
             prob = self.config.segment_voice_probability
             polish_enabled = uset.get("enable_voice_polish", self.config.enable_voice_polish)
@@ -584,6 +615,7 @@ class MiMoTTSPlugin(Star):
         tts_text = plain
         if uset.get("enable_voice_polish", self.config.enable_voice_polish):
             logger.info("MiMO TTS: voice polish enabled, calling LLM...")
+            self.plog.info("Polish", f"LLM 润色触发 uid={uid}")
             tts_text = await self._polish_text_with_llm(plain, uid)
 
         orig_emotion = uset["emotion"]

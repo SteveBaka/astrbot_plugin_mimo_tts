@@ -1158,6 +1158,7 @@
         { path: '/voices', label: '音色', ic: 'user-circle' },
         { path: '/config', label: '配置', ic: 'settings' },
         { path: '/sessions', label: '会话', ic: 'messages' },
+        { path: '/logs', label: '日志', ic: 'list' },
         { path: '/about', label: '关于', ic: 'info-circle' }
       ];
 
@@ -1227,6 +1228,77 @@
 `
   };
 
+  const LogsPage = {
+    setup() {
+      const logs = ref([]);
+      const loading = ref(false);
+      const logEnabled = ref(false);
+      const filterLevel = ref('');
+      const errorMsg = ref('');
+
+      async function loadLogs() {
+        loading.value = true;
+        try {
+          const params = { limit: 200 };
+          if (filterLevel.value) params.level = filterLevel.value;
+          const qs = new URLSearchParams(params).toString();
+          const res = await apiGet(`logs?${qs}`);
+          if (res) {
+            logs.value = res.logs || [];
+            logEnabled.value = res.enabled;
+          }
+        } catch (e) {
+          errorMsg.value = '加载失败';
+        } finally {
+          loading.value = false;
+        }
+      }
+
+      function clearFilter() {
+        filterLevel.value = '';
+        loadLogs();
+      }
+
+      onMounted(() => { loadLogs(); });
+
+      return { logs, loading, logEnabled, filterLevel, errorMsg, loadLogs, clearFilter, icon };
+    },
+    template: `
+<div class="page logs-page">
+  <div class="page-header">
+    <h2><span v-html="icon('list')"></span> 运行日志</h2>
+    <div class="page-header-actions">
+      <select v-model="filterLevel" @change="loadLogs" class="select-input" style="width:auto;padding:5px 10px;font-size:12px">
+        <option value="">全部</option>
+        <option value="INFO">INFO</option>
+        <option value="WARN">WARN</option>
+        <option value="ERROR">ERROR</option>
+      </select>
+      <button class="btn-small" @click="loadLogs"><span v-html="icon('refresh')"></span> 刷新</button>
+    </div>
+  </div>
+
+  <div v-if="!logEnabled" class="card">
+    <div class="empty-hint">日志未启用。请在「配置 → 高级设置」中开启「启用插件日志（WebUI）」。</div>
+  </div>
+
+  <div v-else-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
+
+  <div v-else-if="logs.length === 0" class="empty-hint">暂无日志</div>
+
+  <div v-else class="log-list">
+    <div v-for="(entry, i) in logs" :key="i" class="log-entry" :class="'log-' + (entry.level || 'INFO').toLowerCase()">
+      <span class="log-time">{{ entry.ts }}</span>
+      <span class="log-level" :class="'level-' + (entry.level || 'INFO').toLowerCase()">{{ entry.level }}</span>
+      <span class="log-cat">{{ entry.cat }}</span>
+      <span class="log-msg">{{ entry.msg }}</span>
+      <span v-if="entry.detail" class="log-detail">{{ entry.detail }}</span>
+    </div>
+  </div>
+</div>
+`
+  };
+
   const router = createRouter({
     history: createWebHashHistory(),
     routes: [
@@ -1234,6 +1306,7 @@
       { path: '/voices', component: VoicesPage },
       { path: '/config', component: ConfigPage },
       { path: '/sessions', component: SessionsPage },
+      { path: '/logs', component: LogsPage },
       { path: '/about', component: AboutPage }
     ]
   });
