@@ -637,6 +637,8 @@ class MiMoTTSPlugin(Star):
 
     # ── Command Handlers (delegated to handlers/) ──
 
+    # ── Public commands (no permission required) ──
+
     @filter.command("mimo_say")
     async def cmd_mimo_say(self, event: AstrMessageEvent):
         """即时合成语音 /mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]"""
@@ -649,160 +651,187 @@ class MiMoTTSPlugin(Star):
         async for item in handle_sing(self, event):
             yield item
 
+    @filter.command("ttsinfo")
+    async def cmd_ttsinfo(self, event: AstrMessageEvent):
+        """查看插件版本与功能信息"""
+        async for item in handle_ttsinfo(self, event):
+            yield item
+
+    # ── Admin commands (requires AstrBot admin permission) ──
+
     @filter.command("ttsraw")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsraw(self, event: AstrMessageEvent):
         """纯文本合成（不带情感） /ttsraw <文本>"""
         async for item in handle_ttsraw(self, event):
             yield item
 
     @filter.command("tts_off")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_off(self, event: AstrMessageEvent):
         """关闭当前对话自动 TTS"""
         async for item in handle_tts_off(self, event):
             yield item
 
     @filter.command("tts_on")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_on(self, event: AstrMessageEvent):
         """开启当前对话自动 TTS"""
         async for item in handle_tts_on(self, event):
             yield item
 
     @filter.command("text")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_text(self, event: AstrMessageEvent):
         """控制自动 TTS 是否同步发送文字 /text <on|off>"""
         async for item in handle_text(self, event):
             yield item
 
     @filter.command("tts_help")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_help(self, event: AstrMessageEvent):
         """快速查看常用 TTS 指令"""
         async for item in handle_tts_help(self, event):
             yield item
 
     @filter.command("tts_restore")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_tts_restore(self, event: AstrMessageEvent):
         """将当前对话配置恢复为插件默认设置"""
         async for item in handle_tts_restore(self, event):
             yield item
 
     @filter.command("emotion")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_emotion(self, event: AstrMessageEvent):
         """设置情感 /emotion <情感名|auto|off>"""
         async for item in handle_emotion(self, event):
             yield item
 
     @filter.command("emotions")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_emotions(self, event: AstrMessageEvent):
         """列出所有支持的情感"""
         async for item in handle_emotions(self, event):
             yield item
 
     @filter.command("speed")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_speed(self, event: AstrMessageEvent):
         """设置语速 /speed <0.5~2.0>"""
         async for item in handle_speed(self, event):
             yield item
 
     @filter.command("pitch")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_pitch(self, event: AstrMessageEvent):
         """设置音高 /pitch <-12~+12>"""
         async for item in handle_pitch(self, event):
             yield item
 
     @filter.command("breath")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_breath(self, event: AstrMessageEvent):
         """开关呼吸声 /breath <on|off>"""
         async for item in handle_breath(self, event):
             yield item
 
     @filter.command("stress")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_stress(self, event: AstrMessageEvent):
         """开关重音模式 /stress <on|off>"""
         async for item in handle_stress(self, event):
             yield item
 
     @filter.command("dialect")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_dialect(self, event: AstrMessageEvent):
         """设置方言口音 /dialect <方言名|off>"""
         async for item in handle_dialect(self, event):
             yield item
 
     @filter.command("volume")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_volume(self, event: AstrMessageEvent):
         """设置音量 /volume <轻声|正常|大声|off>"""
         async for item in handle_volume(self, event):
             yield item
 
     @filter.command("laughter")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_laughter(self, event: AstrMessageEvent):
         """开关笑声 /laughter <on|off>"""
         async for item in handle_laughter(self, event):
             yield item
 
     @filter.command("pause")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_pause(self, event: AstrMessageEvent):
         """开关停顿模式 /pause <on|off>"""
         async for item in handle_pause(self, event):
             yield item
 
     @filter.command("preset")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_preset(self, event: AstrMessageEvent):
         """查看/应用预设 /preset [预设名]"""
         async for item in handle_preset(self, event):
             yield item
 
     @filter.command("presetlist")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_presetlist(self, event: AstrMessageEvent):
         """列出所有预设"""
         async for item in handle_presetlist(self, event):
             yield item
 
     @filter.command("voice")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voice(self, event: AstrMessageEvent):
         """查看/切换音色 /voice [音色ID]"""
         async for item in handle_voice(self, event):
             yield item
 
     @filter.command("voices")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voices(self, event: AstrMessageEvent):
         """列出所有内置音色"""
         async for item in handle_voices(self, event):
             yield item
 
     @filter.command("ttsswitch")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsswitch(self, event: AstrMessageEvent):
         """切换 TTS 输出模式 /ttsswitch <default|design|clone>"""
         async for item in handle_ttsswitch(self, event):
             yield item
 
     @filter.command("voiceclone")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voiceclone(self, event: AstrMessageEvent):
         """声音克隆 /voiceclone <ID> <音频路径> 或 /voiceclone <音色名> 切换"""
         async for item in handle_voiceclone(self, event):
             yield item
 
     @filter.command("voicegen")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_voicegen(self, event: AstrMessageEvent):
         """声音设计 /voicegen <ID> <描述文本>"""
         async for item in handle_voicegen(self, event):
             yield item
 
     @filter.command("ttsformat")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsformat(self, event: AstrMessageEvent):
         """设置音频输出格式 /ttsformat <mp3|wav|ogg>"""
         async for item in handle_ttsformat(self, event):
             yield item
 
     @filter.command("ttsconfig")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_ttsconfig(self, event: AstrMessageEvent):
         """查看当前会话 TTS 配置"""
         async for item in handle_ttsconfig(self, event):
-            yield item
-
-    @filter.command("ttsinfo")
-    async def cmd_ttsinfo(self, event: AstrMessageEvent):
-        """查看插件版本与功能信息"""
-        async for item in handle_ttsinfo(self, event):
             yield item
 
     # ── Helpers (private) ──
