@@ -1128,11 +1128,6 @@
         { path: '/about', label: '关于', ic: 'info-circle' }
       ];
 
-      function toggleTheme() {
-        isDark.value = !isDark.value;
-        document.documentElement.setAttribute('data-theme', isDark.value ? '' : 'light');
-      }
-
       function checkMobile() {
         isMobile.value = window.innerWidth < 768;
       }
@@ -1140,9 +1135,22 @@
       onMounted(() => {
         checkMobile();
         window.addEventListener('resize', checkMobile);
+        // Sync theme from Dashboard
+        const br = getBridge();
+        if (br) {
+          const ctx = br.getContext();
+          if (ctx && typeof ctx.isDark === 'boolean') {
+            isDark.value = ctx.isDark;
+          }
+          br.onContext(function(nextCtx) {
+            if (nextCtx && typeof nextCtx.isDark === 'boolean') {
+              isDark.value = nextCtx.isDark;
+            }
+          });
+        }
       });
 
-      return { isDark, isMobile, pluginReady, navItems, toggleTheme, icon, toast: toastState };
+      return { isDark, isMobile, pluginReady, navItems, icon, toast: toastState };
     },
     template: `
 <div id="studio-root" :class="{ 'dark-theme': isDark }" v-if="pluginReady">
@@ -1168,10 +1176,10 @@
 
     <div class="sidebar-bottom">
       <div class="sidebar-footer">
-        <button class="theme-btn" @click="toggleTheme">
-          <span v-html="icon(isDark ? 'sun' : 'moon')"></span>
-          {{ isDark ? 'Light' : 'Dark' }}
-        </button>
+        <div class="sidebar-theme-indicator">
+          <span v-html="icon(isDark ? 'moon' : 'sun')"></span>
+          <span>{{ isDark ? 'Dark' : 'Light' }}</span>
+        </div>
       </div>
     </div>
   </aside>
@@ -1193,10 +1201,6 @@
       <span v-html="icon(item.ic)"></span>
       <span class="mobile-label">{{ item.label }}</span>
     </router-link>
-    <button class="mobile-link" @click="toggleTheme">
-      <span v-html="icon(isDark ? 'sun' : 'moon')"></span>
-      <span class="mobile-label">主题</span>
-    </button>
   </nav>
 </div>
 `
