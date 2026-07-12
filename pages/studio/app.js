@@ -139,6 +139,7 @@
       fields: [
         { key: 'auto_tts', label: '自动 TTS', type: 'bool', hint: '拦截 LLM 回复生成语音' },
         { key: 'send_text_with_tts', label: 'TTS 同步发送文字', type: 'bool' },
+        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启时文字先行，语音后台合成后追加' },
         { key: 'audio_format', label: '音频格式', type: 'select', options: ['wav', 'mp3', 'ogg'] },
         { key: 'emotion_override', label: '默认情感覆盖', type: 'text', hint: '留空=自动检测' },
         { key: 'probability', label: '自动 TTS 触发概率', type: 'slider', min: 0, max: 1, step: 0.1 }
@@ -803,7 +804,7 @@
       const editingUid = ref('');
       const editForm = reactive({
         voice: '', emotion: '', speed: 1.0, pitch: 0,
-        tts_mode: '', tts_enabled: true, text_enabled: true, format: 'wav',
+        tts_mode: '', tts_enabled: true, text_enabled: true, text_async: false, format: 'wav',
         enable_segmentation: false, enable_voice_polish: false
       });
 
@@ -828,6 +829,7 @@
           editForm.tts_mode = settings.tts_mode || '';
           editForm.tts_enabled = settings.tts_enabled !== false;
           editForm.text_enabled = settings.text_enabled !== false;
+          editForm.text_async = settings.text_async === true;
           editForm.format = s.format || 'wav';
           editForm.enable_segmentation = settings.enable_segmentation === true;
           editForm.enable_voice_polish = settings.enable_voice_polish === true;
@@ -849,6 +851,7 @@
             tts_mode: editForm.tts_mode,
             tts_enabled: editForm.tts_enabled,
             text_enabled: editForm.text_enabled,
+            text_async: editForm.text_async,
             enable_segmentation: editForm.enable_segmentation,
             enable_voice_polish: editForm.enable_voice_polish
           }
@@ -984,6 +987,7 @@
           <span class="info-item">音高: <b>{{ data.settings?.pitch ?? '-' }}</b></span>
           <span class="info-item">TTS: <b>{{ data.settings?.tts_enabled !== false ? '开' : '关' }}</b></span>
           <span class="info-item">文字: <b>{{ data.settings?.text_enabled !== false ? '开' : '关' }}</b></span>
+          <span class="info-item">异步: <b>{{ data.settings?.text_async === true ? '开' : '关' }}</b></span>
           <span class="info-item">格式: <b>{{ data.format || 'wav' }}</b></span>
         </div>
       </div>
@@ -1032,6 +1036,10 @@
           <div class="control-group toggle-field full-width">
             <span>TTS时文字同步输出</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.text_enabled"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="control-group toggle-field full-width">
+            <span>文字异步发送（先发后补）</span>
+            <label class="toggle"><input type="checkbox" v-model="editForm.text_async"><span class="toggle-slider"></span></label>
           </div>
           <div class="control-group toggle-field full-width">
             <span>启用文本分段</span>

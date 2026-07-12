@@ -34,6 +34,7 @@ def sanitize_user_settings(data: dict) -> dict:
         "tts_mode": "default",
         "tts_enabled": True,
         "text_enabled": None,
+        "text_async": None,
     }
     cleaned = dict(defaults)
     if isinstance(data, dict):
@@ -54,6 +55,8 @@ def sanitize_user_settings(data: dict) -> dict:
     cleaned["tts_enabled"] = bool(cleaned.get("tts_enabled", True))
     text_enabled = cleaned.get("text_enabled", None)
     cleaned["text_enabled"] = None if text_enabled is None else bool(text_enabled)
+    text_async = cleaned.get("text_async", None)
+    cleaned["text_async"] = None if text_async is None else bool(text_async)
     return cleaned
 
 
@@ -237,6 +240,7 @@ class UserStateManager:
                 "tts_mode": normalize_tts_mode(cfg.tts_output_mode),
                 "tts_enabled": True,
                 "text_enabled": None,
+                "text_async": None,
                 "enable_segmentation": cfg.enable_segmentation,
                 "enable_voice_polish": cfg.enable_voice_polish,
             }
@@ -249,6 +253,13 @@ class UserStateManager:
         if text_enabled is None:
             return self._config.send_text_with_tts
         return bool(text_enabled)
+
+    def should_send_text_async(self, uid: str, normalize_tts_mode) -> bool:
+        """Check if text should be sent immediately (async) before TTS completes."""
+        text_async = self.get_settings(uid, normalize_tts_mode).get("text_async", None)
+        if text_async is None:
+            return self._config.send_text_async
+        return bool(text_async)
 
     def get_effective_audio_format(self, uid: str) -> str:
         """Return the effective audio format for the given uid."""

@@ -45,6 +45,7 @@ class ConfigManager:
         "probability": 0.8,
         "auto_tts": True,
         "send_text_with_tts": True,
+        "send_text_async": False,
         "audio_format": "wav",
         "min_text_length": 5,
         "max_text_length": 500,
@@ -185,6 +186,10 @@ class ConfigManager:
     @property
     def send_text_with_tts(self) -> bool:
         return bool(self._flat.get("send_text_with_tts", True))
+
+    @property
+    def send_text_async(self) -> bool:
+        return bool(self._flat.get("send_text_async", False))
 
     @property
     def default_pitch(self) -> int:
