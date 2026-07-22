@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 import time
@@ -156,6 +157,9 @@ class MiMoTTSPlugin(Star):
     def _should_send_text_with_tts(self, uid: str) -> bool:
         return self.user_state.should_send_text_with_tts(uid, normalize_tts_mode)
 
+    def _should_send_text_async(self, uid: str) -> bool:
+        return self.user_state.should_send_text_async(uid, normalize_tts_mode)
+
     def _get_effective_audio_format(self, uid: str) -> str:
         return self.user_state.get_effective_audio_format(uid)
 
@@ -285,6 +289,33 @@ class MiMoTTSPlugin(Star):
             self.user_state.recent_files.append((time.time(), audio_path))
             self.user_state.cleanup_recent_files()
         return audio_path
+
+    async def _send_tts_audio_background(
+        self, event: AstrMessageEvent, text: str, uid: str, polish_enabled: bool = False
+    ) -> None:
+        """后台执行润色+TTS合成并发送音频（用于文字先发、语音后发场景）。"""
+        try:
+            tts_text = text
+            if polish_enabled:
+                logger.info("MiMO TTS: voice polish in background, calling LLM...")
+                self.plog.info("Polish", f"LLM 润色触发 uid={uid}")
+                tts_text = await self._polish_text_with_llm(text, uid)
+
+            emo_override: Optional[str] = None
+            if not self.user_state.get_settings(uid, normalize_tts_mode).get("emotion") or \
+               self.user_state.get_settings(uid, normalize_tts_mode).get("emotion") == "auto":
+                from .emotion.emotion_detector import detect_emotion
+                emo_override = detect_emotion(text) or None
+
+            audio_path = await self._do_tts(tts_text, uid, emotion_override=emo_override)
+            if audio_path:
+                audio_comp = Record.fromFileSystem(str(audio_path))
+                chain_msg = MessageChain()
+                chain_msg.chain.append(audio_comp)
+                await event.send(chain_msg)
+        except Exception as e:
+            logger.warning("MiMO TTS: background TTS failed: %s", e)
+            self.plog.error("TTS", f"后台合成失败: {e}")
 
     async def terminate(self) -> None:
         """Clean up resources when unloaded."""
@@ -463,7 +494,7 @@ class MiMoTTSPlugin(Star):
         if not uid:
             return jsonify({"error": "缺少 uid"}), 400
         allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled", "text_enabled",
-                    "enable_segmentation", "enable_voice_polish"}
+                   "text_async", "enable_segmentation", "enable_voice_polish"}
         filtered = {k: v for k, v in settings.items() if k in allowed}
         uset = self.user_state.get_settings(uid, normalize_tts_mode)
         uset.update(filtered)
@@ -610,30 +641,56 @@ class MiMoTTSPlugin(Star):
             return
 
         # ── Step 3: 原有逻辑 — 全文单次合成 ──
+        polish_enabled = uset.get("enable_voice_polish", self.config.enable_voice_polish)
         tts_text = plain
-        if uset.get("enable_voice_polish", self.config.enable_voice_polish):
-            logger.info("MiMO TTS: voice polish enabled, calling LLM...")
-            self.plog.info("Polish", f"LLM 润色触发 uid={uid}")
-            tts_text = await self._polish_text_with_llm(plain, uid)
 
-        orig_emotion = uset["emotion"]
-        emo_override: Optional[str] = None
-        if not orig_emotion or orig_emotion == "auto":
-            from .emotion.emotion_detector import detect_emotion
-            emo_override = detect_emotion(plain) or None
+        if self._should_send_text_with_tts(uid):
+            if self._should_send_text_async(uid):
+                await event.send(MessageChain().message(plain))
+                result.chain = []
+                asyncio.create_task(
+                    self._send_tts_audio_background(event, plain, uid, polish_enabled)
+                )
+            else:
+                if polish_enabled:
+                    logger.info("MiMO TTS: voice polish enabled, calling LLM...")
+                    self.plog.info("Polish", f"LLM 润色触发 uid={uid}")
+                    tts_text = await self._polish_text_with_llm(plain, uid)
 
-        try:
-            audio_path = await self._do_tts(tts_text, uid, emotion_override=emo_override)
-            if audio_path:
-                audio_comp = Record.fromFileSystem(str(audio_path))
-                if self._should_send_text_with_tts(uid):
-                    result.chain.append(audio_comp)
-                else:
+                orig_emotion = uset["emotion"]
+                emo_override: Optional[str] = None
+                if not orig_emotion or orig_emotion == "auto":
+                    from .emotion.emotion_detector import detect_emotion
+                    emo_override = detect_emotion(plain) or None
+
+                try:
+                    audio_path = await self._do_tts(tts_text, uid, emotion_override=emo_override)
+                    if audio_path:
+                        audio_comp = Record.fromFileSystem(str(audio_path))
+                        result.chain.append(audio_comp)
+                except Exception as e:
+                    result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
+        else:
+            if polish_enabled:
+                logger.info("MiMO TTS: voice polish enabled, calling LLM...")
+                self.plog.info("Polish", f"LLM 润色触发 uid={uid}")
+                tts_text = await self._polish_text_with_llm(plain, uid)
+
+            orig_emotion = uset["emotion"]
+            emo_override: Optional[str] = None
+            if not orig_emotion or orig_emotion == "auto":
+                from .emotion.emotion_detector import detect_emotion
+                emo_override = detect_emotion(plain) or None
+
+            try:
+                audio_path = await self._do_tts(tts_text, uid, emotion_override=emo_override)
+                if audio_path:
+                    audio_comp = Record.fromFileSystem(str(audio_path))
                     result.chain = build_audio_only_chain(
                         chain, plain, audio_comp
                     )
-        except Exception as e:
-            result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
+            except Exception as e:
+                result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
 
     # ── Command Handlers (delegated to handlers/) ──
 

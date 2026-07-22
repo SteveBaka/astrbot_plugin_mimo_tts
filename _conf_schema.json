@@ -129,6 +129,12 @@
         "hint": "开启时保留原文本并附加语音；关闭时尽量只发送语音",
         "default": true
       },
+      "send_text_async": {
+        "type": "bool",
+        "description": "文字异步发送（先发文字后补语音）",
+        "hint": "开启时文字立即发送，语音后台合成后追加；关闭时等待语音合成完成后一起发送",
+        "default": false
+      },
       "audio_format": {
         "type": "string",
         "description": "音频输出格式",
