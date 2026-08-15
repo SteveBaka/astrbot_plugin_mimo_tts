@@ -24,3 +24,4 @@ build/
 config.json
 *.log
 *.tmp
+docs/sing-mode-feature.md

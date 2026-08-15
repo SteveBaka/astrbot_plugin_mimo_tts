@@ -82,7 +82,7 @@ def _pitch_description(pitch: int) -> str:
         return ""
 
 
-def build_system_prompt(
+def build_control_prompt(
     emotion: Optional[str] = None,
     speed: float = 1.0,
     pitch: int = 0,
@@ -121,8 +121,8 @@ def build_system_prompt(
     """
     parts: list[str] = []
 
-    # Emotion
-    if emotion and emotion != "neutral":
+    # Emotion（"auto"/"off" 等控制值不作为情感名进入提示词）
+    if emotion and emotion not in ("neutral", "auto", "off"):
         desc = EMOTION_DESCRIPTIONS.get(emotion, f"用{emotion}的语气")
         parts.append(desc)
 

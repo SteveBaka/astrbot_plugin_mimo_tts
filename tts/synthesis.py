@@ -9,14 +9,17 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from astrbot.api import logger
 
 from ..core.constants import MIMO_VOICE_LIST
 from ..core.text_utils import apply_singing_tag, log_tts_text
 from ..tts.mimo_provider import MiMOProvider
-from ..tts.prompt_builder import build_system_prompt
+from ..tts.prompt_builder import build_control_prompt
+
+if TYPE_CHECKING:
+    from ..voice.voice_manager import VoiceManager
 
 
 def normalize_tts_mode(mode: Optional[str]) -> str:
@@ -198,11 +201,24 @@ class TTSSynthesizer:
 
         return current_voice, None, mode, None
 
-    def build_prompt(self, uid: str, get_user_settings, emotion_override: Optional[str] = None) -> str:
-        """Build the user-role control prompt."""
-        uset = get_user_settings(uid)
+    def build_prompt(
+        self,
+        uid: str,
+        get_user_settings,
+        emotion_override: Optional[str] = None,
+        uset: Optional[dict] = None,
+    ) -> str:
+        """Build the user-role control prompt.
+
+        Args:
+            uset: 已合并 settings_override 的设置副本；None 时回读持久化设置。
+                  传入合并副本是必须的：否则 /mimo_say、WebUI 的单次参数
+                  覆盖不会进入控制提示词（v2.1.2 修复）。
+        """
+        if uset is None:
+            uset = get_user_settings(uid)
         style = self._config.style_hint
-        return build_system_prompt(
+        return build_control_prompt(
             emotion=emotion_override
             if emotion_override is not None
             else (uset["emotion"] or None),
@@ -300,7 +316,9 @@ class TTSSynthesizer:
         uset = get_user_settings(uid)
         if settings_override:
             uset: dict = {**uset, **settings_override}
-        prompt = self.build_prompt(uid, get_user_settings, emotion_override=emotion_override)
+        prompt = self.build_prompt(
+            uid, get_user_settings, emotion_override=emotion_override, uset=uset
+        )
         requested_fmt = format_override or get_effective_audio_format(uid)
         fmt = requested_fmt
 
@@ -315,23 +333,52 @@ class TTSSynthesizer:
                 if sing_voice_cfg:
                     current_voice = self.resolve_voice(sing_voice_cfg)
                     uset["voice"] = current_voice
-        final_text = apply_singing_tag(text) if uset["sing"] else text
+        if uset["sing"]:
+            # 归一化：assistant 只保留精确 "(唱歌)"；组合括号的附加风格词
+            # （如 "(唱歌 温柔)" 的"温柔"）走官方 user 通道注入控制指令
+            final_text, extra_styles = apply_singing_tag(text)
+            if extra_styles:
+                prompt = merge_prompt_parts(prompt, "，".join(extra_styles))
+        else:
+            final_text = text
 
         log_tts_text(uid, uset.get("tts_mode", "default"), uset["sing"], final_text)
 
-        voice_id, model_override, mode, clone_audio_path = (
-            self.resolve_synthesis_target(uid, get_user_settings, uset=uset)
-        )
-        if mode == "clone":
-            prompt = self.build_clone_prompt(prompt)
-        elif mode == "design":
-            design_description = self.resolve_design_description(uid, get_user_settings)
-            prompt = merge_prompt_parts(design_description, prompt)
+        if uset["sing"]:
+            # 唱歌仅 mimo-v2.5-tts（预置音色）支持：强制回退 default 模型，
+            # 跳过 design/clone 路由与其 prompt 增强；自定义克隆/设计音色 ID
+            # 不被基础模型接受，需兜底到预置音色（sing_voice > default_voice）。
+            voice_id = uset.get("voice") or ""
+            if not any(v["id"] == voice_id for v in MIMO_VOICE_LIST):
+                for candidate in (
+                    self._config.sing_voice.strip(),
+                    self._config.default_voice.strip(),
+                    "mimo_default",
+                ):
+                    if candidate and any(v["id"] == candidate for v in MIMO_VOICE_LIST):
+                        voice_id = candidate
+                        break
+                uset["voice"] = voice_id
+            model_override = None
+            mode = "default"
+            clone_audio_path = None
+            logger.info(
+                "MiMO TTS: singing forces default model with preset voice=%s", voice_id
+            )
+        else:
+            voice_id, model_override, mode, clone_audio_path = (
+                self.resolve_synthesis_target(uid, get_user_settings, uset=uset)
+            )
+            if mode == "clone":
+                prompt = self.build_clone_prompt(prompt)
+            elif mode == "design":
+                design_description = self.resolve_design_description(uid, get_user_settings)
+                prompt = merge_prompt_parts(design_description, prompt)
 
         raw = await provider.synthesize(
             text=final_text,
             voice=voice_id or None,
-            system_prompt=prompt if prompt else None,
+            control_prompt=prompt if prompt else None,
             audio_format=fmt,
             model=model_override,
             clone_audio_path=clone_audio_path,

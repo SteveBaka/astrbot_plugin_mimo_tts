@@ -193,7 +193,7 @@ class MiMOProvider:
         self,
         text: str,
         voice: Optional[str] = None,
-        system_prompt: Optional[str] = None,
+        control_prompt: Optional[str] = None,
         audio_format: Optional[str] = None,
         model: Optional[str] = None,
         clone_audio_path: Optional[str] = None,
@@ -210,7 +210,7 @@ class MiMOProvider:
         Args:
             text: The text to synthesize.
             voice: Voice ID override (uses self._voice if None).
-            system_prompt: Control instructions for emotion/style.
+            control_prompt: Control instructions for emotion/style (user role).
             audio_format: Override audio format (mp3/wav/ogg/pcm).
             model: Override synthesis model.
 
@@ -240,8 +240,8 @@ class MiMOProvider:
         #   user role = control instructions (emotion, speed, etc.)
         # 官方示例中 user 在前、assistant 在后，这里按文档顺序构造。
         messages = []
-        if system_prompt:
-            messages.append({"role": "user", "content": system_prompt})
+        if control_prompt:
+            messages.append({"role": "user", "content": control_prompt})
         messages.append({"role": "assistant", "content": text})
 
         model_name = model or self._model
@@ -282,7 +282,7 @@ class MiMOProvider:
             "<data-url>"
             if self._is_voice_clone_model(model_name)
             else (voice_id or ""),
-            bool(system_prompt),
+            bool(control_prompt),
         )
 
         total_attempts = self.max_retries + 1

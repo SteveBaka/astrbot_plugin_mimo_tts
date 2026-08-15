@@ -7,7 +7,7 @@ import random
 import re
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import yaml
 from astrbot.api import logger
@@ -25,7 +25,6 @@ from .core.constants import (
 from .core.text_utils import (
     should_skip,
     split_text,
-    strip_audio_tags,
     extract_auto_tts_text,
     build_audio_only_chain,
     looks_like_hidden_prompt_or_reasoning,
@@ -390,7 +389,6 @@ class MiMoTTSPlugin(Star):
 
     async def _api_list_voices(self):
         from quart import jsonify
-        from .core.constants import MIMO_VOICE_LIST
         builtin = [{**v, "type": "default"} for v in MIMO_VOICE_LIST]
         registered = self._voice_manager.list_voices()
         custom = []
@@ -528,7 +526,7 @@ class MiMoTTSPlugin(Star):
 
     async def _api_get_constants(self):
         from quart import jsonify
-        from .core.constants import MIMO_VOICE_LIST, SUPPORTED_EMOTIONS, SUPPORTED_AUDIO_FORMATS
+        from .core.constants import SUPPORTED_EMOTIONS
         return jsonify({
             "voices": MIMO_VOICE_LIST,
             "emotions": list(SUPPORTED_EMOTIONS),

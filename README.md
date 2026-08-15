@@ -419,6 +419,24 @@ AstrBot/
     - WebUI 启动优化：Vue/Vue Router 改为本地文件，消除 CDN 延迟；
     - WebUI 通知改为 toast 样式（右上角滑入，3s 自动消失）；
     - 通过 i18n 覆盖插件页面描述（替换默认的 Plugin Page entry）。
+-  2026-07-13 v2.1.1更新（感谢来自 @ LilycleHeart 的大佬提供的更新）：
+    - 新增：
+    - 文字异步发送：新增全局配置 `send_text_async`（默认关闭）。开启且同时保留文字输出时，文字立即发出，润色 + TTS 在后台合成完成后追加语音，降低首条回复等待；
+    - 会话级覆盖：每会话可独立设置 `text_async`（`null` 继承全局）；WebUI 会话详情/编辑页同步增加开关与状态展示；
+    - 插件侧边栏图标：`metadata.yaml` 增加 `icon: mdi-account-voice`。
+    - 优化：
+    - Voice Studio 主题改为跟随 AstrBot Dashboard：通过 `bridge.onContext()` 监听 `isDark`，移除独立主题切换按钮；页脚改为只读主题状态指示；
+    - 侧边栏 CSS 简化并提高优先级：去掉 `@property`、复杂光晕/`!important` 堆叠，固定宽度 240px，保证在 Dashboard 中基础布局稳定。
+
+    - 修复：修复部分 WebView 不支持 `@property` 导致 sidebar 样式解析失败、被 Dashboard 基础样式覆盖的问题。
+- 2026-08-16 v2.1.4更新：
+    - 修复 `/mimo_say` 与 WebUI 合成接口的参数覆盖未进入控制提示词的问题（`build_prompt` 此前重读持久化设置而非合并后的覆盖副本）：`-speed` / `-pitch` / `-breath` / `-stress` / `-dialect` / `-volume` 与具名情感（如 `-emotion happy`）此前静默失效，现恢复生效；`-emotion off` 现可正确关闭情感。曾设置过这些参数的用户升级后可能感觉语音风格"恢复生效"，属预期行为；
+    - 同时加固：`auto` / `off` 等控制值不再以字面形式（如"用auto的语气"）混入控制提示词；
+    - 修复 design / clone 输出模式下 `/sing` 走错模型导致合成失败的问题：唱歌强制回退 `mimo-v2.5-tts` + 预置音色（当前音色为自定义克隆/设计音色时，自动按 `sing_voice` → `default_voice` → `mimo_default` 顺序兜底）；
+    - `apply_singing_tag` 兼容官方"多风格同括号"写法（如 `(唱歌 温柔)`、`（唱歌，欢快）`），不再产生双重 `(唱歌)` 前缀。
+    - 命名矫正：`build_system_prompt` → `build_control_prompt`、`synthesize(system_prompt=)` → `control_prompt=`。两者实际均为 MiMO 官方要求的 **user 角色控制指令**，原命名易被误读为 system prompt（纯内部重命名，零行为变化）。
+    - `/sing` 开头风格括号语法：`/sing (温柔) <歌词>`（也支持 `(温柔 甜美)` 多词、`(唱歌)(温柔)词` 混排）。括号内的风格词自动移入 user 角色控制指令，assistant 只保留精确 `(唱歌)` 标签——此前 `(温柔)` 会被当作歌词读出来。带守卫：括号内容含句读或任一词超过 8 字时视为歌词原文保留，不误吞。
+- 由于迎来较大幅度的特性支持，故 `v2.2.0` 以及之后的版本将不在此记录日志，将只显示于 `CHANGELOG.md` 中。
 
 ## 作者的怪想法
 
@@ -435,6 +453,7 @@ AstrBot/
 
 5月28日更：先前制作的[voice_studio_webUI](https://github.com/SteveBaka/voice_studio_webUI)最后还是决定并入插件中，主要还是为了简化上传**voiceclone**所需要的音频文件的操作；并且使用新支持的 `plugin-page` 功能，这样解决了需要暴露端口的问题，并且还可以快速预览语音的合成效果，美滋滋）
 
+8月16日更新：不是，有段时间没用了，这tts怎么还是这个样啊，V3呢，救一救啊，急急急（
 
 > 笑话1:使用*voiceclone*不要学习作者在测试时，上传并使用非官方支持的*中文/English*以外的语言，效果自测（就是很奇怪罢了）。「被mimo-v2.5-pro重构了一次插件，没想到效果变好了很多，这对吗？」
 

@@ -45,15 +45,51 @@ def strip_audio_tags(text: str) -> str:
     return re.sub(r"\s{2,}", " ", s).strip()
 
 
-def apply_singing_tag(text: str) -> str:
-    """Prepend official singing tag if not already present."""
+_SINGING_TAG_RE = re.compile(
+    # 以唱歌关键词开头的括号（含 "(唱歌 温柔)" 组合写法）
+    r"^([\(\[（])\s*(?:唱歌|sing|singing)((?:[\s,，、][^\)\]）]*)?)[\)\]）]",
+    re.IGNORECASE,
+)
+# 开头短风格括号：内容 1~16 字；配合逐词长度与句读守卫，避免误吞歌词
+_STYLE_BRACKET_RE = re.compile(r"^[\(\[（]\s*([^\)\]）]{1,16}?)\s*[\)\]）]\s*")
+_SENTENCE_BREAK_RE = re.compile(r"[。！？!?；;]")
+
+
+def _split_styles(raw: str) -> list[str]:
+    return [s.strip() for s in re.split(r"[\s,，、]+", raw or "") if s.strip()]
+
+
+def apply_singing_tag(text: str) -> tuple[str, list[str]]:
+    """归一化开头的唱歌/风格标签，返回 (最终文本, 附加风格词列表)。
+
+    assistant 文本只保留精确 "(唱歌)" 标签；用户在歌词开头写的风格括号
+    —— "(温柔)歌词"、"(唱歌 温柔)歌词"、"(唱歌)(温柔)歌词" —— 统一拆出
+    风格词，由调用方移入 user 角色控制指令（官方风格控制通道）。
+    守卫：风格括号内容不含句读、且每个词 ≤8 字，否则视为歌词原文保留。
+    """
     stripped = text.lstrip()
     if not stripped:
-        return text
+        return text, []
 
-    if re.match(r"^[\(\[（](?:唱歌|sing|singing)[\)\]）]", stripped, re.IGNORECASE):
-        return stripped
-    return f"(唱歌){stripped}"
+    extras: list[str] = []
+    while True:
+        m = _SINGING_TAG_RE.match(stripped)
+        if m:
+            extras += _split_styles(m.group(2))
+            stripped = stripped[m.end():].lstrip()
+            continue
+        s = _STYLE_BRACKET_RE.match(stripped)
+        if s:
+            words = _split_styles(s.group(1))
+            if words and not _SENTENCE_BREAK_RE.search(s.group(1)) and all(
+                len(w) <= 8 for w in words
+            ):
+                extras += words
+                stripped = stripped[s.end():].lstrip()
+                continue
+        break
+
+    return f"(唱歌){stripped}", extras
 
 
 def extract_auto_tts_text(chain) -> str:
