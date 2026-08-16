@@ -49,8 +49,8 @@ SING_KEYWORDS: tuple[str, ...] = ("唱歌", "sing", "singing")
 # LLM 标签筛选模板（第 3 层兜底；{style} 描述基准 + {text} 歌词占位符）。
 # 输出强制经 FLAT_OFFICIAL_TAGS 白名单过滤，防幻觉词进入 assistant 括号。
 SING_TAG_PROMPT = (
-    "你是 MiMO 风格标签筛选器。请从【风格描述】中挑选 2-4 个最贴合的官方风格标签词，"
-    "用于 (唱歌 词…) 开头风格标签。\n\n"
+    "你是一个语气风格标签筛选专家。请从【风格描述】中挑选 2-4 个最贴合的官方风格标签词，"
+    "用于插件的唱歌风格标签收集。\n\n"
     "官方风格词表：\n"
     "整体语调：温柔/高冷/活泼/严肃/慵懒/俏皮/深沉/干练/凌厉\n"
     "音色定位：磁性/醇厚/清亮/空灵/稚嫩/苍老/甜美/沙哑/醇雅\n"
@@ -60,8 +60,9 @@ SING_TAG_PROMPT = (
     "角色扮演：孙悟空/林黛玉\n\n"
     "规则：\n"
     "1. 只能输出上表中的词，空格分隔，2-4 个；无合适词只输出\"无\"\n"
-    "2. 优先选整体语调与音色定位词，各不超过 2 个\n"
-    "3. 不要输出任何解释、标点或思考过程\n\n"
+    "2. 优先选整体语调与音色定位词，各不超过 2 个（最能决定听感）\n"
+    "3. 词须与风格描述含义一致，不要强行凑数\n"
+    "4. 不要输出任何解释、标点或思考过程，第一行即结果\n\n"
     "风格描述（基准）：{style}\n歌词：{text}"
 )
 
@@ -103,8 +104,107 @@ def filter_official_tags(words: Optional[list]) -> list[str]:
     return seen
 
 
+def extract_style_words(text: Optional[str]) -> list[str]:
+    """从任意文本提取官方风格词（按词表稳定序，去重）。
+
+    供 design/clone 通道复用：用户描述（如"温柔甜美的少女音"）中的
+    官方词被自动识别，交给 style_words_to_hint 生成结构化提示，
+    让服务端以词表语言理解风格（v2.2.0 起唱歌/设计/克隆共用词表）。
+    """
+    seen: list[str] = []
+    for tag in FLAT_OFFICIAL_TAGS:
+        if tag in str(text or "") and tag not in seen:
+            seen.append(tag)
+    return seen
+
+
+def style_words_to_hint(words: Optional[list]) -> str:
+    """官方风格词 → 结构化提示（按分类分组，供 design/clone 注入 user 通道）。
+
+    例：["温柔", "甜美", "清亮"] → "整体语调温柔、甜美，音色定位清亮"。
+    空词返回 ""（调用方不注入）。
+    """
+    grouped: dict[str, list[str]] = {}
+    for tag in words or []:
+        tag = str(tag or "").strip()
+        if not tag:
+            continue
+        for category, tags in OFFICIAL_STYLE_TAGS.items():
+            if tag in tags:
+                grouped.setdefault(category, []).append(tag)
+                break
+    parts = [
+        f"{category}{'、'.join(grouped[category])}"
+        for category in OFFICIAL_STYLE_TAGS
+        if grouped.get(category)
+    ]
+    return "，".join(parts)
+
+
+def match_style_entry_by_name(
+    text: Optional[str], examples: Optional[list] = None
+):
+    """精确匹配示例池条目名 → 返回该条目 dict；否则 None。
+
+    方案 A（§14.5）：design_voice_description 可直接填示例池分类名
+    （如"温柔甜美"）引用整条——调用方用该条目全部 words 生成词表提示、
+    全部例句注入，修复 name 简写（"磁性低沉"→低沉非官方词）导致的
+    词表提示缺词；自由描述文本不精确匹配时走 extract+match 链路。
+    """
+    name = str(text or "").strip()
+    if not name or not examples:
+        return None
+    for entry in examples or []:
+        if (
+            isinstance(entry, dict)
+            and str(entry.get("name", "") or "").strip() == name
+        ):
+            return entry
+    return None
+
+
+def match_style_examples(
+    text: Optional[str],
+    examples: Optional[list] = None,
+    max_examples: int = 2,
+) -> list[str]:
+    """从文本匹配风格示例池，返回命中条目中 ≤max_examples 条例句（零 LLM）。
+
+    §14.3 匹配引擎：文本 → extract_style_words（官方词）→ 与每条目的
+    words 求交集 → 命中条目取 examples（按池序、去重、截断）。
+    无命中返回 []（调用方零注入）。examples 为归一化后的
+    list[{name, words, examples}]（来自 config.style_examples）。
+    """
+    words = set(extract_style_words(text))
+    if not words or not examples:
+        return []
+    picked: list[str] = []
+    for entry in examples or []:
+        if len(picked) >= max_examples:
+            break
+        if not isinstance(entry, dict):
+            continue
+        entry_words = {
+            str(w).strip() for w in (entry.get("words") or []) if str(w or "").strip()
+        }
+        if not entry_words or not (words & entry_words):
+            continue
+        for ex in entry.get("examples") or []:
+            ex = str(ex or "").strip()
+            if ex and ex not in picked:
+                picked.append(ex)
+                if len(picked) >= max_examples:
+                    break
+    return picked
+
+
 def build_singing_prefix(tags: Optional[list] = None) -> str:
-    """构建 assistant 开头标签：有词 → `(唱歌 词1 词2)`；无词 → `(唱歌)`。"""
+    """构建 assistant 开头标签：有词 → `(唱歌 词1 词2)`；无词 → `(唱歌)`。
+
+    注：v2.2.0 实测矩阵证明唱歌模式不识别多风格括号（朗读/杂音），
+    真实唱歌链路不再调用本函数；保留供未来 /singdebug 重建或非唱歌
+    场景（普通播报风格标签）复用。
+    """
     words = [str(t).strip() for t in (tags or []) if str(t or "").strip()]
     if not words:
         return "(唱歌)"

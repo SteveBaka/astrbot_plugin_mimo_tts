@@ -19,6 +19,11 @@ _SING_NAME_MAX = 20
 _SING_STYLE_TEXT_MAX = 200
 _SING_TAGS_MAX = 5
 
+# ── 风格示例池约束（§14 导演模式先导，v2.2.0） ──
+STYLE_EXAMPLES_MAX = 50
+_EXAMPLE_WORDS_MAX = 8
+_EXAMPLE_TEXT_MAX = 80
+
 
 def normalize_sing_style_tags(raw: Any) -> list[str]:
     """演绎词（纯文本，多个用顿号/逗号/空格分隔，如 "轻笑、气声"）。
@@ -29,6 +34,81 @@ def normalize_sing_style_tags(raw: Any) -> list[str]:
         return []
     parts = [p.strip() for p in re.split(r"[\s,，、]+", raw) if p.strip()]
     return parts[:_SING_TAGS_MAX]
+
+
+# 内置风格示例池（§14 导演模式先导，v2.2.0）：官方风格词 → 画面感中文例句。
+# words 须为官方风格词（match 时只认词表）；例句禁用收窄词、每条 ≤40 字。
+STYLE_EXAMPLES_PRESET = (
+    '[\n'
+    '  {\n    "name": "温柔甜美",\n    "words": "温柔 甜美",\n    "examples": ['
+    '"像融化的棉花糖一样温柔，声音软糯清甜，尾音轻轻上扬，语速放缓",'
+    '"像午后阳光里的一杯热牛奶，温柔绵密，每一句都带着甜甜的笑意"\n    ]\n  },\n'
+    '  {\n    "name": "磁性低沉",\n    "words": "磁性 深沉",\n    "examples": ['
+    '"像午夜电台的主播，磁性沙哑，句句都带停顿与余韵，语速沉缓"\n    ]\n  },\n'
+    '  {\n    "name": "活泼俏皮",\n    "words": "活泼 俏皮",\n    "examples": ['
+    '"像清晨的第一声鸟鸣，轻快雀跃，尾音总爱往上跳一跳，气息明快"\n    ]\n  },\n'
+    '  {\n    "name": "清亮空灵",\n    "words": "清亮 空灵",\n    "examples": ['
+    '"像山涧泉水一样清亮通透，尾音带一丝空灵的余韵，气声自然"\n    ]\n  },\n'
+    '  {\n    "name": "御姐高冷",\n    "words": "御姐音 高冷",\n    "examples": ['
+    '"像职场精英的从容开场，御姐音高冷利落，语气笃定，句尾干脆"\n    ]\n  },\n'
+    '  {\n    "name": "慵懒安逸",\n    "words": "慵懒",\n    "examples": ['
+    '"像午后窝在沙发里的惬意，慵懒随性，语速不紧不慢，尾音拖得舒展"\n    ]\n  }\n]'
+)
+
+
+def normalize_style_examples(raw: Any) -> list[dict]:
+    """归一化风格示例池 → list[{name, words, examples}]。
+
+    §14.3：words/examples 支持空格/顿号分隔字符串或数组；结构归一、
+    长度截断；words 的官方词校验在 match_style_examples 时进行（单一来源）。
+    容错：JSON 解析失败/非法项跳过；条目数上限 STYLE_EXAMPLES_MAX。
+    """
+    if isinstance(raw, list):
+        entries = raw
+    elif isinstance(raw, dict):
+        entries = [raw]
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        parsed = _loads_lenient(text)
+        if parsed is None:
+            return []
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        if not isinstance(parsed, list):
+            return []
+        entries = parsed
+    else:
+        return []
+    items: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "") or "").strip()
+        if not name:
+            continue
+
+        def _words(value: Any) -> list[str]:
+            if isinstance(value, list):
+                return [str(w).strip() for w in value if str(w or "").strip()]
+            if isinstance(value, str):
+                return [w.strip() for w in re.split(r"[\s,，、]+", value) if w.strip()]
+            return []
+
+        def _examples(value: Any) -> list[str]:
+            if isinstance(value, list):
+                return [str(e).strip() for e in value if str(e or "").strip()]
+            if isinstance(value, str):
+                return [e.strip() for e in re.split(r"[\n;；]+", value) if e.strip()]
+            return []
+
+        items.append({
+            "name": name[:_SING_NAME_MAX],
+            "words": _words(entry.get("words"))[:_EXAMPLE_WORDS_MAX],
+            "examples": _examples(entry.get("examples"))[:_EXAMPLE_TEXT_MAX],
+        })
+    return items[:STYLE_EXAMPLES_MAX]
 
 
 # 内置风格库预设（换行格式化；v2.2.14 起双组 + style_tags 显式标签字段：
@@ -261,6 +341,7 @@ class ConfigManager:
         "design_enabled": True,
         "design_model": "mimo-v2.5-tts-voicedesign",
         "design_voice_description": "",
+        "style_examples": STYLE_EXAMPLES_PRESET,
         # Presets
         "preset_gentle_female": "温柔的女生音色，轻柔细腻",
         "preset_serious_male": "成熟男声，严肃有力",
@@ -519,6 +600,13 @@ class ConfigManager:
     @property
     def design_voice_description(self) -> str:
         return str(self._flat.get("design_voice_description", ""))
+
+    @property
+    def style_examples(self) -> list[dict]:
+        """风格示例池（§14 导演模式先导）：list[{name, words, examples}]。"""
+        return normalize_style_examples(
+            self._flat.get("style_examples", STYLE_EXAMPLES_PRESET)
+        )
 
     @property
     def design_voice_id(self) -> str:

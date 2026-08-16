@@ -140,7 +140,7 @@
         { key: 'sing_voice', label: '唱歌默认音色', type: 'text', hint: '预置音色名或风格库组名（自动用该组绑定 voice）；留空用当前音色' },
         { key: 'sing_lyrics_polish', label: '歌词 LLM 润色', type: 'bool', hint: '唱歌前调用 LLM 注入演唱标签（如 [气声]）；关闭时零影响' },
         { key: 'sing_polish_llm_provider', label: '唱歌润色 Provider', type: 'text', hint: '留空回退通用润色 Provider，再空用当前对话模型；建议轻量快速模型' },
-        { key: 'sing_style_source', label: '风格注入源', type: 'select', options: ['prompt', 'tag', 'off'], hint: 'prompt=user 自然语言描述（默认，官方唱歌风格通道，实测稳定）；tag=assistant 括号标签（实验，实测唱歌模式会朗读）；off=仅 (唱歌)' },
+        { key: 'sing_style_source', label: '风格注入源', type: 'select', options: ['prompt', 'tag', 'off'], hint: 'prompt=user 自然语言描述（默认，实测正常唱歌）；tag=风格标签收集（已收窄：实测唱歌不识别 (唱歌 词…)，仅收集不注入）；off=仅 (唱歌)' },
         { key: 'sing_polish_timeout', label: '润色 LLM 超时（秒）', type: 'number', hint: 'LLM 润色超过该秒数放弃润色直接唱，避免卡住等待；0=不限制' },
         { key: 'sing_polish_cache_ttl', label: '润色结果缓存（秒）', type: 'number', hint: '相同歌词+风格在有效期内复用上次润色结果，重复唱歌零延迟；0=关闭' },
         { key: 'sing_tag_prompt', label: '风格标签筛选提示词', type: 'textarea', hint: '{style} 风格描述基准占位符、{text} 歌词占位符；输出经官方词表白名单过滤' },
@@ -206,7 +206,7 @@
       title: '声音设计', ic: 'palette',
       fields: [
         { key: 'design_model', label: '设计模型', type: 'text' },
-        { key: 'design_voice_description', label: '设计音色描述', type: 'textarea' }
+        { key: 'design_voice_description', label: '设计音色描述', type: 'textarea', hint: '可填 style_examples 分类名精确引用（如 温柔甜美，自动补全词表提示+示例），或自由描述（官方词自动匹配示例池）' }
       ]
     },
     {

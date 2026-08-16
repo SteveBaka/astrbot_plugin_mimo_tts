@@ -58,7 +58,8 @@
 | `emotion_override` | 情感覆盖(auto=自动) | - |
 | `tts_output_mode` | TTS 输出来源模式（default/design/clone） | `default` |
 | `design_model` | 音色设计模型 | `mimo-v2.5-tts-voicedesign` |
-| `design_voice_description` | 设计音色描述 | - |
+| `design_voice_description` | 设计音色描述：可填 style_examples 分类名精确引用（如"温柔甜美"，自动补全词表提示+画面感示例，快速切换），或自由描述（官方词自动匹配示例池） | - |
+| `style_examples` | 风格示例池（导演模式先导，JSON：name/words/examples；design 描述命中风格词时自动并入参考示例） | 内置 6 类 |
 | `clone_model` | 音色克隆模型 | `mimo-v2.5-tts-voiceclone` |
 | `clone_voice_id` | 克隆音色 ID | - |
 | `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
@@ -70,8 +71,8 @@
 | `sing_style_source` | 风格注入源（prompt=user 自然语言描述，默认，官方唱歌风格通道；tag=assistant 风格标签注入，实验；off=关闭风格注入） | `prompt` |
 | `sing_polish_timeout` | 润色 LLM 超时（秒，0=不限） | `20` |
 | `sing_polish_cache_ttl` | 润色结果缓存（秒，0=关闭） | `600` |
-| `sing_tag_prompt` | 风格标签筛选提示词（LLM 兜底，`{style}`/`{text}` 占位符） | 内置模板 |
-| `sing_direct_prompt` | 演唱描述提示词（user 通道，`{text}`/`{style}` 占位符） | 内置模板 |
+| `sing_tag_prompt` | 风格标签筛选提示词（专业筛选专家，`{style}`/`{text}` 占位符；留空用内置新模板） | 内置模板 |
+| `sing_direct_prompt` | 演唱描述提示词（user 通道，专业演唱指导，`{text}`/`{style}` 占位符；留空用内置新模板） | 内置模板 |
 | `nl_sing_enabled` | 自然语言触发唱歌（正则快路径） | `false` |
 | `nl_sing_cooldown` | 自然语言唱歌冷却（秒，0=不限） | `30` |
 | `nl_sing_tool` | NL 唱歌 LLM 工具兜底（与 nl_sing_enabled 同开） | `false` |
@@ -81,7 +82,7 @@
 | `segment_voice_probability` | 分段语音输出概率（0.0~1.0） | `1.0` |
 | `enable_voice_polish` | 启用 LLM 音色润色 | `false` |
 | `polish_llm_provider` | 润色 LLM Provider（留空用当前模型） | - |
-| `polish_prompt` | 润色提示词（`{text}` 为原文占位符） | - |
+| `polish_prompt` | 润色提示词（专业语音润色专家，`{text}` 为原文占位符；留空用内置新模板） | - |
 | `optimize_text_preview` | 官方智能润色（仅设计模式，与 LLM 润色二选一） | `false` |
 
 ### 输出模式说明
@@ -128,7 +129,7 @@
 >
 > 风格组在插件配置「唱歌优化」的 `sing_styles` 中定义（JSON）：`[{"name":"小雪","style":"声音清澈，温柔甜美","tags":"轻笑","voice":"茉莉"}]`。各字段：`tags` 演绎词（顿号分隔，转为 user 通道自然语言指令"演唱中自然融入轻笑"，不进入歌词）；`style_tags` 风格标签词（顿号分隔，`tag` 模式实验性注入）；`voice` 组绑定音色（可省略）；`speed`（0.5~2.0）/ `pitch`（整数半音）组内演绎参数（可省略）。
 >
-> **风格表达（双通道）**：默认「prompt」模式——风格与演唱质感由 **user 自然语言通道**表达（官方唱歌风格通道）：组 `style` 描述 + 画面感演唱描述（开启歌词润色时由 LLM 生成，官方示例同构："像…一样"+节奏收尾）。「tag」模式（实验）：按官方标签语法在 assistant 开头注入 `(唱歌 词…)`，标签来源优先级 组 `style_tags` 显式字段（支持自定义词，如"可爱"）> 本地官方词表从 `style` 描述提取（温柔/甜美…）> LLM 筛选（白名单过滤防幻觉词）——注意唱歌模式下多风格括号可能被服务端朗读，如遇朗读请切回 `prompt`。`sing_style_source` 可切换（`prompt` 默认 / `tag` 实验 / `off` 关闭风格注入）。
+> **风格表达（双通道）**：默认「prompt」模式——风格与演唱质感由 **user 自然语言通道**表达（官方唱歌风格通道）：组 `style` 描述 + 画面感演唱描述（开启歌词润色时由 LLM 生成，官方示例同构："像…一样"+节奏收尾）。「tag」模式（已收窄）：实测矩阵（v2.2.0）证明唱歌模式**不识别** `(唱歌 词…)` 任何风格标签组合——`(唱歌 温柔 甜美)`/`(唱歌 温柔，甜美)` 朗读+异常发音、`(唱歌)(温柔)(甜美)` 前半段杂音、`(唱歌 温柔)` 感情朗读，仅纯 `(唱歌)` 正常唱歌——故 tag 模式现仅收集风格词记日志、不注入（效果同 off）；`style_tags` 字段与官方词表漏斗保留，供未来非唱歌场景（voicedesign/clone）复用。`sing_style_source` 三态（`prompt` 默认 / `tag` 已收窄 / `off` 仅 (唱歌)）。
 
 #### 关于唱歌与语速/音高（官方文档对齐说明）
 
@@ -233,7 +234,7 @@
 - `/voiceclone` 不会再调用不存在的"预注册接口"；插件会在真正合成时，将参考音频转成 `data:{MIME_TYPE};base64,...` 后通过 `chat/completions` 的 `audio.voice` 传给官方 `mimo-v2.5-tts-voiceclone` 模型。
 - 执行 `/voiceclone` 后，插件会自动记录该参考音频路径，并可配合 `/ttsswitch clone` 进入克隆输出模式。
 - 支持通过以下两个配置项细化克隆音色的输出风格（现可以通过开启LLM 音色润色功能自动调用）：
-  - `clone_style_prompt`：自然语言风格控制
+  - `clone_style_prompt`：自然语言风格控制（v2.2.0 起描述中的官方风格词如"温柔/磁性"自动提取并追加分类结构化提示）
   - `clone_audio_tags`：音频标签控制
 - 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
 - `/voiceclone` 还支持以下子命令：

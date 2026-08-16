@@ -22,7 +22,6 @@ from ..core.config import resolve_sing_style
 from ..core.style_lib import (
     SING_TAG_PROMPT,
     SING_TAGS_MAX,
-    build_singing_prefix,
     collect_sing_tags,
     filter_official_tags,
 )
@@ -134,9 +133,9 @@ async def prepare_sing(
     style_tags: list[str] = []
     if source_mode == "tag":
         logger.warning(
-            "MiMO TTS: sing_style_source=tag（实验）——实测 (唱歌 词…) 多风格括号"
-            "在唱歌模式会朗读，官方唱歌风格通道为 user 自然语言（prompt 模式）；"
-            "如遇朗读请切换 sing_style_source=prompt"
+            "MiMO TTS: sing_style_source=tag 已收窄（v2.2.0 实测矩阵：唱歌模式"
+            "不识别 (唱歌 词…) 任何组合，朗读/杂音）——本次仅收集风格词记日志，"
+            "assistant 只注入 (唱歌)，风格走 user 自然语言（建议切 prompt）"
         )
     if source_mode in ("tag", "prompt"):
         explicit_tags: list[str] = list(bracket_styles or [])
@@ -201,11 +200,13 @@ async def prepare_sing(
                 style_text = merge_prompt_parts(style_text, polished)
         except Exception as e:
             logger.warning("MiMO TTS: lyrics polish failed, using raw: %s", e)
-    # ── assistant 文本：标签通道 (唱歌 词…)（off 模式退回纯 (唱歌)）──
-    if source_mode == "tag" and style_tags:
-        final_text = build_singing_prefix(style_tags) + lyrics
-    else:
-        final_text, _redundant = apply_singing_tag(lyrics)
+    # ── assistant 文本：唱歌模式只注入精确 (唱歌) 标签 ──
+    # 实测矩阵（v2.2.0，五种括号写法 × 直连服务端）：
+    #   (唱歌 温柔 甜美) 朗读+异常发音；(唱歌 温柔，甜美) 朗读+异常发音；
+    #   (唱歌)(温柔)(甜美) 前半段杂音唱歌；(唱歌 温柔) 富有感情朗读；
+    #   仅 (唱歌) 正常唱歌 —— 唱歌模式不识别任何风格标签组合，
+    #   风格一律走 user 自然语言通道（prompt 模式）。tag 模式保留收集仅日志。
+    final_text, _redundant = apply_singing_tag(lyrics)
     # 风格文本走官方 user 通道（自由文本：演绎词 + 画面感演唱描述）
     if style_text:
         from .synthesis import merge_prompt_parts
@@ -282,15 +283,16 @@ async def polish_lyrics_with_llm(
         tpl = plugin.config.sing_tag_prompt or SING_TAG_PROMPT
     else:
         tpl = plugin.config.sing_direct_prompt or (
-            "你是演唱指导。请为这段歌词写一句富有画面感的演唱描述（60 字以内），"
-            "供 MiMO TTS 的自然语言控制通道理解演唱质感。\n"
+            "你是一个专业的演唱指导。请根据【歌词】与【风格】，用一句 60 字以内的演唱描述，"
+            "指导如何唱出理想效果。\n"
             "要求：\n"
-            "1. 用\"像……一样\"的画面比喻开头，配合明快/轻柔/活泼等语调基调，"
-            "结尾带节奏或音高走向提示（如\"语速略快，句尾上扬\"）\n"
-            "2. 与已配置的音色、语速、音高协调，突出其长处，不给出冲突的节奏或音高指令\n"
-            "3. 贴合人设与语境（撒娇/叙事/俏皮等）\n"
-            "4. 禁止时间轴分句（\"开头/中段/结尾\"）、禁止 [] 或 () 标签、不要歌词原文\n"
-            "5. 不要思考、不要分析过程，第一句就是最终描述\n\n"
+            "1. 用\"像……一样\"的画面比喻点明整体气质（如\"像晨露一样清透\"），"
+            "再给出明快/轻柔/活泼等语调基调，结尾带节奏或音高走向（如\"语速略快，句尾上扬\"）\n"
+            "2. 与已配置的音色、语速、音高协调，顺势突出其长处，绝不给出冲突的节奏或音高指令\n"
+            "3. 贴合人设与语境（撒娇/叙事/俏皮等），让描述具体可感\n"
+            "4. 禁止出现\"收束/收紧/压低/减弱/收小\"等收窄类词汇（会导致声音压窄）\n"
+            "5. 禁止时间轴分句（\"开头/中段/结尾\"）、禁止 [] 或 () 标签、不要出现歌词原文\n"
+            "6. 不要思考、不要分析过程，第一句就是最终描述\n\n"
             "当前风格：{style}\n歌词：{text}"
         )
     style_line = style_desc or "未指定，保持自然演唱"

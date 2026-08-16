@@ -14,6 +14,12 @@ from typing import TYPE_CHECKING, Optional
 from astrbot.api import logger
 
 from ..core.constants import MIMO_VOICE_LIST
+from ..core.style_lib import (
+    extract_style_words,
+    match_style_entry_by_name,
+    match_style_examples,
+    style_words_to_hint,
+)
 from ..core.text_utils import log_tts_text
 from ..tts.mimo_provider import MiMOProvider
 from ..tts.prompt_builder import build_control_prompt
@@ -251,6 +257,14 @@ class TTSSynthesizer:
     def build_clone_prompt(self, base_prompt: str) -> str:
         """Build clone-specific prompt with style and audio tags."""
         style_prompt = self._config.clone_style_prompt.strip()
+        # 风格词表赋能（v2.2.0）：克隆风格文本中的官方词（温柔/磁性…）
+        # 自动提取并追加结构化提示，让服务端以词表语言理解风格
+        style_words = extract_style_words(style_prompt)
+        if style_words:
+            style_prompt = merge_prompt_parts(
+                style_prompt, style_words_to_hint(style_words)
+            )
+            logger.info("MiMO TTS: clone style words enhanced: %s", style_words)
         audio_tags = self._config.clone_audio_tags.strip()
 
         tag_prompt = ""
@@ -391,6 +405,55 @@ class TTSSynthesizer:
                 prompt = self.build_clone_prompt(prompt)
             elif mode == "design":
                 design_description = self.resolve_design_description(uid, get_user_settings)
+                # 方案 A（§14.5）：设计描述精确等于示例池分类名 → 条目直取，
+                # 用该条目全部 words 生成词表提示 + 全部例句注入（快速切换 name）
+                entry = match_style_entry_by_name(
+                    design_description, self._config.style_examples
+                )
+                if entry:
+                    words = [w for w in (entry.get("words") or []) if str(w or "").strip()]
+                    parts = [design_description]
+                    hint = style_words_to_hint(words)
+                    if hint:
+                        parts.append(hint)
+                    examples = [
+                        e for e in (entry.get("examples") or []) if str(e or "").strip()
+                    ][:2]
+                    if examples:
+                        parts.append("参考示例：" + "；".join(examples))
+                    design_description = merge_prompt_parts(*parts)
+                    logger.info(
+                        "MiMO TTS: voicedesign style entry matched: %s "
+                        "(words=%s, examples=%d)",
+                        entry.get("name"),
+                        words,
+                        len(examples),
+                    )
+                else:
+                    # 自由文本链路：官方词自动提取追加结构化提示
+                    design_words = extract_style_words(design_description)
+                    if design_words:
+                        design_description = merge_prompt_parts(
+                            design_description,
+                            style_words_to_hint(design_words),
+                        )
+                        logger.info(
+                            "MiMO TTS: voicedesign style words enhanced: %s",
+                            design_words,
+                        )
+                        # 风格示例池（§14 导演模式先导，P1）：命中词对应的
+                        # 画面感例句直接并入描述（"参考示例：…"），零 LLM
+                        examples = match_style_examples(
+                            design_description, self._config.style_examples
+                        )
+                        if examples:
+                            design_description = merge_prompt_parts(
+                                design_description,
+                                "参考示例：" + "；".join(examples),
+                            )
+                            logger.info(
+                                "MiMO TTS: style examples matched: %s", examples
+                            )
                 prompt = merge_prompt_parts(design_description, prompt)
                 # 官方 voicedesign 智能润色参数（仅设计模式生效）；
                 # 与插件 LLM 润色同时开启时提示二选一，避免双重润色
