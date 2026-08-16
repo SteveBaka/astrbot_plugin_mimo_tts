@@ -29,6 +29,7 @@ def sanitize_user_settings(data: dict) -> dict:
         "laughter": False,
         "pause": False,
         "style_hint": "",
+        "sing_style": "",
         "dialect": "",
         "volume": "",
         "tts_mode": "default",
@@ -51,6 +52,8 @@ def sanitize_user_settings(data: dict) -> dict:
     cleaned["voice"] = str(cleaned.get("voice", "mimo_default") or "mimo_default")
     cleaned["emotion"] = str(cleaned.get("emotion", "") or "")
     cleaned["style_hint"] = str(cleaned.get("style_hint", "") or "")
+    # 唱歌风格组："" = 继承全局（与其他会话字段惯例同构）
+    cleaned["sing_style"] = str(cleaned.get("sing_style", "") or "")[:20]
     cleaned["tts_mode"] = str(cleaned.get("tts_mode", "default") or "default")
     cleaned["tts_enabled"] = bool(cleaned.get("tts_enabled", True))
     text_enabled = cleaned.get("text_enabled", None)
@@ -235,6 +238,7 @@ class UserStateManager:
                 "laughter": cfg.laughter_enabled,
                 "pause": cfg.pause_enabled,
                 "style_hint": cfg.style_hint,
+                "sing_style": "",
                 "dialect": "",
                 "volume": "",
                 "tts_mode": normalize_tts_mode(cfg.tts_output_mode),

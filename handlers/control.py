@@ -59,11 +59,29 @@ async def handle_text(plugin, event: AstrMessageEvent):
 
 async def handle_tts_help(plugin, event: AstrMessageEvent):
     """/tts_help — 快速查看常用 TTS 指令"""
+    sing_lines = [
+        "/sing <歌词>  - 唱一首歌（单次生效，不影响日常语音）",
+        "/sing -音色名 <歌词>  - 指定音色，如 /sing -冰糖 小星星",
+        "/sing (风格) <歌词>  - 括号风格简写，如 /sing (温柔) 晚风轻拂",
+    ]
+    if plugin.config.sing_styles:
+        sing_lines += [
+            "/sing -s 风格组 <歌词>  - 用风格组唱，如 /sing -s 小雪 晚风轻拂",
+            '/sing -p "提示词" <歌词>  - 本次按提示词唱（含空格请加引号）',
+            "/singstyle list  - 查看全部风格组（管理）",
+            "/singstyle set <组名>  - 切换本对话风格组（管理）",
+            "/singstyle reset  - 恢复跟随全局（管理）",
+        ]
+    else:
+        sing_lines.append(
+            "（风格组未配置：在插件配置「唱歌优化」的 sing_styles 添加后解锁 -s/-p 与 /singstyle）"
+        )
     lines = [
         "MiMO TTS 常用指令:",
         "",
+        *sing_lines,
+        "",
         "/mimo_say <文本>  - 即时合成语音",
-        "/sing [-音色名] <歌词>  - 单次唱歌合成（可选指定音色）",
         "/ttsconfig  - 查看当前会话配置",
         "/tts_restore  - 将当前会话配置恢复为插件默认设置",
         "/tts_<on/off>  - 开启或关闭当前对话自动 TTS",
@@ -72,7 +90,7 @@ async def handle_tts_help(plugin, event: AstrMessageEvent):
         "/voice [音色ID]  - 查看/切换音色",
         "/voiceclone <ID> <参考音频路径>  - 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）",
         "/emotion <情感名|auto|off>  - 设置情感",
-        "/ttsformat <mp3|wav|ogg>  - 设置当前格式",
+        "/ttsformat <mp3|wav|ogg>  - 设置音频格式",
     ]
     yield MessageEventResult().message("\n".join(lines))
 

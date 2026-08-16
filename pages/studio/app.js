@@ -130,8 +130,24 @@
       title: '音色设置', ic: 'microphone',
       fields: [
         { key: 'default_voice', label: '默认音色', type: 'select', options: ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean'] },
-        { key: 'sing_voice', label: '唱歌默认音色', type: 'select', options: ['', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean'] },
         { key: 'tts_output_mode', label: 'TTS 输出模式', type: 'select', options: ['default', 'design', 'clone'] }
+      ]
+    },
+    {
+      title: '唱歌优化', ic: 'microphone',
+      fields: [
+        { key: 'sing_styles', label: '唱歌风格库', type: 'json', hint: '†† 最外层必须有 [ ]，多组用逗号分隔（缺括号/全角引号自动修复）。每项 name/style/tags（演绎词，走 user 通道）/style_tags（风格标签词，注入 (唱歌 词…) 开头标签，支持自定义词）/voice/speed/pitch，后五项可省，pitch 整数半音' },
+        { key: 'sing_voice', label: '唱歌默认音色', type: 'text', hint: '预置音色名或风格库组名（自动用该组绑定 voice）；留空用当前音色' },
+        { key: 'sing_lyrics_polish', label: '歌词 LLM 润色', type: 'bool', hint: '唱歌前调用 LLM 注入演唱标签（如 [气声]）；关闭时零影响' },
+        { key: 'sing_polish_llm_provider', label: '唱歌润色 Provider', type: 'text', hint: '留空回退通用润色 Provider，再空用当前对话模型；建议轻量快速模型' },
+        { key: 'sing_style_source', label: '风格注入源', type: 'select', options: ['prompt', 'tag', 'off'], hint: 'prompt=user 自然语言描述（默认，官方唱歌风格通道，实测稳定）；tag=assistant 括号标签（实验，实测唱歌模式会朗读）；off=仅 (唱歌)' },
+        { key: 'sing_polish_timeout', label: '润色 LLM 超时（秒）', type: 'number', hint: 'LLM 润色超过该秒数放弃润色直接唱，避免卡住等待；0=不限制' },
+        { key: 'sing_polish_cache_ttl', label: '润色结果缓存（秒）', type: 'number', hint: '相同歌词+风格在有效期内复用上次润色结果，重复唱歌零延迟；0=关闭' },
+        { key: 'sing_tag_prompt', label: '风格标签筛选提示词', type: 'textarea', hint: '{style} 风格描述基准占位符、{text} 歌词占位符；输出经官方词表白名单过滤' },
+        { key: 'sing_direct_prompt', label: '演唱描述提示词', type: 'textarea', hint: 'user 通道：LLM 输出画面感演唱描述（像…一样 + 节奏收尾）。{text}/{style} 占位符' },
+        { key: 'nl_sing_enabled', label: '自然语言触发唱歌', type: 'bool', hint: '唤醒消息匹配「用X的声线唱<歌词>」/「唱<歌词>」句式时直接演唱（X 需为已有风格组或预置音色名）' },
+        { key: 'nl_sing_cooldown', label: 'NL 唱歌冷却（秒）', type: 'number', hint: '同一对话两次触发的最小间隔，防刷屏；0=不限制' },
+        { key: 'nl_sing_tool', label: 'NL 唱歌 LLM 工具兜底', type: 'bool', hint: '自由措辞由 LLM 工具解析演唱（需同时开启自然语言触发）；后台合成不阻塞回复' }
       ]
     },
     {
@@ -173,7 +189,8 @@
       fields: [
         { key: 'enable_voice_polish', label: '启用 LLM 润色', type: 'bool', hint: '产生额外 LLM 调用' },
         { key: 'polish_llm_provider', label: '润色 LLM Provider', type: 'text', hint: '留空使用当前对话模型' },
-        { key: 'polish_prompt', label: '润色提示词', type: 'textarea', hint: '{text} 为原文占位符' }
+        { key: 'polish_prompt', label: '润色提示词', type: 'textarea', hint: '{text} 为原文占位符' },
+        { key: 'optimize_text_preview', label: '官方智能润色', type: 'bool', hint: 'voicedesign 官方参数（仅设计模式生效），服务端润色省 LLM 调用；与 LLM 润色建议二选一' }
       ]
     },
     {
@@ -691,6 +708,7 @@
   const ConfigPage = {
     setup() {
       const config = reactive({});
+      const jsonText = reactive({});
       const loading = ref(false);
       const saving = ref(false);
       const sections = CONFIG_SECTIONS;
@@ -702,12 +720,36 @@
           Object.keys(res.config).forEach(k => {
             config[k] = res.config[k];
           });
+          CONFIG_SECTIONS.forEach(s => s.fields.forEach(f => {
+            if (f.type === 'json') {
+              const v = config[f.key];
+              if (v === undefined || v === null) {
+                jsonText[f.key] = '[]';
+              } else if (typeof v === 'string') {
+                try { jsonText[f.key] = JSON.stringify(JSON.parse(v), null, 2); }
+                catch (e) { jsonText[f.key] = v; }
+              } else {
+                jsonText[f.key] = JSON.stringify(v, null, 2);
+              }
+            }
+          }));
         }
         loading.value = false;
       }
 
       async function saveSection(section) {
         saving.value = true;
+        for (const f of section.fields) {
+          if (f.type === 'json') {
+            try {
+              config[f.key] = JSON.parse(jsonText[f.key] || '[]');
+            } catch (e) {
+              showError(f.label + ' JSON 格式错误：' + e.message);
+              saving.value = false;
+              return;
+            }
+          }
+        }
         const payload = {};
         section.fields.forEach(f => {
           if (config[f.key] !== undefined) {
@@ -733,7 +775,7 @@
 
       onMounted(() => { loadConfig(); });
 
-      return { config, loading, saving, sections, saveSection, icon };
+      return { config, jsonText, loading, saving, sections, saveSection, icon };
     },
     template: `
 <div class="page config-page">
@@ -782,6 +824,11 @@
           <template v-else-if="field.type === 'textarea'">
             <textarea v-model="config[field.key]" rows="3" class="text-input"
               :placeholder="field.hint || ''"></textarea>
+          </template>
+
+          <template v-else-if="field.type === 'json'">
+            <textarea v-model="jsonText[field.key]" rows="8" class="text-input"
+              :placeholder="field.hint || ''" spellcheck="false"></textarea>
           </template>
         </div>
       </div>

@@ -14,9 +14,10 @@ from typing import TYPE_CHECKING, Optional
 from astrbot.api import logger
 
 from ..core.constants import MIMO_VOICE_LIST
-from ..core.text_utils import apply_singing_tag, log_tts_text
+from ..core.text_utils import log_tts_text
 from ..tts.mimo_provider import MiMOProvider
 from ..tts.prompt_builder import build_control_prompt
+from .sing import prepare_sing
 
 if TYPE_CHECKING:
     from ..voice.voice_manager import VoiceManager
@@ -65,6 +66,9 @@ class TTSSynthesizer:
         self._voice_manager = voice_manager
         self._data_dir = data_dir
         self._provider: Optional[MiMOProvider] = None
+        # 歌词润色回调（main.py 注入 _polish_lyrics_with_llm）：
+        # None 或配置开关关闭时零影响（sing-mode-feature.md §4.3）
+        self.lyrics_polisher = None
 
     @property
     def provider(self) -> Optional[MiMOProvider]:
@@ -201,6 +205,16 @@ class TTSSynthesizer:
 
         return current_voice, None, mode, None
 
+    def _map_sing_voice_candidate(self, candidate: str) -> str:
+        """唱歌音色候选映射：风格库名 → 该组绑定 voice；预置音色/其他值原样返回。"""
+        name = str(candidate or "").strip()
+        if not name or any(v["id"] == name for v in MIMO_VOICE_LIST):
+            return name
+        group = self._config.find_sing_style_by_name(name)
+        if group and group.get("voice"):
+            return str(group["voice"]).strip()
+        return name
+
     def build_prompt(
         self,
         uid: str,
@@ -324,21 +338,24 @@ class TTSSynthesizer:
 
         sing_voice_override = uset.get("sing_voice_override")
         if uset["sing"] and sing_voice_override:
-            current_voice = self.resolve_voice(sing_voice_override)
+            current_voice = self.resolve_voice(
+                self._map_sing_voice_candidate(sing_voice_override)
+            )
             uset["voice"] = current_voice
         elif uset["sing"]:
             is_custom_voice = uset["voice"] != self._config.default_voice
             if not is_custom_voice:
                 sing_voice_cfg = self._config.sing_voice.strip()
                 if sing_voice_cfg:
-                    current_voice = self.resolve_voice(sing_voice_cfg)
+                    current_voice = self.resolve_voice(
+                        self._map_sing_voice_candidate(sing_voice_cfg)
+                    )
                     uset["voice"] = current_voice
         if uset["sing"]:
-            # 归一化：assistant 只保留精确 "(唱歌)"；组合括号的附加风格词
-            # （如 "(唱歌 温柔)" 的"温柔"）走官方 user 通道注入控制指令
-            final_text, extra_styles = apply_singing_tag(text)
-            if extra_styles:
-                prompt = merge_prompt_parts(prompt, "，".join(extra_styles))
+            # 唱歌链路编排已模块化至 tts/sing.py
+            final_text, prompt = await prepare_sing(
+                self, text, uset, uid, get_user_settings, emotion_override, prompt
+            )
         else:
             final_text = text
 
@@ -350,11 +367,12 @@ class TTSSynthesizer:
             # 不被基础模型接受，需兜底到预置音色（sing_voice > default_voice）。
             voice_id = uset.get("voice") or ""
             if not any(v["id"] == voice_id for v in MIMO_VOICE_LIST):
-                for candidate in (
+                for raw_candidate in (
                     self._config.sing_voice.strip(),
                     self._config.default_voice.strip(),
                     "mimo_default",
                 ):
+                    candidate = self._map_sing_voice_candidate(raw_candidate)
                     if candidate and any(v["id"] == candidate for v in MIMO_VOICE_LIST):
                         voice_id = candidate
                         break
@@ -374,6 +392,17 @@ class TTSSynthesizer:
             elif mode == "design":
                 design_description = self.resolve_design_description(uid, get_user_settings)
                 prompt = merge_prompt_parts(design_description, prompt)
+                # 官方 voicedesign 智能润色参数（仅设计模式生效）；
+                # 与插件 LLM 润色同时开启时提示二选一，避免双重润色
+                if self._config.optimize_text_preview:
+                    if self._config.enable_voice_polish:
+                        logger.warning(
+                            "MiMO TTS: optimize_text_preview 与 LLM 音色润色同时开启，"
+                            "可能双重润色，建议在配置中二选一"
+                        )
+                    logger.info(
+                        "MiMO TTS: optimize_text_preview=true (voicedesign 官方润色)"
+                    )
 
         raw = await provider.synthesize(
             text=final_text,
@@ -384,6 +413,9 @@ class TTSSynthesizer:
             clone_audio_path=clone_audio_path,
             temperature=self._config.temperature,
             top_p=self._config.top_p,
+            optimize_text_preview=(
+                self._config.optimize_text_preview and mode == "design"
+            ),
         )
         if not raw:
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")

@@ -199,6 +199,7 @@ class MiMOProvider:
         clone_audio_path: Optional[str] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        optimize_text_preview: bool = False,
     ) -> Optional[bytes]:
         """Synthesize text to audio bytes.
 
@@ -213,6 +214,7 @@ class MiMOProvider:
             control_prompt: Control instructions for emotion/style (user role).
             audio_format: Override audio format (mp3/wav/ogg/pcm).
             model: Override synthesis model.
+            optimize_text_preview: 官方 voicedesign 智能润色参数（仅设计模型生效）。
 
         Returns:
             Audio bytes, or None on failure.
@@ -257,6 +259,9 @@ class MiMOProvider:
                 return None
         elif not self._is_voice_design_model(model_name):
             audio["voice"] = voice_id
+        elif optimize_text_preview:
+            # 官方参数：仅 voicedesign 支持，控制服务端对播报文本智能润色
+            audio["optimize_text_preview"] = True
         payload = {
             "model": model_name,
             "messages": messages,
