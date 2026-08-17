@@ -15,6 +15,7 @@ from astrbot.api import logger
 
 from ..core.constants import MIMO_VOICE_LIST
 from ..core.style_lib import (
+    EMOTION_TO_TAG,
     extract_style_words,
     match_style_entry_by_name,
     match_style_examples,
@@ -257,14 +258,49 @@ class TTSSynthesizer:
     def build_clone_prompt(self, base_prompt: str) -> str:
         """Build clone-specific prompt with style and audio tags."""
         style_prompt = self._config.clone_style_prompt.strip()
-        # 风格词表赋能（v2.2.0）：克隆风格文本中的官方词（温柔/磁性…）
-        # 自动提取并追加结构化提示，让服务端以词表语言理解风格
-        style_words = extract_style_words(style_prompt)
-        if style_words:
-            style_prompt = merge_prompt_parts(
-                style_prompt, style_words_to_hint(style_words)
+        # 风格示例池方案 A（§14.9 P2）：精确等于示例池分类名 → 条目直取
+        # （全部 words 词表提示 + 例句注入，与 design 同构）
+        entry = match_style_entry_by_name(style_prompt, self._config.style_examples)
+        if entry:
+            words = [
+                w for w in (entry.get("words") or []) if str(w or "").strip()
+            ]
+            parts = [style_prompt]
+            hint = style_words_to_hint(words)
+            if hint:
+                parts.append(hint)
+            examples = [
+                e for e in (entry.get("examples") or []) if str(e or "").strip()
+            ][:2]
+            if examples:
+                parts.append("参考示例：" + "；".join(examples))
+            style_prompt = merge_prompt_parts(*parts)
+            logger.info(
+                "MiMO TTS: clone style entry matched: %s (words=%s, examples=%d)",
+                entry.get("name"),
+                words,
+                len(examples),
             )
-            logger.info("MiMO TTS: clone style words enhanced: %s", style_words)
+        else:
+            # 风格词表赋能（v2.2.0）：克隆风格文本中的官方词（温柔/磁性…）
+            # 自动提取并追加结构化提示，让服务端以词表语言理解风格
+            style_words = extract_style_words(style_prompt)
+            if style_words:
+                style_prompt = merge_prompt_parts(
+                    style_prompt, style_words_to_hint(style_words)
+                )
+                logger.info("MiMO TTS: clone style words enhanced: %s", style_words)
+                # 风格示例池（§14.9 P2）：命中词对应例句并入（零 LLM）
+                examples = match_style_examples(
+                    style_prompt, self._config.style_examples
+                )
+                if examples:
+                    style_prompt = merge_prompt_parts(
+                        style_prompt, "参考示例：" + "；".join(examples)
+                    )
+                    logger.info(
+                        "MiMO TTS: clone style examples matched: %s", examples
+                    )
         audio_tags = self._config.clone_audio_tags.strip()
 
         tag_prompt = ""
@@ -466,6 +502,24 @@ class TTSSynthesizer:
                     logger.info(
                         "MiMO TTS: optimize_text_preview=true (voicedesign 官方润色)"
                     )
+            elif mode == "default" and self._config.tts_example_inject:
+                # 风格示例池普通 TTS 注入（§14.9 P2，默认关）：按 emotion →
+                # 官方词映射匹配示例池，命中即并入 user 控制通道（零 LLM）
+                emotion = str(uset.get("emotion") or "").strip().lower()
+                tag = EMOTION_TO_TAG.get(emotion)
+                if tag:
+                    examples = match_style_examples(
+                        tag, self._config.style_examples
+                    )
+                    if examples:
+                        prompt = merge_prompt_parts(
+                            prompt, "参考示例：" + "；".join(examples)
+                        )
+                        logger.info(
+                            "MiMO TTS: tts style examples matched: %s (emotion=%s)",
+                            examples,
+                            emotion,
+                        )
 
         raw = await provider.synthesize(
             text=final_text,

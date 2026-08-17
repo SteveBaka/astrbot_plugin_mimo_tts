@@ -304,6 +304,7 @@ class ConfigManager:
         "nl_sing_cooldown": 30,
         "nl_sing_tool": False,
         "tts_output_mode": "default",
+        "tts_example_inject": False,
         # TTS parameters
         "emotion_override": "",
         "default_speed": 1.0,
@@ -596,6 +597,11 @@ class ConfigManager:
     @property
     def tts_output_mode(self) -> str:
         return str(self._flat.get("tts_output_mode", "default"))
+
+    @property
+    def tts_example_inject(self) -> bool:
+        """普通 TTS 风格示例注入开关（§14.9 P2，默认关）。"""
+        return bool(self._flat.get("tts_example_inject", False))
 
     @property
     def design_voice_description(self) -> str:

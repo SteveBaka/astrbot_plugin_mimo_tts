@@ -198,6 +198,25 @@ def match_style_examples(
     return picked
 
 
+# 情感 → 官方风格词映射（§14.9 P2 普通 TTS 注入用，与词表同源）
+EMOTION_TO_TAG: dict[str, str] = {
+    "gentle": "温柔",
+    "serious": "严肃",
+    "playful": "俏皮",
+    "happy": "开心",
+    "excited": "兴奋",
+    "sad": "悲伤",
+    "angry": "愤怒",
+    "calm": "平静",
+    "lazy": "慵懒",
+    "fearful": "恐惧",
+    "surprised": "惊讶",
+    "nostalgic": "怅然",
+    "anxious": "忐忑",
+    "tender": "温柔",
+}
+
+
 def build_singing_prefix(tags: Optional[list] = None) -> str:
     """构建 assistant 开头标签：有词 → `(唱歌 词1 词2)`；无词 → `(唱歌)`。
 

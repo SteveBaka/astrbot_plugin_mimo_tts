@@ -158,6 +158,7 @@
         { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启时文字先行，语音后台合成后追加' },
         { key: 'audio_format', label: '音频格式', type: 'select', options: ['wav', 'mp3', 'ogg'] },
         { key: 'emotion_override', label: '默认情感覆盖', type: 'text', hint: '留空=自动检测' },
+        { key: 'tts_example_inject', label: 'TTS 风格示例注入', type: 'bool', hint: 'P2：开启后按当前情感匹配风格示例池并入 user 通道；默认关' },
         { key: 'probability', label: '自动 TTS 触发概率', type: 'slider', min: 0, max: 1, step: 0.1 }
       ]
     },

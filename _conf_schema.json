@@ -61,6 +61,12 @@
     "description": "TTS 参数",
     "type": "object",
     "items": {
+      "tts_example_inject": {
+        "type": "bool",
+        "description": "普通 TTS 风格示例注入",
+        "hint": "（P2）开启后按当前情感（emotion）匹配风格示例池，将画面感示例并入 user 控制通道。默认关闭：避免未经实测改变播报风格",
+        "default": false
+      },
       "emotion_override": {
         "type": "string",
         "description": "默认情感覆盖",

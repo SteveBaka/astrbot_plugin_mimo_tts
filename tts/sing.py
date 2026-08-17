@@ -24,6 +24,7 @@ from ..core.style_lib import (
     SING_TAGS_MAX,
     collect_sing_tags,
     filter_official_tags,
+    match_style_examples,
 )
 from ..core.text_utils import (
     apply_singing_tag,
@@ -191,8 +192,12 @@ async def prepare_sing(
                 extras.append("音高%+d" % uset["pitch"])
             if extras:
                 polish_ctx = merge_prompt_parts(style_text, "，".join(extras))
+            # 风格示例池 few-shot（§14.9 P2）：匹配例句（≤2 条 ≤30 字）作 LLM 参考
+            sing_examples = match_style_examples(
+                polish_ctx, synth._config.style_examples
+            )
             polished = await synth.lyrics_polisher(
-                lyrics, uid, polish_ctx, purpose="direct"
+                lyrics, uid, polish_ctx, purpose="direct", examples=sing_examples
             )
             if polished:
                 from .synthesis import merge_prompt_parts
@@ -232,7 +237,8 @@ def resolve_style_with_tags(style_text: str, static_tags: list[str]) -> str:
 
 
 async def polish_lyrics_with_llm(
-    plugin, lyrics: str, uid: str, style_desc: str, purpose: str = "direct"
+    plugin, lyrics: str, uid: str, style_desc: str, purpose: str = "direct",
+    examples: Optional[list] = None,
 ) -> str:
     """唱歌 LLM 辅助（v2.2.14 双用途，purpose 决定模板与输出清洗）。
 
@@ -241,6 +247,9 @@ async def polish_lyrics_with_llm(
     - purpose="tag"：官方风格标签筛选（第 3 层兜底），输出经官方词表
       白名单过滤的词（空格分隔）；失败/为空返回 ""（回退纯 (唱歌) 或
       本地提取结果）。
+    - examples（§14.9 P2，few-shot）：风格示例池匹配到的例句（≤2 条、
+      每条 ≤30 字），作为 prompt 参考段喂 LLM 融合进画面感描述，
+      不直拼 user 文本（防描述冲突）；仅 direct 用途生效。
 
     延迟优化（v2.2.13/14）：
     - 同歌词+同风格结果缓存（sing_polish_cache_ttl，默认 600s），重复唱歌
@@ -297,6 +306,15 @@ async def polish_lyrics_with_llm(
         )
     style_line = style_desc or "未指定，保持自然演唱"
     prompt = tpl.replace("{text}", lyrics).replace("{style}", style_line)
+
+    # 风格示例池 few-shot（§14.9 P2，仅 direct）：例句 ≤2 条、每条 ≤30 字，
+    # 作为质感参考喂 LLM 融合进画面感描述，不直拼 user 文本（防描述冲突）
+    if purpose == "direct" and examples:
+        refs = [
+            e[:30] for e in (examples or []) if str(e or "").strip()
+        ][:2]
+        if refs:
+            prompt += "\n\n参考演唱示例（仅作质感参考，勿照抄文字）：\n- " + "\n- ".join(refs)
 
     async def _call() -> str:
         resp = await plugin.context.llm_generate(

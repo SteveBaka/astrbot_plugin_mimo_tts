@@ -56,6 +56,7 @@
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
 | `emotion_override` | 情感覆盖(auto=自动) | - |
+| `tts_example_inject` | 普通 TTS 风格示例注入（P2：按情感匹配示例池并入 user 通道；默认关） | `false` |
 | `tts_output_mode` | TTS 输出来源模式（default/design/clone） | `default` |
 | `design_model` | 音色设计模型 | `mimo-v2.5-tts-voicedesign` |
 | `design_voice_description` | 设计音色描述：可填 style_examples 分类名精确引用（如"温柔甜美"，自动补全词表提示+画面感示例，快速切换），或自由描述（官方词自动匹配示例池） | - |
