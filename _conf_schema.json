@@ -32,20 +32,27 @@
         "description": "默认音色",
         "hint": "在default模式下利用预置的音色进行语音合成",
         "default": "mimo_default",
-        "options": ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
-      },
-      "sing_voice": {
-        "type": "string",
-        "description": "唱歌模式默认音色",
-        "hint": "留空则使用当前 default_voice",
-        "default": "",
-        "options": ["", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
+        "options": [
+          "mimo_default",
+          "冰糖",
+          "茉莉",
+          "苏打",
+          "白桦",
+          "Mia",
+          "Chloe",
+          "Milo",
+          "Dean"
+        ]
       },
       "tts_output_mode": {
         "type": "string",
         "description": "TTS 输出音色来源",
         "default": "default",
-        "options": ["default", "design", "clone"],
+        "options": [
+          "default",
+          "design",
+          "clone"
+        ],
         "hint": "default=预置音色，design=文字描述设计，clone=音频样本复刻"
       }
     }
@@ -54,6 +61,12 @@
     "description": "TTS 参数",
     "type": "object",
     "items": {
+      "tts_example_inject": {
+        "type": "bool",
+        "description": "普通 TTS 风格示例注入",
+        "hint": "（P2）开启后按当前情感（emotion）匹配风格示例池，将画面感示例并入 user 控制通道。默认关闭：避免未经实测改变播报风格",
+        "default": false
+      },
       "emotion_override": {
         "type": "string",
         "description": "默认情感覆盖",
@@ -65,14 +78,22 @@
         "description": "默认语速",
         "hint": "0.5~2.0，1.0 为正常语速",
         "default": 1.0,
-        "slider": {"min": 0.5, "max": 2.0, "step": 0.1}
+        "slider": {
+          "min": 0.5,
+          "max": 2.0,
+          "step": 0.1
+        }
       },
       "default_pitch": {
         "type": "int",
         "description": "默认音高",
         "hint": "-12~+12，0 为原始音高",
         "default": 0,
-        "slider": {"min": -12, "max": 12, "step": 1}
+        "slider": {
+          "min": -12,
+          "max": 12,
+          "step": 1
+        }
       },
       "style_hint": {
         "type": "string",
@@ -115,7 +136,11 @@
         "description": "自动 TTS 触发概率",
         "hint": "全局开关：0=不触发，1=每次都触发。不通过则跳过润色/分段",
         "default": 0.8,
-        "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
+        "slider": {
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.1
+        }
       },
       "auto_tts": {
         "type": "bool",
@@ -170,7 +195,12 @@
         "description": "分段规则",
         "hint": "sentence=句末标点，paragraph=空行，comma=逗号分号，mixed=混合",
         "default": "sentence",
-        "options": ["sentence", "paragraph", "comma", "mixed"]
+        "options": [
+          "sentence",
+          "paragraph",
+          "comma",
+          "mixed"
+        ]
       },
       "segment_max_count": {
         "type": "int",
@@ -183,7 +213,11 @@
         "description": "分段语音输出概率",
         "hint": "全局触发通过后生效。1.0=全部语音，0.0=全部文字",
         "default": 1.0,
-        "slider": {"min": 0.0, "max": 1.0, "step": 0.1}
+        "slider": {
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.1
+        }
       }
     }
   },
@@ -207,8 +241,101 @@
       "polish_prompt": {
         "type": "text",
         "description": "润色提示词",
-        "hint": "指导 LLM 如何添加音频标签。{text} 为原文占位符",
-        "default": "你是语音润色助手。请在以下文本中适当添加 MiMO TTS 音频标签，使语音更自然生动。\n\n规则：\n1. 在文本开头添加风格标签，如 (温柔)、(磁性)、(活泼) 等\n2. 在文本中间适当位置插入音频标签，如 [深呼吸]、[叹气]、[笑]、[语速加快] 等\n3. 标签应与文本内容情感一致，不要过度使用，每段最多 2-3 个标签\n4. 保持原文内容不变，只添加标签\n5. 直接返回添加标签后的文本，不要添加任何解释\n\n原文：{text}"
+        "hint": "LLM 以专业语音润色专家角色为播报文本添加音频标签（开头 () 风格标签 + 关键处 [] 音频标签，宁缺毋滥）。{text} 为原文占位符；留空用内置新模板",
+        "default": "你是一个专业的语音润色专家。请在以下文本中适当添加 MiMO TTS 音频标签，让播报更自然生动。\n规则：\n1. 整体气质用开头风格标签表达，如 (温柔)、(磁性)、(活泼)、(严肃) 等，只加 1 个\n2. 关键语气处插入音频标签增强表现力，如 [深呼吸]、[叹气]、[轻笑]、[停顿]、[语速加快]、[语速放慢] 等\n3. 标签与文本情感一致、宁缺毋滥：整段最多 2-3 个音频标签\n4. 保持原文内容完全不变，只增删标签\n5. 不要添加任何解释、代码围栏或思考过程，第一行即润色结果\n\n原文：{text}"
+      },
+      "optimize_text_preview": {
+        "type": "bool",
+        "description": "官方智能润色（optimize_text_preview）",
+        "hint": "官方 voicedesign 参数：服务端对播报文本智能润色，省去插件侧 LLM 调用。仅「设计」输出模式生效；与上方 LLM 音色润色建议二选一，同时开启可能双重润色",
+        "default": false
+      }
+    }
+  },
+  "sing_settings": {
+    "description": "唱歌优化",
+    "type": "object",
+    "items": {
+      "sing_styles": {
+        "type": "text",
+        "description": "唱歌风格库（JSON）",
+        "hint": "‼️ JSON 数组，最外层必须有 [ ]，多组用逗号分隔，支持换行。缺 [ ] 或全角引号会自动修复，仍错则回退空库。每项：name / style（描述，标签提取基准）/ tags（演绎词，顿号分隔，走 user 通道）/ style_tags（风格标签词，顿号分隔，注入 (唱歌 词…) 开头标签，支持自定义词）/ voice / speed（0.5~2.0）/ pitch（整数半音），后五项可省略",
+        "obvious_hint": true,
+        "editor_mode": true,
+        "editor_language": "json",
+        "default": "[\n  {\n    \"name\": \"小雪\",\n    \"style\": \"声音清澈，温柔甜美\",\n    \"tags\": \"轻笑\",\n    \"voice\": \"茉莉\",\n    \"speed\": 1.5,\n    \"pitch\": 1\n  },\n  {\n    \"name\": \"小花\",\n    \"style\": \"温柔甜美的可爱风格\",\n    \"tags\": \"可爱\",\n    \"voice\": \"冰糖\",\n    \"speed\": 1.1,\n    \"pitch\": 1\n  }\n]"
+      },
+      "sing_voice": {
+        "type": "string",
+        "description": "唱歌模式默认音色",
+        "hint": "预置音色名（冰糖/茉莉/…）或风格库组名（自动使用该组绑定 voice）；留空使用当前音色",
+        "default": ""
+      },
+      "sing_lyrics_polish": {
+        "type": "bool",
+        "description": "唱歌歌词 LLM 润色",
+        "hint": "唱歌前调用 LLM 为歌词注入演唱音频标签（如 [气声] [变调]）。会产生额外 LLM 调用；关闭时零影响",
+        "default": false
+      },
+      "sing_polish_llm_provider": {
+        "type": "string",
+        "description": "唱歌润色 LLM Provider",
+        "hint": "留空则回退「润色 LLM Provider」，仍为空则使用当前对话模型。建议选择轻量快速的模型以减少延迟",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "sing_style_source": {
+        "type": "string",
+        "description": "风格注入源",
+        "hint": "prompt=user 自然语言描述（默认，官方唱歌风格通道，实测正常唱歌）；tag=风格标签收集（已收窄：实测唱歌模式不识别 (唱歌 词…) 任何组合——多词朗读、分括号杂音，现仅收集不注入，效果同 off）；off=仅 (唱歌)",
+        "default": "prompt",
+        "options": [
+          "prompt",
+          "tag",
+          "off"
+        ]
+      },
+      "sing_polish_timeout": {
+        "type": "int",
+        "description": "润色 LLM 超时（秒）",
+        "hint": "LLM 润色超过该秒数直接放弃本次润色（降级为不润色直接唱），避免卡住唱歌等待。0=不限制",
+        "default": 20
+      },
+      "sing_polish_cache_ttl": {
+        "type": "int",
+        "description": "润色结果缓存（秒）",
+        "hint": "相同歌词+相同风格在有效期内直接复用上次润色结果，重复唱歌零延迟。0=关闭缓存",
+        "default": 600
+      },
+      "sing_tag_prompt": {
+        "type": "text",
+        "description": "风格标签筛选提示词",
+        "hint": "LLM 以风格标签筛选专家角色从 {style} 挑选 2-4 个官方风格标签词（供唱歌风格标签收集）；输出经官方词表白名单过滤。{style} 描述基准占位符、{text} 歌词占位符；留空用内置新模板",
+        "default": "你是一个语气风格标签筛选专家。请从【风格描述】中挑选 2-4 个最贴合的官方风格标签词，用于插件的唱歌风格标签收集。\n\n官方风格词表：\n整体语调：温柔/高冷/活泼/严肃/慵懒/俏皮/深沉/干练/凌厉\n音色定位：磁性/醇厚/清亮/空灵/稚嫩/苍老/甜美/沙哑/醇雅\n基础情绪：开心/悲伤/愤怒/恐惧/惊讶/兴奋/委屈/平静/冷漠\n复合情绪：怅然/欣慰/无奈/愧疚/释然/嫉妒/厌倦/忐忑/动情\n人设腔调：夹子音/御姐音/正太音/大叔音/台湾腔\n角色扮演：孙悟空/林黛玉\n\n规则：\n1. 只能输出上表中的词，空格分隔，2-4 个；无合适词只输出\"无\"\n2. 优先选整体语调与音色定位词，各不超过 2 个（最能决定听感）\n3. 词须与风格描述含义一致，不要强行凑数\n4. 不要输出任何解释、标点或思考过程，第一行即结果\n\n风格描述（基准）：{style}\n歌词：{text}"
+      },
+      "sing_direct_prompt": {
+        "type": "text",
+        "description": "演唱指导提示词（user 通道）",
+        "hint": "user 通道：LLM 以专业演唱指导角色输出 60 字内画面感演唱描述（像…一样+节奏收尾，含防收窄词禁令与禁思考约束）。{text}/{style} 占位符；留空用内置新模板",
+        "default": "你是一个专业的演唱指导。请根据【歌词】与【风格】，用一句 60 字以内的演唱描述，指导如何唱出理想效果。\n要求：\n1. 用\"像……一样\"的画面比喻点明整体气质（如\"像晨露一样清透\"），再给出明快/轻柔/活泼等语调基调，结尾带节奏或音高走向（如\"语速略快，句尾上扬\"）\n2. 与已配置的音色、语速、音高协调，顺势突出其长处，绝不给出冲突的节奏或音高指令\n3. 贴合人设与语境（撒娇/叙事/俏皮等），让描述具体可感\n4. 禁止出现\"收束/收紧/压低/减弱/收小\"等收窄类词汇（会导致声音压窄）\n5. 禁止时间轴分句（\"开头/中段/结尾\"）、禁止 [] 或 () 标签、不要出现歌词原文\n6. 不要思考、不要分析过程，第一句就是最终描述\n\n当前风格：{style}\n歌词：{text}"
+      },
+      "nl_sing_enabled": {
+        "type": "bool",
+        "description": "自然语言触发唱歌",
+        "hint": "唤醒消息匹配「用X的声线唱<歌词>」/「唱<歌词>」句式时直接演唱（正则快路径，零 LLM 依赖，X 需为已有风格组或预置音色名）",
+        "default": false
+      },
+      "nl_sing_cooldown": {
+        "type": "int",
+        "description": "自然语言唱歌冷却（秒）",
+        "hint": "同一对话两次触发的最小间隔，防刷屏；0=不限制",
+        "default": 30
+      },
+      "nl_sing_tool": {
+        "type": "bool",
+        "description": "NL 唱歌 LLM 工具兜底",
+        "hint": "正则快路径未命中的自由措辞（如「来一段小雪唱的」）由 LLM 工具解析演唱；需同时开启「自然语言触发唱歌」。工具合成在后台执行，不阻塞回复",
+        "default": false
       }
     }
   },
@@ -269,8 +396,17 @@
       "design_voice_description": {
         "type": "string",
         "description": "设计音色描述",
-        "hint": "如：温柔甜美的年轻女声，语速适中",
+        "hint": "设计音色描述：可直接填风格示例池（style_examples）的分类名 name 精确引用（自动补全词表提示与画面感示例，如填 温柔甜美 / 磁性低沉，便于快速切换），或填自由描述文本（描述中的官方词自动匹配示例池）。留空则用选中设计音色自带的描述",
         "default": ""
+      },
+      "style_examples": {
+        "type": "text",
+        "description": "风格示例池（导演模式先导）",
+        "hint": "‼️ JSON 数组，最外层必须有 [ ]。每项 name（分类名）/ words（官方风格词，空格或顿号分隔，须为词表词）/ examples（画面感中文例句数组，禁用收束/收紧/压低/减弱/收小等收窄词）。缺括号/全角引号自动修复，仍错则回退空池。设计音色时描述中的风格词会匹配本池，命中的例句自动注入音色描述",
+        "obvious_hint": true,
+        "editor_mode": true,
+        "editor_language": "json",
+        "default": "[\n  {\n    \"name\": \"温柔甜美\",\n    \"words\": \"温柔 甜美\",\n    \"examples\": [\"像融化的棉花糖一样温柔，声音软糯清甜，尾音轻轻上扬，语速放缓\",\"像午后阳光里的一杯热牛奶，温柔绵密，每一句都带着甜甜的笑意\"\n    ]\n  },\n  {\n    \"name\": \"磁性低沉\",\n    \"words\": \"磁性 深沉\",\n    \"examples\": [\"像午夜电台的主播，磁性沙哑，句句都带停顿与余韵，语速沉缓\"\n    ]\n  },\n  {\n    \"name\": \"活泼俏皮\",\n    \"words\": \"活泼 俏皮\",\n    \"examples\": [\"像清晨的第一声鸟鸣，轻快雀跃，尾音总爱往上跳一跳，气息明快\"\n    ]\n  },\n  {\n    \"name\": \"清亮空灵\",\n    \"words\": \"清亮 空灵\",\n    \"examples\": [\"像山涧泉水一样清亮通透，尾音带一丝空灵的余韵，气声自然\"\n    ]\n  },\n  {\n    \"name\": \"御姐高冷\",\n    \"words\": \"御姐音 高冷\",\n    \"examples\": [\"像职场精英的从容开场，御姐音高冷利落，语气笃定，句尾干脆\"\n    ]\n  },\n  {\n    \"name\": \"慵懒安逸\",\n    \"words\": \"慵懒\",\n    \"examples\": [\"像午后窝在沙发里的惬意，慵懒随性，语速不紧不慢，尾音拖得舒展\"\n    ]\n  }\n]"
       }
     }
   },
@@ -319,14 +455,22 @@
         "description": "采样温度（temperature）",
         "hint": "较高值(0.8)使输出更随机，较低值(0.2)使输出更确定。TTS 推荐 0.6",
         "default": 0.6,
-        "slider": {"min": 0.0, "max": 1.5, "step": 0.1}
+        "slider": {
+          "min": 0.0,
+          "max": 1.5,
+          "step": 0.1
+        }
       },
       "top_p": {
         "type": "float",
         "description": "核采样阈值（top_p）",
         "hint": "控制生成多样性。值越高多样性越高。推荐 0.95",
         "default": 0.95,
-        "slider": {"min": 0.01, "max": 1.0, "step": 0.01}
+        "slider": {
+          "min": 0.01,
+          "max": 1.0,
+          "step": 0.01
+        }
       },
       "timeout": {
         "type": "int",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 import random
 import re
 import time
@@ -15,13 +16,13 @@ from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.message_components import Plain, Record
 
-from .core.config import ConfigManager
-from .core.constants import (
-    MIMO_VOICE_LIST,
-    SKIP_PATTERNS,
-    SUPPORTED_AUDIO_FORMATS,
-    SEGMENT_PATTERNS,
+from .core.config import (
+    _SING_STYLES_PRESET_V1,
+    _SING_STYLES_PRESET_V2,
+    ConfigManager,
+    SING_STYLES_PRESET,
 )
+from .core.constants import SEGMENT_PATTERNS, SKIP_PATTERNS
 from .core.text_utils import (
     should_skip,
     split_text,
@@ -50,6 +51,13 @@ from .handlers.params import (
     handle_volume,
 )
 from .handlers.preset import handle_preset, handle_presetlist
+from .handlers.singstyle import (
+    handle_singstyle_list,
+    handle_singstyle_reset,
+    handle_singstyle_set,
+    handle_singstyle_show,
+)
+from .handlers.nl_sing import handle_nl_sing, handle_nl_sing_tool
 from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
 from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
 from .handlers.voice import (
@@ -59,8 +67,28 @@ from .handlers.voice import (
     handle_voicegen,
     handle_voices,
 )
+from .tts.sing import polish_lyrics_with_llm
 from .tts.synthesis import TTSSynthesizer, normalize_tts_mode, tts_mode_label
 from .voice.voice_manager import VoiceManager
+from .webapi import (
+    api_clone_file,
+    api_clone_init,
+    api_delete_session,
+    api_delete_voice,
+    api_design_voice,
+    api_get_config,
+    api_get_constants,
+    api_get_logs,
+    api_health,
+    api_list_emotions,
+    api_list_sessions,
+    api_list_voices,
+    api_log_stats,
+    api_reset_session,
+    api_tts_synthesize,
+    api_update_config,
+    api_update_session,
+)
 
 
 def _read_plugin_version() -> str:
@@ -85,6 +113,22 @@ class MiMoTTSPlugin(Star):
         super().__init__(context)
 
         self.config = ConfigManager(config or {})
+        # 风格库预设迁移：空值（[]/空串）补预设；旧版预设（无 speed/pitch）
+        # 升级为新预设（AstrBot 只对缺失键填默认值，已保存值需自行迁移）
+        raw_styles = str(self.config.get("sing_styles") or "").strip()
+        if (
+            raw_styles in ("", "[]")
+            or raw_styles == _SING_STYLES_PRESET_V1.strip()
+            or raw_styles == _SING_STYLES_PRESET_V2.strip()
+        ):
+            self.config.set("sing_styles", SING_STYLES_PRESET)
+            save_cfg = getattr(config, "save_config", None)
+            if callable(save_cfg):
+                try:
+                    save_cfg()
+                    logger.info("MiMO TTS: sing_styles preset migrated/upgraded")
+                except Exception:
+                    logger.warning("MiMO TTS: sing_styles preset migration not persisted")
         self._plugin_dir = Path(__file__).resolve().parent
         self._data_dir = Path(StarTools.get_data_dir())
 
@@ -92,6 +136,10 @@ class MiMoTTSPlugin(Star):
         self._voice_manager = VoiceManager(data_dir=self._data_dir)
         self.user_state = UserStateManager(self._data_dir, self.config)
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
+        # 歌词润色回调注入：所有唱歌入口（命令/WebUI/NL）共用同一润色链路
+        self.synth.lyrics_polisher = partial(polish_lyrics_with_llm, self)
+        # 自然语言唱歌：会话级冷却时间戳
+        self._nl_sing_last: dict[str, float] = {}
 
         # ── Plugin logger (WebUI log page) ──
         from .core.plugin_logger import PluginLogger
@@ -107,23 +155,23 @@ class MiMoTTSPlugin(Star):
         """Register REST API endpoints for the Voice Studio WebUI page."""
         p = "astrbot_plugin_mimo_tts"
 
-        context.register_web_api(f"/{p}/config", self._api_get_config, ["GET"], "获取插件配置")
-        context.register_web_api(f"/{p}/config/update", self._api_update_config, ["POST"], "更新插件配置")
-        context.register_web_api(f"/{p}/tts", self._api_tts_synthesize, ["POST"], "TTS 语音合成")
-        context.register_web_api(f"/{p}/voices", self._api_list_voices, ["GET"], "获取音色列表")
-        context.register_web_api(f"/{p}/voices/clone-init", self._api_clone_init, ["POST"], "初始化克隆")
-        context.register_web_api(f"/{p}/voices/clone-file", self._api_clone_file, ["POST"], "上传克隆音频")
-        context.register_web_api(f"/{p}/voices/design", self._api_design_voice, ["POST"], "注册设计音色")
-        context.register_web_api(f"/{p}/voices/delete", self._api_delete_voice, ["POST"], "删除音色")
-        context.register_web_api(f"/{p}/sessions", self._api_list_sessions, ["GET"], "获取会话配置列表")
-        context.register_web_api(f"/{p}/sessions/update", self._api_update_session, ["POST"], "更新会话配置")
-        context.register_web_api(f"/{p}/sessions/delete", self._api_delete_session, ["POST"], "删除会话配置")
-        context.register_web_api(f"/{p}/sessions/reset", self._api_reset_session, ["POST"], "重置会话配置")
-        context.register_web_api(f"/{p}/emotions", self._api_list_emotions, ["GET"], "获取情感列表")
-        context.register_web_api(f"/{p}/constants", self._api_get_constants, ["GET"], "获取常量数据")
-        context.register_web_api(f"/{p}/health", self._api_health, ["GET"], "健康检查")
-        context.register_web_api(f"/{p}/logs", self._api_get_logs, ["GET"], "获取插件日志")
-        context.register_web_api(f"/{p}/logs/stats", self._api_log_stats, ["GET"], "日志统计")
+        context.register_web_api(f"/{p}/config", partial(api_get_config, self), ["GET"], "获取插件配置")
+        context.register_web_api(f"/{p}/config/update", partial(api_update_config, self), ["POST"], "更新插件配置")
+        context.register_web_api(f"/{p}/tts", partial(api_tts_synthesize, self), ["POST"], "TTS 语音合成")
+        context.register_web_api(f"/{p}/voices", partial(api_list_voices, self), ["GET"], "获取音色列表")
+        context.register_web_api(f"/{p}/voices/clone-init", partial(api_clone_init, self), ["POST"], "初始化克隆")
+        context.register_web_api(f"/{p}/voices/clone-file", partial(api_clone_file, self), ["POST"], "上传克隆音频")
+        context.register_web_api(f"/{p}/voices/design", partial(api_design_voice, self), ["POST"], "注册设计音色")
+        context.register_web_api(f"/{p}/voices/delete", partial(api_delete_voice, self), ["POST"], "删除音色")
+        context.register_web_api(f"/{p}/sessions", partial(api_list_sessions, self), ["GET"], "获取会话配置列表")
+        context.register_web_api(f"/{p}/sessions/update", partial(api_update_session, self), ["POST"], "更新会话配置")
+        context.register_web_api(f"/{p}/sessions/delete", partial(api_delete_session, self), ["POST"], "删除会话配置")
+        context.register_web_api(f"/{p}/sessions/reset", partial(api_reset_session, self), ["POST"], "重置会话配置")
+        context.register_web_api(f"/{p}/emotions", partial(api_list_emotions, self), ["GET"], "获取情感列表")
+        context.register_web_api(f"/{p}/constants", partial(api_get_constants, self), ["GET"], "获取常量数据")
+        context.register_web_api(f"/{p}/health", partial(api_health, self), ["GET"], "健康检查")
+        context.register_web_api(f"/{p}/logs", partial(api_get_logs, self), ["GET"], "获取插件日志")
+        context.register_web_api(f"/{p}/logs/stats", partial(api_log_stats, self), ["GET"], "日志统计")
 
     # ── Proxy methods for handler compatibility ──
 
@@ -232,13 +280,15 @@ class MiMoTTSPlugin(Star):
         prompt_tpl = self.config.polish_prompt
         if not prompt_tpl:
             prompt_tpl = (
-                "你是语音润色助手。请在以下文本中适当添加 MiMO TTS 音频标签，"
-                "使语音更自然生动。\n\n规则：\n"
-                "1. 在文本开头添加风格标签，如 (温柔)、(磁性)、(活泼) 等\n"
-                "2. 在文本中间适当位置插入音频标签，如 [深呼吸]、[叹气]、[笑]、[语速加快] 等\n"
-                "3. 标签应与文本内容情感一致，不要过度使用，每段最多 2-3 个标签\n"
-                "4. 保持原文内容不变，只添加标签\n"
-                "5. 直接返回添加标签后的文本，不要添加任何解释\n\n"
+                "你是一个专业的语音润色专家。请在以下文本中适当添加 MiMO TTS 音频标签，"
+                "让播报更自然生动。\n"
+                "规则：\n"
+                "1. 整体气质用开头风格标签表达，如 (温柔)、(磁性)、(活泼)、(严肃) 等，只加 1 个\n"
+                "2. 关键语气处插入音频标签增强表现力，如 [深呼吸]、[叹气]、[轻笑]、[停顿]、"
+                "[语速加快]、[语速放慢] 等\n"
+                "3. 标签与文本情感一致、宁缺毋滥：整段最多 2-3 个音频标签\n"
+                "4. 保持原文内容完全不变，只增删标签\n"
+                "5. 不要添加任何解释、代码围栏或思考过程，第一行即润色结果\n\n"
                 "原文：{text}"
             )
         prompt = prompt_tpl.replace("{text}", text)
@@ -321,229 +371,7 @@ class MiMoTTSPlugin(Star):
         self.plog.info("Lifecycle", "插件卸载，清理资源")
         await self.synth.close_provider()
 
-    # ═══════════════════════════════════════════════════════════
-    #  Web API for Voice Studio Page
-    # ═══════════════════════════════════════════════════════════
-
-    async def _api_health(self):
-        from quart import jsonify
-        return jsonify({"status": "ok", "version": _read_plugin_version()})
-
-    async def _api_get_config(self):
-        from quart import jsonify
-        return jsonify({"config": dict(self.config._flat)})
-
-    async def _api_update_config(self):
-        from quart import jsonify, request
-        body = await request.json
-        allowed_keys = set(self.config._SCHEMA_DEFAULTS.keys())
-        for k, v in body.items():
-            if k in allowed_keys:
-                self.config.set(k, v)
-        return jsonify({"status": "ok"})
-
-    async def _api_tts_synthesize(self):
-        from quart import jsonify, request
-        import base64
-        body = await request.json
-        text = str(body.get("text", ""))[:5000]
-        if not text.strip():
-            return jsonify({"error": "文本不能为空"}), 400
-
-        uid = str(body.get("uid", "webui"))[:100]
-        self.plog.info("WebUI-TTS", f"合成请求 uid={uid} len={len(text)} polish={body.get('voice_polish', False)}")
-
-        # LLM 润色（仅当请求中明确启用时）
-        if body.get("voice_polish"):
-            text = await self._polish_text_with_llm(text, uid)
-
-        overrides = {}
-        for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
-                     "laughter", "pause", "dialect", "volume", "tts_mode"):
-            if key in body and body[key] is not None:
-                overrides[key] = body[key]
-
-        emotion_override = None
-        if "emotion" in overrides:
-            if overrides["emotion"] == "auto":
-                emotion_override = None
-            elif overrides["emotion"] == "off":
-                overrides["emotion"] = ""
-            else:
-                emotion_override = overrides.pop("emotion")
-
-        try:
-            audio_path = await self._do_tts(
-                text, uid, emotion_override=emotion_override,
-                settings_override=overrides or None,
-            )
-            if audio_path:
-                audio_bytes = audio_path.read_bytes()
-                b64 = base64.b64encode(audio_bytes).decode()
-                fmt = audio_path.suffix.lstrip(".")
-                mime = {"wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg"}.get(fmt, "audio/wav")
-                return jsonify({"audio_b64": b64, "format": fmt, "mime": mime})
-            return jsonify({"error": "合成失败"}), 500
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    async def _api_list_voices(self):
-        from quart import jsonify
-        builtin = [{**v, "type": "default"} for v in MIMO_VOICE_LIST]
-        registered = self._voice_manager.list_voices()
-        custom = []
-        for v in registered:
-            model = v.get("model", "voiceclone")
-            vtype = "design" if model == "voicedesign" else "clone"
-            custom.append({
-                "id": v.get("voice_id", ""),
-                "name": v.get("name", ""),
-                "type": vtype,
-            })
-        return jsonify({
-            "builtin": builtin,
-            "registered": custom,
-            "all": builtin + custom,
-        })
-
-    async def _api_clone_init(self):
-        from quart import jsonify, request
-        import re as _re
-        body = await request.json
-        voice_id = body.get("voice_id", "").strip()
-        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", voice_id)
-        if not voice_id:
-            return jsonify({"error": "缺少 voice_id"}), 400
-        self._pending_clone_voice_id = voice_id
-        return jsonify({"status": "ok"})
-
-    async def _api_clone_file(self):
-        from quart import jsonify, request
-        import base64
-        import re as _re
-        voice_id = getattr(self, "_pending_clone_voice_id", "")
-        if not voice_id:
-            return jsonify({"error": "请先调用 clone-init"}), 400
-        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", voice_id)
-        if not voice_id:
-            return jsonify({"error": "无效的 voice_id"}), 400
-        body = await request.json
-        file_b64 = body.get("file_b64", "")
-        filename = body.get("filename", "audio.wav")
-        if not file_b64:
-            return jsonify({"error": "缺少音频数据"}), 400
-        if len(file_b64) > 20 * 1024 * 1024:
-            return jsonify({"error": "文件过大（最大约 15MB）"}), 400
-        suffix = Path(filename).suffix.lower()
-        if suffix not in (".mp3", ".wav"):
-            return jsonify({"error": "仅支持 mp3/wav 格式"}), 400
-        clone_dir = self._data_dir / "clone"
-        clone_dir.mkdir(parents=True, exist_ok=True)
-        save_path = clone_dir / f"{voice_id}{suffix}"
-        audio_bytes = base64.b64decode(file_b64)
-        save_path.write_bytes(audio_bytes)
-        self._voice_manager.register_voice(
-            voice_id, name=voice_id, model="voiceclone", audio_path=str(save_path),
-        )
-        self._pending_clone_voice_id = ""
-        return jsonify({"status": "ok", "voice_id": voice_id, "path": str(save_path)})
-
-    async def _api_design_voice(self):
-        from quart import jsonify, request
-        import re as _re
-        body = await request.json
-        voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip())
-        description = body.get("description", "").strip()[:500]
-        name = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("name", voice_id).strip())[:50]
-        if not voice_id or not description:
-            return jsonify({"error": "缺少 voice_id 或描述"}), 400
-        self._voice_manager.register_voice(
-            voice_id, name=name, model="voicedesign", description=description,
-        )
-        return jsonify({"status": "ok", "voice_id": voice_id})
-
-    async def _api_delete_voice(self):
-        from quart import jsonify, request
-        body = await request.json
-        voice_id = body.get("voice_id", "")
-        if not voice_id:
-            return jsonify({"error": "缺少 voice_id"}), 400
-        ok = self._voice_manager.remove_voice(voice_id)
-        if ok:
-            return jsonify({"status": "ok"})
-        return jsonify({"error": f"未找到音色: {voice_id}"}), 404
-
-    async def _api_list_sessions(self):
-        from quart import jsonify
-        sessions = {}
-        for uid, settings in self.user_state.user_settings.items():
-            sessions[uid] = {
-                "settings": settings,
-                "format": self.user_state.user_format.get(uid, "wav"),
-                "umo": self.user_state.user_umo.get(uid, ""),
-            }
-        return jsonify({"sessions": sessions})
-
-    async def _api_update_session(self):
-        from quart import jsonify, request
-        body = await request.json
-        uid = body.get("uid", "")
-        settings = body.get("settings", {})
-        if not uid:
-            return jsonify({"error": "缺少 uid"}), 400
-        allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled", "text_enabled",
-                   "text_async", "enable_segmentation", "enable_voice_polish"}
-        filtered = {k: v for k, v in settings.items() if k in allowed}
-        uset = self.user_state.get_settings(uid, normalize_tts_mode)
-        uset.update(filtered)
-        self.user_state.persist()
-        return jsonify({"status": "ok"})
-
-    async def _api_delete_session(self):
-        from quart import jsonify, request
-        body = await request.json
-        uid = body.get("uid", "")
-        if not uid:
-            return jsonify({"error": "缺少 uid"}), 400
-        self.user_state.user_settings.pop(uid, None)
-        self.user_state.user_format.pop(uid, None)
-        self.user_state.persist()
-        return jsonify({"status": "ok"})
-
-    async def _api_reset_session(self):
-        from quart import jsonify, request
-        body = await request.json
-        uid = body.get("uid", "")
-        if not uid:
-            return jsonify({"error": "缺少 uid"}), 400
-        self.user_state.restore(uid)
-        return jsonify({"status": "ok"})
-
-    async def _api_list_emotions(self):
-        from quart import jsonify
-        from .core.constants import SUPPORTED_EMOTIONS
-        return jsonify({"emotions": list(SUPPORTED_EMOTIONS)})
-
-    async def _api_get_constants(self):
-        from quart import jsonify
-        from .core.constants import SUPPORTED_EMOTIONS
-        return jsonify({
-            "voices": MIMO_VOICE_LIST,
-            "emotions": list(SUPPORTED_EMOTIONS),
-            "formats": list(SUPPORTED_AUDIO_FORMATS),
-        })
-
-    async def _api_get_logs(self):
-        from quart import jsonify, request
-        args = request.args
-        limit = min(int(args.get("limit", 200)), 500)
-        level = args.get("level")
-        logs = self.plog.read_logs(limit=limit, level=level)
-        return jsonify({"logs": logs, "enabled": self.plog.enabled})
-
-    async def _api_log_stats(self):
-        from quart import jsonify
-        return jsonify(self.plog.get_stats())
+    # Web API 处理器已模块化至 webapi.py（注册见 _register_web_apis）
 
     # ═══════════════════════════════════════════════════════════
     #  Event Handlers
@@ -690,6 +518,21 @@ class MiMoTTSPlugin(Star):
             except Exception as e:
                 result.chain.append(Plain(f"[TTS 合成失败: {e}]"))
 
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=99)
+    async def on_nl_sing(self, event: AstrMessageEvent):
+        """自然语言触发唱歌（快路径）：唤醒消息匹配「用X的声线唱<歌词>」等句式时直接演唱。"""
+        await handle_nl_sing(self, event)
+
+    @filter.llm_tool(name="mimo_sing_song")
+    async def mimo_sing_song(self, event: AstrMessageEvent, style: str, lyrics: str):
+        """用指定歌声风格演唱一段歌词。仅在用户明确要求"唱歌/唱一段/用XX声线唱"时调用，歌词必须一字不改。
+
+        Args:
+            style(string): 唱歌风格组或音色名称（如"小雪"、"茉莉"），用户未指定时传空字符串；自由风格词（如"温柔甜美"）也可传入
+            lyrics(string): 歌词原文，一字不改
+        """
+        return await handle_nl_sing_tool(self, event, style, lyrics)
+
     # ── Command Handlers (delegated to handlers/) ──
 
     # ── Public commands (no permission required) ──
@@ -702,8 +545,40 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("sing")
     async def cmd_sing(self, event: AstrMessageEvent):
-        """唱歌模式 /sing [-音色名] <歌词>"""
+        """唱歌模式 /sing [-音色名] [-s 风格组] [-p 提示词] <歌词>，支持 (风格) 括号简写"""
         async for item in handle_sing(self, event):
+            yield item
+
+    @filter.command_group("singstyle")
+    def singstyle(self):
+        """唱歌风格组管理（/singstyle show|list|set|reset，管理类命令）"""
+
+    @singstyle.command("show")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def singstyle_show(self, event: AstrMessageEvent):
+        """查看当前对话的唱歌风格设置"""
+        async for item in handle_singstyle_show(self, event):
+            yield item
+
+    @singstyle.command("list")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def singstyle_list(self, event: AstrMessageEvent):
+        """列出全部可用的唱歌风格组"""
+        async for item in handle_singstyle_list(self, event):
+            yield item
+
+    @singstyle.command("set")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def singstyle_set(self, event: AstrMessageEvent):
+        """切换当前对话的唱歌风格组 /singstyle set <组名>"""
+        async for item in handle_singstyle_set(self, event):
+            yield item
+
+    @singstyle.command("reset")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def singstyle_reset(self, event: AstrMessageEvent):
+        """恢复当前对话跟随全局唱歌风格"""
+        async for item in handle_singstyle_reset(self, event):
             yield item
 
     @filter.command("ttsinfo")
@@ -902,5 +777,12 @@ class MiMoTTSPlugin(Star):
 
     @staticmethod
     def _parse_cmd(event: AstrMessageEvent, cmd: str) -> str:
-        """从消息中提取命令参数部分。"""
-        return event.message_str.strip()[len(cmd) :].strip()
+        """从消息中提取命令参数部分（兼容 @bot 后缀与无斜杠写法）。"""
+        raw = str(event.message_str or "").strip()
+        base = cmd.lstrip("/")
+        m = re.match(
+            rf"^/?{re.escape(base)}(?:@[^\s]+)?(?:\s+|$)", raw, re.IGNORECASE
+        )
+        if m:
+            return raw[m.end():].strip()
+        return raw[len(cmd):].strip()

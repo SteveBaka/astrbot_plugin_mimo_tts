@@ -40,6 +40,13 @@
 
 安装后在插件管理中启用并配置插件。
 
+## 快速开始
+
+1. **填 API Key**：插件配置 →「API 设置」→ 填入 `api_key`（MiMO 开放平台获取）并保存；
+2. **直接体验**：默认开启自动 TTS（LLM 回复自动生成语音）；`/mimo_say 你好呀` 手动合成，`/tts_help` 查看常用命令；
+3. **进阶玩法**：`/presetlist` 一键预设风格、`/sing 小星星亮晶晶` 唱歌（风格库见「唱歌优化」）、`/voicegen 温柔甜美` 一键创建设计音色、`/voiceclone <ID> <音频路径>` 声音克隆；
+4. **可视化操作**：Voice Studio 插件页面支持试听、音色/配置/会话管理、日志查看。
+
 ## 配置
 
 > 补充说明：v1.3.0之后本插件支持在鉴权上同时兼容 `api-key` 与 `Authorization: Bearer <API_KEY>` 两种请求头写法，以适配 MiMO 原生平台和部分 OpenAI / NewAPI 兼容代理；原有 `api-key` 方式仍然保留。
@@ -56,21 +63,35 @@
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
 | `emotion_override` | 情感覆盖(auto=自动) | - |
+| `tts_example_inject` | 普通 TTS 风格示例注入（P2：按情感匹配示例池并入 user 通道；默认关） | `false` |
 | `tts_output_mode` | TTS 输出来源模式（default/design/clone） | `default` |
 | `design_model` | 音色设计模型 | `mimo-v2.5-tts-voicedesign` |
-| `design_voice_description` | 设计音色描述 | - |
+| `design_voice_description` | 设计音色描述：可填 style_examples 分类名精确引用（如"温柔甜美"，自动补全词表提示+画面感示例，快速切换），或自由描述（官方词自动匹配示例池） | - |
+| `style_examples` | 风格示例池（导演模式先导，JSON：name/words/examples；design 描述命中风格词时自动并入参考示例） | 内置 6 类 |
 | `clone_model` | 音色克隆模型 | `mimo-v2.5-tts-voiceclone` |
 | `clone_voice_id` | 克隆音色 ID | - |
 | `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
 | `clone_audio_tags` | 克隆音色音频标签控制 | - |
-| `sing_voice` | 唱歌模式默认音色（下拉选择） | 空（使用当前音色） |
+| `sing_voice` | 唱歌模式默认音色（预置音色名或风格库组名，组名自动用其绑定 voice） | 空（使用当前音色） |
+| `sing_styles` | 唱歌风格库（JSON，内置"小雪/小花"双组预设；tags 演绎词；style_tags 风格标签词；voice/speed/pitch 可选预设） | 内置示例 |
+| `sing_lyrics_polish` | 唱歌歌词 LLM 润色（关闭零影响） | `false` |
+| `sing_polish_llm_provider` | 唱歌润色 LLM Provider（留空回退通用润色 Provider） | 空 |
+| `sing_style_source` | 风格注入源（prompt=user 自然语言描述，默认，官方唱歌风格通道；tag=assistant 风格标签注入，实验；off=关闭风格注入） | `prompt` |
+| `sing_polish_timeout` | 润色 LLM 超时（秒，0=不限） | `20` |
+| `sing_polish_cache_ttl` | 润色结果缓存（秒，0=关闭）；key 含模板/例句指纹，改 `sing_direct_prompt`/`sing_tag_prompt`/`style_examples` 后立即换缓存 | `600` |
+| `sing_tag_prompt` | 风格标签筛选提示词（专业筛选专家，`{style}`/`{text}` 占位符；留空用内置新模板） | 内置模板 |
+| `sing_direct_prompt` | 演唱描述提示词（user 通道，专业演唱指导，`{text}`/`{style}` 占位符；留空用内置新模板） | 内置模板 |
+| `nl_sing_enabled` | 自然语言触发唱歌（正则快路径） | `false` |
+| `nl_sing_cooldown` | 自然语言唱歌冷却（秒，0=不限） | `30` |
+| `nl_sing_tool` | NL 唱歌 LLM 工具兜底（与 nl_sing_enabled 同开） | `false` |
 | `enable_segmentation` | 启用文本分段 TTS | `false` |
 | `segment_pattern` | 分段规则（sentence/paragraph/comma/mixed） | `sentence` |
 | `segment_max_count` | 分段数量上限 | `10` |
 | `segment_voice_probability` | 分段语音输出概率（0.0~1.0） | `1.0` |
 | `enable_voice_polish` | 启用 LLM 音色润色 | `false` |
 | `polish_llm_provider` | 润色 LLM Provider（留空用当前模型） | - |
-| `polish_prompt` | 润色提示词（`{text}` 为原文占位符） | - |
+| `polish_prompt` | 润色提示词（专业语音润色专家，`{text}` 为原文占位符；留空用内置新模板） | - |
+| `optimize_text_preview` | 官方智能润色（仅设计模式，与 LLM 润色二选一） | `false` |
 
 ### 输出模式说明
 
@@ -106,10 +127,46 @@
 
 ### 唱歌
 ```
-/sing [-音色名] <歌词>
+/sing [-音色名] [-s 风格组] [-p "提示词"] <歌词>
+/sing (风格) <歌词>
 ```
 
-> 唱歌模式仅由 `/sing` 单次触发，执行后自动恢复原始设置，避免普通即时合成与自动语音输出被持续污染。支持通过 `-音色名` 临时指定唱歌音色（如 `/sing -冰糖 小星星`），优先级：命令参数 > 当前用户音色 > 插件配置 `sing_voice`。
+> 唱歌模式仅由 `/sing` 单次触发，执行后自动恢复原始设置。音色优先级：命令参数 > 风格组绑定 voice > 当前用户音色 > 插件配置 `sing_voice`。
+>
+> **风格优先级链**：`-p` 提示词 / `(风格)` 括号词（同级叠加）> `-s` 风格组 > 会话风格组（`/singstyle set`）> 仅 `(唱歌)` 标签（自动注入，无全局兜底）。`-p` 覆盖组内风格描述但组内静态标签与绑定音色仍生效。
+>
+> 风格组在插件配置「唱歌优化」的 `sing_styles` 中定义（JSON）：`[{"name":"小雪","style":"声音清澈，温柔甜美","tags":"轻笑","voice":"茉莉"}]`。各字段：`tags` 演绎词（顿号分隔，转为 user 通道自然语言指令"演唱中自然融入轻笑"，不进入歌词）；`style_tags` 风格标签词（顿号分隔，`tag` 模式实验性注入）；`voice` 组绑定音色（可省略）；`speed`（0.5~2.0）/ `pitch`（整数半音）组内演绎参数（可省略）。
+>
+> **风格表达（双通道）**：默认「prompt」模式——风格与演唱质感由 **user 自然语言通道**表达（官方唱歌风格通道）：组 `style` 描述 + 画面感演唱描述（开启歌词润色时由 LLM 生成，官方示例同构："像…一样"+节奏收尾）。「tag」模式（已收窄）：实测矩阵（v2.2.0）证明唱歌模式**不识别** `(唱歌 词…)` 任何风格标签组合——`(唱歌 温柔 甜美)`/`(唱歌 温柔，甜美)` 朗读+异常发音、`(唱歌)(温柔)(甜美)` 前半段杂音、`(唱歌 温柔)` 感情朗读，仅纯 `(唱歌)` 正常唱歌——故 tag 模式现仅收集风格词记日志、不注入（效果同 off）；`style_tags` 字段与官方词表漏斗保留，供未来非唱歌场景（voicedesign/clone）复用。`sing_style_source` 三态（`prompt` 默认 / `tag` 已收窄 / `off` 仅 (唱歌)）。
+
+#### 关于唱歌与语速/音高（官方文档对齐说明）
+
+官方文档**未说明**唱歌模式支持语速/音高/情感参数（"语速可灵活调整"的原文上下文是普通播报）。插件提供两条实验性路径，均走官方"自然语言控制"通道、效果以实测为准：① 会话级 `/speed`/`/pitch` 一并注入唱歌控制指令；② **风格组预设**——`sing_styles` 每项可加 `"speed": 1.1`（0.5~2.0）与 `"pitch": 2`（-12~12），选中该组唱歌时自动覆盖（仅本次合成、不持久化）。
+
+### 自然语言触发唱歌（可选）
+
+开启「唱歌优化」中的 `自然语言触发唱歌` 后，@机器人 说以下句式直接演唱（无需斜杠命令，零 LLM 依赖）：
+
+```text
+@bot 用小雪的声线唱 晚风轻拂过脸庞，轻轻吹过了脸颊   → 用风格组"小雪"演唱
+@bot 用茉莉的声音唱 小星星亮晶晶                     → 用预置音色"茉莉"演唱
+@bot 唱一首晚风轻拂过脸庞，轻轻吹过了脸颊             → 默认链路演唱
+```
+
+> 防误触：风格/音色名需已存在（未命中会回复可用列表）；无风格句式要求歌词 ≥4 字且非疑问句（"你会唱歌吗"不触发）；同一对话有冷却（默认 30 秒）。
+>
+> 再开启「NL 唱歌 LLM 工具兜底」后，正则未命中的自由措辞（如"来一段小雪唱的"）由 LLM 工具解析演唱（后台合成不阻塞回复，未命中风格名自动作为一次性提示词）。需确认 WebUI 工具面板中 `mimo_sing_song` 已启用。
+
+### 唱歌风格组（管理）
+```
+/singstyle            # 查看当前对话风格设置（= show）
+/singstyle show       # 同上
+/singstyle list       # 列出全部风格组
+/singstyle set <组名>  # 切换本对话风格组（持久）
+/singstyle reset      # 恢复跟随全局
+```
+
+> 会话级隔离：不同对话可各自选择不同风格组（不选 = 跟随默认唱歌链路）。开启 `sing_lyrics_polish` 后，唱歌前会调用 LLM 生成**画面感演唱描述**（默认 user 通道，注入控制指令，歌词保持纯净；实测唱歌中 `[]` 音频标签会被当作歌词唱出，故歌词文本永不插入标签）。
 
 ### 20 种情感
 ```
@@ -157,7 +214,9 @@
 /ttsswitch <模式>          # 切换 default / design / clone 输出模式
 /voiceclone <ID> <路径>    # 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）
 /voiceclone（无参数）       # 列出所有已注册的克隆音色
-/voicegen <ID> <描述>      # 声音设计
+/voicegen <ID> <描述>      # 声音设计（描述可填 style_examples 分类名，自动启用词表提示+画面感例句）
+/voicegen <分类名>         # 示例池分类名一键注册并切换设计音色（如 /voicegen 温柔甜美）
+/voicegen cancel <音色名>  # 取消注册设计音色（当前使用中自动回退默认音色）
 ```
 
 #### 声音设计（VoiceDesign）
@@ -168,6 +227,9 @@
 - `mimo-v2.5-tts-voicedesign` 会直接读取 `user` 消息中的音色描述文本来生成定制音色，不依赖普通 TTS 的预置 `audio.voice`。
 - 当输出模式切换为 `design` 时，插件会改用 `design_model` 发起合成，并优先采用当前设计音色描述或配置中的 `design_voice_description`。
 - 若使用 `/voicegen <ID> <描述>`，插件会记录这条描述，之后切到 `design` 模式时可继续按该描述进行设计音色朗读。
+- **一键注册（v2.2.4）**：`/voicegen <分类名>`（如 `/voicegen 温柔甜美`）——未注册但精确命中风格示例池分类名时，自动登记为设计音色并切换（方案 A：完整词表提示+画面感例句随示例池条目自动生效）；已注册后再执行走普通切换，不重复注册。示例池 6 类风格一键变成可切换的设计音色（`/voice 温柔甜美` 直接切）。
+- **删除（v2.2.4）**：`/voicegen cancel <音色名>` 取消注册设计音色；当前正在使用该音色时自动回退默认音色、输出模式切回「默认」。
+- **WebUI 试听一键保存（v2.2.5）**：Voice Studio 合成页选择「设计」模式后出现「设计描述」输入框——改描述即实时试听（`/tts` 接口按 `design_description` override，仅本次合成不落库）；试听满意点「保存为设计音色」（ID 留空用描述）→ 注册并自动选中，随时在「音色」下拉切换回听。调描述 → 试听 → 保存，设计音色体验闭环。
 
 #### 声音克隆（VoiceClone）
 
@@ -185,7 +247,7 @@
 - `/voiceclone` 不会再调用不存在的"预注册接口"；插件会在真正合成时，将参考音频转成 `data:{MIME_TYPE};base64,...` 后通过 `chat/completions` 的 `audio.voice` 传给官方 `mimo-v2.5-tts-voiceclone` 模型。
 - 执行 `/voiceclone` 后，插件会自动记录该参考音频路径，并可配合 `/ttsswitch clone` 进入克隆输出模式。
 - 支持通过以下两个配置项细化克隆音色的输出风格（现可以通过开启LLM 音色润色功能自动调用）：
-  - `clone_style_prompt`：自然语言风格控制
+  - `clone_style_prompt`：自然语言风格控制（v2.2.0 起描述中的官方风格词如"温柔/磁性"自动提取并追加分类结构化提示）
   - `clone_audio_tags`：音频标签控制
 - 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
 - `/voiceclone` 还支持以下子命令：
@@ -245,7 +307,8 @@ AstrBot/
 | 命令 | 简要描述 | 仅管理员 |
 |------|---------|:--------:|
 | `/mimo_say` | 即时合成语音 | 否 |
-| `/sing` | 唱歌模式 | 否 |
+| `/sing` | 唱歌模式（-音色/-s 风格组/-p 提示词/括号简写） | 否 |
+| `/singstyle` | 唱歌风格组管理（show/list/set/reset） | ✅ |
 | `/ttsinfo` | 查看插件版本与功能信息 | 否 |
 | `/ttsraw` | 纯文本合成（不带情感） | ✅ |
 | `/tts_off` | 关闭当前对话自动 TTS | ✅ |
@@ -269,7 +332,7 @@ AstrBot/
 | `/voices` | 列出所有内置音色 | ✅ |
 | `/ttsswitch` | 切换 TTS 输出模式 | ✅ |
 | `/voiceclone` | 声音克隆 | ✅ |
-| `/voicegen` | 声音设计 | ✅ |
+| `/voicegen` | 声音设计（分类名一键注册 / cancel 删除） | ✅ |
 | `/ttsformat` | 设置音频输出格式 | ✅ |
 | `/ttsconfig` | 查看当前会话 TTS 配置 | ✅ |
 
@@ -308,8 +371,24 @@ AstrBot/
 # 唱歌模式指定音色
 /sing -冰糖 小星星，亮晶晶，满天都是小星星
 
+# 唱歌模式用风格组（需先在配置 sing_styles 添加）
+/sing -s 小雪 晚风轻拂过脸庞，轻轻吹过了脸颊
+
+# 唱歌模式一次性提示词 / 括号简写
+/sing -p "欢快地" 小星星，亮晶晶
+/sing (温柔) 晚风轻拂过脸庞，轻轻吹过了脸颊
+
 # 快速切换参数
 /mimo_say 滚！ -emotion angry -speed 1.3 -stress on
+
+# 声音设计：示例池分类名一键注册并切换（方案 A：词表提示+画面感例句自动生效）
+/voicegen 温柔甜美
+
+# 声音设计：自定义描述注册
+/voicegen 我的声音 像薄荷糖一样清新
+
+# 取消设计音色注册（当前使用中自动回退默认音色）
+/voicegen cancel 我的声音
 ```
 
 ## 控制维度总览
@@ -342,6 +421,12 @@ AstrBot/
 - 资源释放：插件卸载时自动关闭 HTTP session 等资源，避免连接泄漏。
 
 ## 更新日志
+
+- 2026年8月16日，v2.2.9更新：润色输出通道（user 演唱指导 / assistant 标签实验）+ NL 监听器优先级拦截实验；详见 CHANGELOG.md。
+
+- 2026年8月16日，v2.2.2更新：自然语言触发唱歌（正则快路径）、WebUI 唱歌通道、命令 @bot 后缀归一化；修复风格库静态标签被唱出（转 user 通道自然语言）、JSON 提示换行；详见 CHANGELOG.md。
+
+- 2026年8月16日，v2.2.0更新：唱歌模式增强——风格库（JSON 配置）、`/sing -s/-p/(风格)` 参数、`/singstyle` 会话级风格组管理、歌词 LLM 润色（默认关）、Voice Studio 唱歌配置分区、统一 flag 解析器；详见 CHANGELOG.md。
 
 - 2025年4月24日，初版发布，**TTS**基本功能可以使用。目前尚未测试**VoiceDesign**与**VoiceClone**功能。
 - 2025年4月26日，v1.2.0更新：

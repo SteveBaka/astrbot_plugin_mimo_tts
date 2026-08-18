@@ -59,18 +59,12 @@ def _split_styles(raw: str) -> list[str]:
     return [s.strip() for s in re.split(r"[\s,，、]+", raw or "") if s.strip()]
 
 
-def apply_singing_tag(text: str) -> tuple[str, list[str]]:
-    """归一化开头的唱歌/风格标签，返回 (最终文本, 附加风格词列表)。
+def extract_leading_styles(text: str) -> tuple[str, list[str]]:
+    """提取文本开头的风格括号（唱歌标签/纯风格括号），返回 (无括号正文, 风格词列表)。
 
-    assistant 文本只保留精确 "(唱歌)" 标签；用户在歌词开头写的风格括号
-    —— "(温柔)歌词"、"(唱歌 温柔)歌词"、"(唱歌)(温柔)歌词" —— 统一拆出
-    风格词，由调用方移入 user 角色控制指令（官方风格控制通道）。
-    守卫：风格括号内容不含句读、且每个词 ≤8 字，否则视为歌词原文保留。
+    不添加 "(唱歌)" 前缀；守卫同 apply_singing_tag（无句读、每词 ≤8 字）。
     """
     stripped = text.lstrip()
-    if not stripped:
-        return text, []
-
     extras: list[str] = []
     while True:
         m = _SINGING_TAG_RE.match(stripped)
@@ -88,8 +82,39 @@ def apply_singing_tag(text: str) -> tuple[str, list[str]]:
                 stripped = stripped[s.end():].lstrip()
                 continue
         break
+    return stripped, extras
 
-    return f"(唱歌){stripped}", extras
+
+def apply_singing_tag(text: str) -> tuple[str, list[str]]:
+    """归一化开头的唱歌/风格标签，返回 (最终文本, 附加风格词列表)。
+
+    assistant 文本只保留精确 "(唱歌)" 标签；用户在歌词开头写的风格括号
+    —— "(温柔)歌词"、"(唱歌 温柔)歌词"、"(唱歌)(温柔)歌词" —— 统一拆出
+    风格词，由调用方移入 user 角色控制指令（官方风格控制通道）。
+    """
+    stripped = text.lstrip()
+    if not stripped:
+        return text, []
+    body, extras = extract_leading_styles(stripped)
+    return f"(唱歌){body}", extras
+
+
+def sanitize_polished_text(original: str, polished: str, max_ratio: float = 3.0) -> str:
+    """润色输出卫生（sing-mode-feature.md §2.5）：剥代码围栏/包裹引号 + 长度健全性校验。
+
+    越界改写（超原文 max_ratio 倍）视为不可信，返回空串由调用方回退原文。
+    """
+    s = str(polished or "").strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```[a-zA-Z]*\s*", "", s)
+        s = re.sub(r"\s*```\s*$", "", s).strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'“”‘’":
+        s = s[1:-1].strip()
+    if not s:
+        return ""
+    if len(s) > len(str(original or "")) * max_ratio + 10:
+        return ""
+    return s
 
 
 def extract_auto_tts_text(chain) -> str:

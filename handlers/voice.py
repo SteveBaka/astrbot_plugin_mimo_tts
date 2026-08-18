@@ -10,6 +10,7 @@ from ..core.constants import (
     AUDIO_VALID_EXTENSIONS,
     MIMO_VOICE_LIST,
 )
+from ..core.style_lib import match_style_entry_by_name
 
 
 async def handle_voice(plugin, event: AstrMessageEvent):
@@ -213,8 +214,11 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
         ]
         lines = [
             "用法:",
-            "  /voicegen <ID> <音色描述>  — 注册新设计音色",
+            "  /voicegen <ID> <音色描述>  — 注册新设计音色（描述填示例池分类名如「温柔甜美」"
+            "自动启用完整词表提示+画面感例句）",
+            "  /voicegen <分类名>         — 示例池分类名一键注册并切换设计音色（如 /voicegen 温柔甜美）",
             "  /voicegen <音色名>         — 切换到已注册的设计音色",
+            "  /voicegen cancel <音色名>  — 取消注册某个设计音色",
         ]
         if voices:
             lines.append("\n已注册的设计音色:")
@@ -225,14 +229,72 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
 
     parts = arg.split(maxsplit=1)
 
-    # /voicegen <音色名> — 切换到已注册的设计音色
+    # /voicegen cancel <音色名> — 取消注册设计音色（当前音色自动回退）
+    if arg.lower().startswith("cancel "):
+        vid = arg[7:].strip()
+        if not vid:
+            yield MessageEventResult().message("用法: /voicegen cancel <音色名>")
+            return
+        info = plugin._voice_manager.get_voice(vid)
+        if not info or info.get("model") != "voicedesign":
+            yield MessageEventResult().message(f"[X] 未找到已注册的设计音色: {vid}")
+            return
+        plugin._voice_manager.remove_voice(vid)
+        if str(plugin.config.design_voice_id or "").strip() == vid:
+            plugin.config.design_voice_id = ""
+        uid, _ = plugin._get_event_settings(event)
+        us = plugin._get_user_settings(uid)
+        if us.get("voice") == vid:
+            us["voice"] = plugin.config.default_voice or "mimo_default"
+            us["tts_mode"] = "default"
+            plugin._persist_current_state()
+            yield MessageEventResult().message(
+                f"[✓] 已取消注册设计音色: {vid}\n"
+                f"  当前音色已自动回退为: {us['voice']}，输出模式已切回「默认」"
+            )
+        else:
+            yield MessageEventResult().message(f"[✓] 已取消注册设计音色: {vid}")
+        return
+
+    # /voicegen <音色名> — 切换到已注册的设计音色；
+    # 未注册但命中示例池分类名时一键注册并切换（§14.5 方案 A）
     if len(parts) == 1:
         vid = parts[0]
         info = plugin._voice_manager.get_voice(vid)
         if not info or info.get("model") != "voicedesign":
+            entry = match_style_entry_by_name(vid, plugin.config.style_examples)
+            if not entry:
+                yield MessageEventResult().message(
+                    f"[X] 未找到已注册的设计音色: {vid}\n"
+                    "请先使用 /voicegen <ID> <音色描述> 注册，"
+                    "或直接填 style_examples 分类名（如 温柔甜美）一键注册"
+                )
+                return
+            provider = plugin._ensure_provider()
+            if not provider:
+                yield MessageEventResult().message("API Key 未配置。")
+                return
+            ok = await provider.design_voice(vid, vid, model=plugin.config.design_model)
+            if not ok:
+                yield MessageEventResult().message(
+                    f"[X] 设计音色登记失败：{provider.last_error or '请查看日志。'}"
+                )
+                return
+            plugin._voice_manager.register_voice(
+                vid, name=vid, model="voicedesign", description=vid
+            )
+            plugin.config.set("design_enabled", True)
+            plugin.config.design_voice_id = vid
+            plugin.config.set("design_voice_description", vid)
+            uid, _ = plugin._get_event_settings(event)
+            uset = plugin._get_user_settings(uid)
+            uset["voice"] = vid
+            uset["tts_mode"] = "design"
+            plugin._persist_current_state()
             yield MessageEventResult().message(
-                f"[X] 未找到已注册的设计音色: {vid}\n"
-                "请先使用 /voicegen <ID> <音色描述> 注册"
+                f"[✓] 已一键注册设计音色: {vid}（示例池分类名 · 方案 A）\n"
+                f"  已切换当前音色为: {vid}，输出模式「设计」\n"
+                "  完整词表提示与画面感例句将随示例池条目自动生效"
             )
             return
         uid, _ = plugin._get_event_settings(event)
@@ -268,10 +330,16 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
         uset["voice"] = vid
         uset["tts_mode"] = "design"
         plugin._persist_current_state()
+        hint = ""
+        if match_style_entry_by_name(desc, plugin.config.style_examples):
+            hint = (
+                "\n  已识别示例池分类名（方案 A）：完整词表提示与"
+                "画面感例句将随示例池条目自动生效"
+            )
         yield MessageEventResult().message(
             f"[✓] 已登记设计音色: {vid}\n"
             f"  输出模式已自动切换为「设计」，可直接使用 TTS\n"
-            f"  配置面板已同步更新描述信息"
+            f"  配置面板已同步更新描述信息{hint}"
         )
     else:
         yield MessageEventResult().message(
