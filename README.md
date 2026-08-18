@@ -71,7 +71,7 @@
 | `sing_polish_llm_provider` | 唱歌润色 LLM Provider（留空回退通用润色 Provider） | 空 |
 | `sing_style_source` | 风格注入源（prompt=user 自然语言描述，默认，官方唱歌风格通道；tag=assistant 风格标签注入，实验；off=关闭风格注入） | `prompt` |
 | `sing_polish_timeout` | 润色 LLM 超时（秒，0=不限） | `20` |
-| `sing_polish_cache_ttl` | 润色结果缓存（秒，0=关闭） | `600` |
+| `sing_polish_cache_ttl` | 润色结果缓存（秒，0=关闭）；key 含模板/例句指纹，改 `sing_direct_prompt`/`sing_tag_prompt`/`style_examples` 后立即换缓存 | `600` |
 | `sing_tag_prompt` | 风格标签筛选提示词（专业筛选专家，`{style}`/`{text}` 占位符；留空用内置新模板） | 内置模板 |
 | `sing_direct_prompt` | 演唱描述提示词（user 通道，专业演唱指导，`{text}`/`{style}` 占位符；留空用内置新模板） | 内置模板 |
 | `nl_sing_enabled` | 自然语言触发唱歌（正则快路径） | `false` |
