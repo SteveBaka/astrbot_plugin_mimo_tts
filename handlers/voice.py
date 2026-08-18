@@ -109,6 +109,8 @@ async def handle_voiceclone(plugin, event: AstrMessageEvent):
                 yield MessageEventResult().message(f"[X] 未找到已注册的克隆音色: {vid}")
                 return
             plugin._voice_manager.remove_voice(vid)
+            if str(plugin.config.clone_voice_id or "").strip() == vid:
+                plugin.config.set("clone_voice_id", "")
             uid, _ = plugin._get_event_settings(event)
             us = plugin._get_user_settings(uid)
             if us.get("voice") == vid:
@@ -283,6 +285,8 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
             plugin._voice_manager.register_voice(
                 vid, name=vid, model="voicedesign", description=vid
             )
+            # v2.2.9：写入配置「设计音色风格控制池」（与配置面板联动权威数据源）
+            plugin.config.upsert_design_pool_entry(vid, vid)
             plugin.config.set("design_enabled", True)
             plugin.config.design_voice_id = vid
             plugin.config.set("design_voice_description", vid)
@@ -322,6 +326,8 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
         plugin._voice_manager.register_voice(
             vid, name=vid, model="voicedesign", description=desc
         )
+        # v2.2.9：写入配置「设计音色风格控制池」（与配置面板联动权威数据源）
+        plugin.config.upsert_design_pool_entry(vid, desc)
         plugin.config.set("design_enabled", True)
         plugin.config.design_voice_id = vid
         plugin.config.set("design_voice_description", desc)

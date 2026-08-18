@@ -373,6 +373,15 @@
         "description": "克隆音色音频标签",
         "hint": "多个标签用空格/逗号分隔",
         "default": ""
+      },
+      "clone_style_pool": {
+        "type": "text",
+        "description": "克隆音色风格控制池（JSON）",
+        "hint": "‼️ JSON 数组，最外层必须有 [ ]，缺 [ ] 或全角引号会自动修复，仍错则回退空池。每项：name（克隆音色 ID，与 /voiceclone 登记的 ID 一致）/ style（风格控制，留空=用上方全局 clone_style_prompt）/ audio_tags（音频标签，留空=用全局 clone_audio_tags）。保存后立即联动生效；WebUI 音色管理页同步可观测与行内编辑",
+        "obvious_hint": true,
+        "editor_mode": true,
+        "editor_language": "json",
+        "default": "[]"
       }
     }
   },
@@ -407,6 +416,15 @@
         "editor_mode": true,
         "editor_language": "json",
         "default": "[\n  {\n    \"name\": \"温柔甜美\",\n    \"words\": \"温柔 甜美\",\n    \"examples\": [\"像融化的棉花糖一样温柔，声音软糯清甜，尾音轻轻上扬，语速放缓\",\"像午后阳光里的一杯热牛奶，温柔绵密，每一句都带着甜甜的笑意\"\n    ]\n  },\n  {\n    \"name\": \"磁性低沉\",\n    \"words\": \"磁性 深沉\",\n    \"examples\": [\"像午夜电台的主播，磁性沙哑，句句都带停顿与余韵，语速沉缓\"\n    ]\n  },\n  {\n    \"name\": \"活泼俏皮\",\n    \"words\": \"活泼 俏皮\",\n    \"examples\": [\"像清晨的第一声鸟鸣，轻快雀跃，尾音总爱往上跳一跳，气息明快\"\n    ]\n  },\n  {\n    \"name\": \"清亮空灵\",\n    \"words\": \"清亮 空灵\",\n    \"examples\": [\"像山涧泉水一样清亮通透，尾音带一丝空灵的余韵，气声自然\"\n    ]\n  },\n  {\n    \"name\": \"御姐高冷\",\n    \"words\": \"御姐音 高冷\",\n    \"examples\": [\"像职场精英的从容开场，御姐音高冷利落，语气笃定，句尾干脆\"\n    ]\n  },\n  {\n    \"name\": \"慵懒安逸\",\n    \"words\": \"慵懒\",\n    \"examples\": [\"像午后窝在沙发里的惬意，慵懒随性，语速不紧不慢，尾音拖得舒展\"\n    ]\n  }\n]"
+      },
+      "design_style_pool": {
+        "type": "text",
+        "description": "设计音色风格控制池（JSON）",
+        "hint": "‼️ JSON 数组，最外层必须有 [ ]，缺 [ ] 或全角引号会自动修复，仍错则回退空池。每项：name（设计音色 ID，与 /voicegen 登记的 ID 一致）/ description（音色描述，留空=用上方全局 design_voice_description；可直接填本组「风格示例池」的分类名 name 如 温柔甜美，自动启用词表提示+画面感例句）。保存后立即联动生效；本池与风格示例池同为导演模式素材（角色/场景/指导刻画可直接引用）。WebUI 音色管理页同步可观测与行内编辑",
+        "obvious_hint": true,
+        "editor_mode": true,
+        "editor_language": "json",
+        "default": "[]"
       }
     }
   },

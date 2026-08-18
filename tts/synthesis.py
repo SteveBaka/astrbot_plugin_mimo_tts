@@ -137,19 +137,34 @@ class TTSSynthesizer:
 
         ``design_description``（非空）优先——WebUI 试听一键保存（v2.2.5）
         合成页「设计描述」实时 override，保证"试听的即保存的"；否则回退
-        选中设计音色描述 > 配置 design_voice_description。
+        该设计音色 per-voice description（v2.2.9 起从配置
+        ``design_style_pool`` 读取——配置面板联动权威数据源，留空 = 用
+        全局）> 注册表旧描述（惰性迁移并入池）> 配置 design_voice_description。
+
+        描述可填 style_examples 分类名（方案 A 精确引用），do_tts 设计分支
+        自动补全词表提示与画面感例句。
         """
         if str(design_description or "").strip():
             return str(design_description).strip()
         uset = get_user_settings(uid)
         current_voice = self.resolve_voice(uset["voice"])
-        current_voice_info = self._voice_manager.get_voice(current_voice) or {}
-
-        if str(current_voice_info.get("model", "")).lower() == "voicedesign":
-            desc = str(current_voice_info.get("description", "")).strip()
+        # 配置池权威（联动 conf_schema）
+        entry = self._config.get_design_pool_entry(current_voice)
+        if entry is not None:
+            desc = entry.get("description", "").strip()
             if desc:
                 return desc
-
+            # 条目存在但描述为空 = 显式清空 → 回退全局
+            return self._config.design_voice_description.strip()
+        # 惰性迁移：注册表旧描述（/voicegen 写入）→ 池
+        current_voice_info = self._voice_manager.get_voice(current_voice) or {}
+        if str(current_voice_info.get("model", "")).lower() == "voicedesign":
+            legacy = str(
+                current_voice_info.get("description", "") or ""
+            ).strip()
+            if legacy:
+                self._config.upsert_design_pool_entry(current_voice, legacy)
+                return legacy
         return self._config.design_voice_description.strip()
 
     def resolve_synthesis_target(
@@ -163,6 +178,19 @@ class TTSSynthesizer:
         current_voice_info = self._voice_manager.get_voice(current_voice) or {}
 
         if mode == "clone":
+            # 当前选中音色优先（对齐 design 语义）：用户 /voiceclone <名> 切换
+            # 的音色为准；config.clone_voice_id 仅作兜底（兼容老用法）。
+            if str(current_voice_info.get("model", "")).lower() == "voiceclone":
+                clone_audio_path = self._voice_manager.get_clone_audio_path(
+                    current_voice
+                )
+                if clone_audio_path:
+                    return (
+                        current_voice,
+                        self._config.clone_model,
+                        mode,
+                        clone_audio_path,
+                    )
             clone_voice_id = self._config.clone_voice_id.strip()
             if clone_voice_id:
                 clone_audio_path = self._voice_manager.get_clone_audio_path(
@@ -171,17 +199,6 @@ class TTSSynthesizer:
                 if clone_audio_path:
                     return (
                         clone_voice_id,
-                        self._config.clone_model,
-                        mode,
-                        clone_audio_path,
-                    )
-            if str(current_voice_info.get("model", "")).lower() == "voiceclone":
-                clone_audio_path = self._voice_manager.get_clone_audio_path(
-                    current_voice
-                )
-                if clone_audio_path:
-                    return (
-                        current_voice,
                         self._config.clone_model,
                         mode,
                         clone_audio_path,
@@ -269,9 +286,88 @@ class TTSSynthesizer:
             style_hint=style or None,
         )
 
-    def build_clone_prompt(self, base_prompt: str) -> str:
-        """Build clone-specific prompt with style and audio tags."""
-        style_prompt = self._config.clone_style_prompt.strip()
+    def resolve_clone_style_prompt(
+        self, voice_id: str, override: str = ""
+    ) -> str:
+        """Resolve the clone style control text for the given voice.
+
+        ``override``（非空）优先——WebUI 试听一键保存（v2.2.6）合成页
+        「克隆音色风格控制」实时 override（仅本次合成不落库），保证"试听的
+        即保存的"；否则回退该克隆音色 per-voice style_prompt（v2.2.8 起
+        从配置 ``clone_style_pool`` 读取——配置面板联动权威数据源）>
+        配置 clone_style_prompt。
+
+        兼容迁移：pool 无该音色但注册表旧条目（v2.2.7 写入的
+        style_prompt）存在时，惰性并入 pool（config 联动）并返回。
+        """
+        if str(override or "").strip():
+            return str(override).strip()
+        entry = self._config.get_clone_pool_entry(voice_id)
+        if entry is not None:
+            value = entry.get("style", "").strip()
+            if value:
+                return value
+            # 条目存在但风格为空 = 显式清空 → 回退全局（与"留空=用全局"一致）
+            return self._config.clone_style_prompt.strip()
+        # 惰性迁移：v2.2.7 registry per-voice 旧数据 → pool
+        info = self._voice_manager.get_voice(voice_id) or {}
+        if str(info.get("model", "")).lower() == "voiceclone":
+            legacy = str(info.get("style_prompt", "") or "").strip()
+            legacy_tags = str(info.get("audio_tags", "") or "").strip()
+            if legacy or legacy_tags:
+                self._config.upsert_clone_pool_entry(
+                    voice_id, legacy, legacy_tags
+                )
+                return legacy
+        return self._config.clone_style_prompt.strip()
+
+    def resolve_clone_audio_tags(self, voice_id: str, override: str = "") -> str:
+        """Resolve the clone audio tags text for the given voice.
+
+        ``override``（非空）优先——WebUI 试听（v2.2.7）实时 override；
+        否则回退该克隆音色 per-voice audio_tags（v2.2.8 起从配置
+        ``clone_style_pool`` 读取，联动权威数据源）> 全局 clone_audio_tags。
+        """
+        if str(override or "").strip():
+            return str(override).strip()
+        entry = self._config.get_clone_pool_entry(voice_id)
+        if entry is not None:
+            value = entry.get("audio_tags", "").strip()
+            if value:
+                return value
+            # 条目存在但标签为空 = 显式清空 → 回退全局
+            return self._config.clone_audio_tags.strip()
+        # 惰性迁移：v2.2.7 registry per-voice 旧数据 → pool
+        info = self._voice_manager.get_voice(voice_id) or {}
+        if str(info.get("model", "")).lower() == "voiceclone":
+            legacy_tags = str(info.get("audio_tags", "") or "").strip()
+            legacy_style = str(info.get("style_prompt", "") or "").strip()
+            if legacy_tags or legacy_style:
+                self._config.upsert_clone_pool_entry(
+                    voice_id, legacy_style, legacy_tags
+                )
+                return legacy_tags
+        return self._config.clone_audio_tags.strip()
+
+    def build_clone_prompt(
+        self,
+        base_prompt: str,
+        style_prompt: Optional[str] = None,
+        audio_tags: Optional[str] = None,
+    ) -> str:
+        """Build clone-specific prompt with style and audio tags.
+
+        ``style_prompt`` 为已解析的克隆风格控制文本（调用方
+        ``resolve_clone_style_prompt`` 已处理 override > per-voice > 全局
+        的回退链）；缺省（None）时回退读全局 clone_style_prompt，与旧
+        调用行为一致；显式传空字符串表示"无风格增强"（零追加）。
+
+        ``audio_tags`` 同理（``resolve_clone_audio_tags`` 已处理
+        override > per-voice > 全局；缺省 None 读全局，显式空 = 零标签）。
+        """
+        if style_prompt is None:
+            style_prompt = self._config.clone_style_prompt
+        style_prompt = str(style_prompt or "").strip()
         # 风格示例池方案 A（§14.9 P2）：精确等于示例池分类名 → 条目直取
         # （全部 words 词表提示 + 例句注入，与 design 同构）
         entry = match_style_entry_by_name(style_prompt, self._config.style_examples)
@@ -315,7 +411,9 @@ class TTSSynthesizer:
                     logger.info(
                         "MiMO TTS: clone style examples matched: %s", examples
                     )
-        audio_tags = self._config.clone_audio_tags.strip()
+        if audio_tags is None:
+            audio_tags = self._config.clone_audio_tags
+        audio_tags = str(audio_tags or "").strip()
 
         tag_prompt = ""
         if audio_tags:
@@ -452,7 +550,15 @@ class TTSSynthesizer:
                 self.resolve_synthesis_target(uid, get_user_settings, uset=uset)
             )
             if mode == "clone":
-                prompt = self.build_clone_prompt(prompt)
+                prompt = self.build_clone_prompt(
+                    prompt,
+                    style_prompt=self.resolve_clone_style_prompt(
+                        voice_id, uset.get("clone_style_prompt")
+                    ),
+                    audio_tags=self.resolve_clone_audio_tags(
+                        voice_id, uset.get("clone_audio_tags")
+                    ),
+                )
             elif mode == "design":
                 design_description = self.resolve_design_description(
                     uid, get_user_settings, uset.get("design_description")

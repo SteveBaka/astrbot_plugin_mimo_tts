@@ -76,7 +76,7 @@ async def api_tts_synthesize(plugin):
     for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
                 "laughter", "pause", "dialect", "volume", "tts_mode",
                 "sing", "sing_style", "sing_voice_override",
-                "design_description"):
+                "design_description", "clone_style_prompt"):
         if key in body and body[key] is not None:
             overrides[key] = body[key]
 
@@ -174,18 +174,118 @@ async def api_clone_file(plugin):
 
 
 async def api_design_voice(plugin):
+    """注册设计音色 / 保存 per-voice 设计描述（WebUI 一键保存 + 设计池行内编辑）。
+
+    description 允许为空（设计池行内清空 = 回退全局 design_voice_description）；
+    v2.2.9 起写入配置「设计音色风格控制池」（与配置面板联动权威数据源）。
+    """
     from quart import jsonify, request
 
     body = await request.json
     voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip())
     description = body.get("description", "").strip()[:500]
     name = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("name", voice_id).strip())[:50]
-    if not voice_id or not description:
-        return jsonify({"error": "缺少 voice_id 或描述"}), 400
+    if not voice_id:
+        return jsonify({"error": "缺少 voice_id"}), 400
     plugin._voice_manager.register_voice(
         voice_id, name=name, model="voicedesign", description=description,
     )
+    # v2.2.9：写入配置「设计音色风格控制池」（与配置面板联动权威数据源）
+    plugin.config.upsert_design_pool_entry(voice_id, description)
     return jsonify({"status": "ok", "voice_id": voice_id})
+
+
+async def api_design_style_pool(plugin):
+    """设计音色风格控制池（v2.2.9）：全局描述 + 各设计音色 per-voice 描述。
+
+    数据源为配置 ``design_style_pool``（与配置面板联动）；描述可填
+    style_examples 分类名（方案 A），供 WebUI 音色管理页查看/行内编辑。
+    """
+    from quart import jsonify
+
+    registered = {
+        v.get("voice_id", ""): v.get("name", v.get("voice_id", ""))
+        for v in plugin._voice_manager.list_voices()
+        if str(v.get("model", "")).lower() == "voicedesign"
+    }
+    voices = []
+    for entry in plugin.config.design_style_pool:
+        if entry.get("name") in registered:
+            voices.append({
+                "voice_id": entry.get("name", ""),
+                "name": registered[entry.get("name", "")],
+                "description": entry.get("description", ""),
+            })
+    voices.sort(key=lambda x: x["voice_id"])
+    return jsonify({
+        "global": {
+            "description": str(
+                plugin.config.get("design_voice_description", "") or ""
+            ),
+        },
+        "voices": voices,
+    })
+
+
+async def api_clone_style(plugin):
+    """保存/更新克隆音色的 per-voice 风格控制（WebUI 试听一键保存，C2）。
+
+    仅允许对已注册的克隆音色更新 style_prompt / audio_tags 字段；v2.2.8 起
+    写入配置 ``clone_style_pool``（与配置面板联动权威数据源），不再写
+    注册表条目（register_voice 保留原 name / audio_path 不动）。
+    """
+    from quart import jsonify, request
+
+    body = await request.json
+    voice_id = _re.sub(
+        r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip()
+    )
+    style = body.get("style", "").strip()[:500]
+    audio_tags = body.get("audio_tags", "").strip()[:500]
+    if not voice_id:
+        return jsonify({"error": "缺少 voice_id"}), 400
+    info = plugin._voice_manager.get_voice(voice_id)
+    if not info or str(info.get("model", "")).lower() != "voiceclone":
+        return jsonify({"error": f"未找到克隆音色: {voice_id}"}), 404
+    plugin.config.upsert_clone_pool_entry(voice_id, style, audio_tags)
+    return jsonify({"status": "ok", "voice_id": voice_id})
+
+
+async def api_clone_style_pool(plugin):
+    """克隆音色风格控制池（v2.2.7）：全局风格/标签 + 各克隆音色 per-voice 记录。
+
+    供 WebUI 音色管理页查看/管理"音色风格控制标签池"——展示每个克隆
+    音色保存的风格控制与音频标签（空 = 用全局）。v2.2.8 起数据源为配置
+    ``clone_style_pool``（与配置面板联动）。
+    """
+    from quart import jsonify
+
+    registered = {
+        v.get("voice_id", ""): v.get("name", v.get("voice_id", ""))
+        for v in plugin._voice_manager.list_voices()
+        if str(v.get("model", "")).lower() == "voiceclone"
+    }
+    voices = []
+    for entry in plugin.config.clone_style_pool:
+        if entry.get("name") in registered:
+            voices.append({
+                "voice_id": entry.get("name", ""),
+                "name": registered[entry.get("name", "")],
+                "style_prompt": entry.get("style", ""),
+                "audio_tags": entry.get("audio_tags", ""),
+            })
+    voices.sort(key=lambda x: x["voice_id"])
+    return jsonify({
+        "global": {
+            "style_prompt": str(
+                plugin.config.get("clone_style_prompt", "") or ""
+            ),
+            "audio_tags": str(
+                plugin.config.get("clone_audio_tags", "") or ""
+            ),
+        },
+        "voices": voices,
+    })
 
 
 async def api_delete_voice(plugin):
@@ -197,6 +297,14 @@ async def api_delete_voice(plugin):
         return jsonify({"error": "缺少 voice_id"}), 400
     ok = plugin._voice_manager.remove_voice(voice_id)
     if ok:
+        # 联动清理：删除音色时同步移除克隆/设计风格控制池条目；
+        # 清理失败不影响删除本身（防御性，v2.2.9）
+        for cleaner in ("remove_clone_pool_entry", "remove_design_pool_entry"):
+            try:
+                fn = getattr(plugin.config, cleaner)
+                fn(voice_id)
+            except Exception:
+                pass
         return jsonify({"status": "ok"})
     return jsonify({"error": f"未找到音色: {voice_id}"}), 404
 

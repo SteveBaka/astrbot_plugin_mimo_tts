@@ -1,6 +1,6 @@
 # astrbot_plugin_mimo_tts
 
-[![AstrBot](https://img.shields.io/badge/AstrBot-v4.5.7+-blue)](https://github.com/AstrBotDevs/AstrBot)
+[![AstrBot](https://img.shields.io/badge/AstrBot-v4.26.0+-blue)](https://github.com/AstrBotDevs/AstrBot)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 基于 [MiMO-V2.5-TTS](https://platform.xiaomimimo.com/docs/usage-guide/speech-synthesis-v2.5) 的精细化语音合成插件，适配 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 聊天机器人框架。
@@ -230,6 +230,7 @@
 - **一键注册（v2.2.4）**：`/voicegen <分类名>`（如 `/voicegen 温柔甜美`）——未注册但精确命中风格示例池分类名时，自动登记为设计音色并切换（方案 A：完整词表提示+画面感例句随示例池条目自动生效）；已注册后再执行走普通切换，不重复注册。示例池 6 类风格一键变成可切换的设计音色（`/voice 温柔甜美` 直接切）。
 - **删除（v2.2.4）**：`/voicegen cancel <音色名>` 取消注册设计音色；当前正在使用该音色时自动回退默认音色、输出模式切回「默认」。
 - **WebUI 试听一键保存（v2.2.5）**：Voice Studio 合成页选择「设计」模式后出现「设计描述」输入框——改描述即实时试听（`/tts` 接口按 `design_description` override，仅本次合成不落库）；试听满意点「保存为设计音色」（ID 留空用描述）→ 注册并自动选中，随时在「音色」下拉切换回听。调描述 → 试听 → 保存，设计音色体验闭环。
+- **设计音色风格控制池（v2.2.9）**：配置面板「声音设计 → 设计音色风格控制池（JSON）」是 design 音色描述的权威配置点（与「唱歌风格库」同款 JSON 编辑器：`name`=设计音色 ID、`description`=音色描述，**可填「风格示例池」分类名如「温柔甜美」精确引用**，留空 = 用全局 `design_voice_description`）——改配置即合成生效；`/voicegen` 与 WebUI「保存为设计音色」写入同一配置池，双向联动；音色管理页「设计音色风格控制池」区块可行内编辑并复制整池 JSON 备份。该池 + 风格示例池 + 克隆音色风格控制池构成导演模式素材库（角色/场景/指导三维刻画可直接引用）。
 
 #### 声音克隆（VoiceClone）
 
@@ -247,12 +248,14 @@
 - `/voiceclone` 不会再调用不存在的"预注册接口"；插件会在真正合成时，将参考音频转成 `data:{MIME_TYPE};base64,...` 后通过 `chat/completions` 的 `audio.voice` 传给官方 `mimo-v2.5-tts-voiceclone` 模型。
 - 执行 `/voiceclone` 后，插件会自动记录该参考音频路径，并可配合 `/ttsswitch clone` 进入克隆输出模式。
 - 支持通过以下两个配置项细化克隆音色的输出风格（现可以通过开启LLM 音色润色功能自动调用）：
-  - `clone_style_prompt`：自然语言风格控制（v2.2.0 起描述中的官方风格词如"温柔/磁性"自动提取并追加分类结构化提示）
+  - `clone_style_prompt`：自然语言风格控制（v2.2.0 起描述中的官方风格词如"温柔/磁性"自动提取并追加分类结构化提示；可填 `style_examples` 分类名如「温柔甜美」精确引用示例池条目）
   - `clone_audio_tags`：音频标签控制
 - 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
+- **WebUI 试听一键保存（v2.2.6）**：Voice Studio 合成页克隆模式下，「克隆音色风格控制」输入框随当前所选音色联动显示其专属风格（无则显示全局），实时试听、仅本次合成；点「保存为音色风格」将当前风格保存为该克隆音色的专属风格。
+- **克隆音色风格控制池（v2.2.7/v2.2.8）**：**配置面板「声音克隆 → 克隆音色风格控制池（JSON）」是 per-voice 风格/标签的权威配置点**（与「唱歌风格库」同款 JSON 编辑器：`name`=克隆音色 ID、`style`=风格控制、`audio_tags`=音频标签，留空 = 用全局）——改配置即合成立即生效；WebUI 合成页/音色管理页的保存写入同一配置池，双向联动；音色管理页风格控制池区块可行内编辑并复制整池 JSON 备份。
 - `/voiceclone` 还支持以下子命令：
   - `/voiceclone <音色名>`：快速切换到已注册的克隆音色（无需重新指定音频路径）。
-  - `/voiceclone cancel <音色名>`：取消注册某个克隆音色；若当前用户正在使用该音色，会自动回退为默认音色。
+  - `/voiceclone cancel <音色名>`：取消注册某个克隆音色；若当前用户正在使用该音色，会自动回退为默认音色；若该音色是配置中的 `clone_voice_id`，会一并清理（v2.2.6）。
   - `/voiceclone`（无参数）：列出当前所有已注册的克隆音色。
 
 ##### VoiceClone 快速示例

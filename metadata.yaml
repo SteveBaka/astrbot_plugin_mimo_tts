@@ -1,12 +1,12 @@
 name: astrbot_plugin_mimo_tts
 display_name: MiMO TTS
 author: unsuited_
-version: v2.2.5
-desc: 调用 MiMO-V2.5-TTS series 模型的精细化语音合成插件。自动拦截 LLM 回复生成语音，支持 20 种情感、语速/音高调节、声音克隆/设计、文本分段、LLM 音色润色，内置 Voice Studio WebUI 管理界面。
+version: v2.2.9
+desc: 调用 MiMO-V2.5-TTS series 模型的精细化语音合成插件。自动拦截 LLM 回复生成语音，支持 20 种情感、语速/音高调节、唱歌模式（风格库/画面感润色/自然语言触发）、声音克隆与设计（含 per-voice 风格控制池与 WebUI 试听一键保存）、文本分段、LLM 音色润色，内置 Voice Studio WebUI 管理界面。
 icon: mdi-account-voice
 repo: https://github.com/SteveBaka/astrbot_plugin_mimo_tts
 entry: main
-astrbot_version: ">=4.5.7"
+astrbot_version: ">=4.26.0"
 tags:
   - tts
   - mimo

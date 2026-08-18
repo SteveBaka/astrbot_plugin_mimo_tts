@@ -1,5 +1,69 @@
 # CHANGELOG
 
+## 2026-08-18 v2.2.9
+
+### 修复
+
+- **WebUI「已注册音色」删除不可用**（用户反馈）：后端删除逻辑正常（与 `/voiceclone cancel` 同路径），根因是 AstrBot 插件页 webview 中原生 `confirm()` 可能被拦截导致点击无反应——改为**页面内两步确认**（点「删除」→ 按钮变「确认删除/取消」→ 确认后调 `POST /voices/delete`），会话管理页同类问题一并替换；删除成功后同步刷新音色列表与克隆/设计风格控制池；
+- `api_delete_voice` 联动清理扩展为**双池防御性清理**（clone + design 风格控制池条目，清理失败不影响删除）；
+- 克隆/设计池**空条目回退全局**语义统一：`resolve_clone_style_prompt`/`resolve_clone_audio_tags`/`resolve_design_description` 对"条目存在但值为空"现在正确回退全局（此前 v2.2.8 clone 空条目会返回空串，与"留空=用全局"不一致）。
+
+### 新增（设计音色风格控制池，与风格示例池融合供导演模式）
+
+- **配置面板「声音设计」新增「设计音色风格控制池（JSON）」**（与「克隆音色风格控制池」「唱歌风格库」同款 JSON 编辑器）：每项 `name`（设计音色 ID）/ `description`（音色描述，留空 = 用全局 `design_voice_description`；**可直接填本组「风格示例池」分类名 name 如「温柔甜美」**，自动启用词表提示+画面感例句——与 `/voicegen 温柔甜美` 方案 A 同链路）；
+- **配置池成为 design 音色描述的权威数据源**：`resolve_design_description` 改从 `config.design_style_pool` 读取（override > 池条目 > 注册表旧描述（惰性迁移并入池）> 全局）；`/voicegen` 注册与 WebUI「保存为设计音色」均写入同一配置池（双向联动）；
+- 新接口 `GET /voices/design-style-pool` + 音色管理页「设计音色风格控制池」区块（镜像克隆池：行内编辑描述保存、复制 JSON、全局值只读提示）；`api_design_voice` 允许空描述（行内清空 = 回退全局）；
+- **导演模式素材融合**：本池（per-voice 设计描述）+ 风格示例池（词表/画面感例句）+ 克隆风格控制池（per-voice 风格/标签）三者均为配置面板 JSON 权威源，导演模式（角色/场景/指导三维刻画）可直接引用这些素材。
+
+### 说明
+
+- 行为测试 9/9（新：design 池 normalize/权威/空条目回退/惰性迁移/接口/删除双池清理）+ 回归 10/10 + 11/11 + 12/12 + 9/9；py_compile / ruff / node --check 通过；review_path 0 error（5 warning / 32 info 与既往裁定完全一致，零新增）；
+- **用户实测确认固化（R1-R6 全部通过）**：删除两步确认可用、设计池 JSON 出现、分类名方案 A 生效、WebUI 保存 ↔ 配置面板双向联动、行内编辑生效、命令删除与 WebUI 删除均正常清理池条目；
+- **已知问题（用户决定暂不处理，已存档设计文档 §13.5）**：`enable_voice_polish` 开启时 LLM 音色润色可能扩写正文（deepseek-v4-flash 等小模型不遵守"保持原文不变"约束，擅自补写并自选风格标签）——日志锚点 `voice polish applied, N chars -> M chars`；修复方向：关润色开关 / 换更强 Provider / 插件侧标签剥离+正文还原。
+- **品牌与元数据更新（同版本部署，用户实测确认 S1-S3）**：logo.png 内联 base64 部署到 Voice Studio 侧边栏与关于页标题旁（规避插件页静态资源仅重写 HTML/CSS、Vue 模板内 src 不重写导致的 404——首版相对路径失败显示 alt 文本，已修复）；关于页「功能特性」更新为 16 项；`metadata.yaml` desc 补全 v2.2.x 能力、`astrbot_version` 更新为 `>=4.26.0`；README 徽章同步。版本保持 v2.2.9（force_refresh 同版本部署，配置保留）。
+
+## 2026-08-18 v2.2.8
+
+### 新增（克隆音色风格控制池 → 配置面板联动：conf_schema 为核心）
+
+- **配置面板新增「克隆音色风格控制池（JSON）」**（用户核心需求）：位于「声音克隆」配置分组，与「唱歌风格库」同款 JSON 代码编辑器格式（`type: text` + `editor_mode` + `editor_language: json`），容错解析（缺 `[ ]`/全角引号自动修复，仍错回退空池）。每项 `name`（克隆音色 ID）/ `style`（风格控制，留空 = 用全局 `clone_style_prompt`）/ `audio_tags`（音频标签，留空 = 用全局 `clone_audio_tags`）；
+- **配置池成为 per-voice 风格/标签的权威数据源**：`resolve_clone_style_prompt` / `resolve_clone_audio_tags` 改从 `config.clone_style_pool` 读取（override > 池条目 > 全局）；WebUI「保存为音色风格」与音色管理页风格控制池的保存均写入同一配置池——**配置面板改 → 合成链路立即生效；WebUI 改 → 配置面板同步可见**，双向联动；
+- **合成页联动显示当前音色风格**（用户核心需求）：克隆模式下切换音色时，「克隆音色风格控制」输入框自动显示**该音色已保存的 per-voice 风格**（无则显示全局），便于直接编辑并保存当前音色；输入框定位从"全局预设"改为"当前音色"（保存即写入该音色池条目）；
+- **旧数据惰性迁移**：v2.2.6/v2.2.7 写入注册表条目的 per-voice 数据（`style_prompt`/`audio_tags`），首次合成时自动并入配置池并返回（零数据丢失，之后以配置池为准）；
+- **删除联动**：WebUI 删除克隆音色时同步清理配置池对应条目。
+
+### 说明
+
+- 行为测试 10/10（新，配置池联动/迁移/删除清理）+ 回归 9/9 + 12/12 + 11/11；py_compile / ruff / node --check 通过；review_path 0 error（5 warning / 32 info 与既往裁定完全一致，零新增）；
+- 语义明确：配置面板「声音克隆」分组的 `clone_style_pool` 是**最常用的配置点**（JSON 直改即联动），音色管理页风格控制池是**可观测辅助**（行内编辑同源）；合成页输入框 = 当前音色 per-voice 编辑 + 实时试听。安装后待用户实测（Q1-Q6，见报告 ⓪-28）。
+
+## 2026-08-18 v2.2.7
+
+### 新增（克隆音色风格控制池 + 音频标签 per-voice）
+
+- **合成页输入框更名**：「克隆风格控制」→「克隆音色全局风格控制」，明确该输入框编辑的是全局 `clone_style_prompt`；
+- **音频标签 per-voice 化**：`api_clone_style` 支持同时保存 `style_prompt` 与 `audio_tags`（仅克隆音色，合并保留 audio_path）；新增 `resolve_clone_audio_tags`（override > per-voice `audio_tags` > 全局 `clone_audio_tags`），`build_clone_prompt` 增加 `audio_tags` 参数（缺省读全局，旧调用零变化）——克隆音色专属音频标签（`[笑]` 等）与专属风格一样按音色生效；
+- **音色管理页「克隆音色风格控制池」**（用户需求）：新接口 `GET /voices/clone-style-pool` 返回全局风格/标签 + 各克隆音色已保存的 per-voice 记录（空 = 用全局）；页面新增管理区块——每个克隆音色一行，风格控制与音频标签可**行内编辑并保存**（复用 `api_clone_style`），支持**复制整池 JSON** 备份；修改全局值提示前往「插件配置 → 声音克隆」。
+
+### 说明
+
+- 行为测试 11/11（新）+ 回归 9/9（B）+ 12/12（C1+C2）；py_compile / ruff / node --check 通过；review_path 0 error（5 warning / 32 info 与既往裁定完全一致，零新增）；
+- 安全：`audio_tags` 截断 500、仅克隆音色可写（404 拒绝）、override 走 `_do_tts` 内存合并不落库、池接口只读克隆音色注册表（不含 design）；安装后待用户实测（P1-P6，见报告 ⓪-27）。
+
+## 2026-08-18 v2.2.6
+
+### 新增（clone 体验闭环：WebUI 试听一键保存 + 对称性修复）
+
+- **合成页「克隆风格控制」实时试听**：克隆模式新增风格输入框（默认预填全局 `clone_style_prompt`），`/tts` 接口支持 `clone_style_prompt` override（仅本次合成不落库）——改风格即试听，与 design 侧 v2.2.5 完全对齐；
+- **「保存为音色风格」一键保存**：新接口 `POST /voices/clone-style`，将当前克隆音色的风格控制持久化为 **per-voice style_prompt**（写入音色条目，合并保留原 name / audio_path）——切换克隆音色即切换其专属风格（优先于全局），彻底解决"所有克隆音色共用一份全局风格"；
+- 后端新增 `resolve_clone_style_prompt`（override > per-voice style_prompt > 全局 `clone_style_prompt` 回退链）；`build_clone_prompt` 增加 style_prompt 参数（缺省读全局，旧调用行为不变）；
+- **clone 对称性修复（§14.11.3，B）**：`/voiceclone cancel <名>` 同步清理 `config.clone_voice_id`（对齐 design cancel）；clone 路由改**当前选中音色优先**（`config.clone_voice_id` 仅兜底兼容老用法）——修复"注册 A→B 后切回 A 合成仍用 B"与"删除音色后 clone 模式报错"两个缺陷。
+
+### 说明
+
+- 行为测试 9/9（B 回归）+ 12/12（C1+C2）；py_compile / ruff / node --check 通过；review_path 0 error（5 warning / 32 info 与既往裁定完全一致，零新增）；
+- 安全：保存接口仅允许克隆音色（404 拒绝非克隆/未注册）、合并保留 audio_path 不破坏克隆链路、override 走 `_do_tts` 内存合并不落库；安装后待用户实测（B T1-T4 / C G1-G5，详见报告 ⓪-26）。
+
 ## 2026-08-18 v2.2.5
 
 ### 新增（design 体验闭环：WebUI 试听一键保存）

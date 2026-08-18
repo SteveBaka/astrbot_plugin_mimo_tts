@@ -241,6 +241,110 @@ def find_sing_style(styles: list[dict], name: str) -> Optional[dict]:
     return None
 
 
+def normalize_clone_style_pool(raw: Any) -> list[dict]:
+    """归一化克隆音色风格控制池 → list[{name, style, audio_tags}]。
+
+    输入为 JSON 字符串（text+editor_mode 配置，与 sing_styles 同格式）；
+    v2.2.8 起作为 per-voice 风格/标签的**配置权威数据源**（配置面板联动）。
+    name = 克隆音色 voice_id；style / audio_tags 留空 = 用全局。
+    容错：JSON 解析失败/非法项跳过不整体报错。
+    """
+    if isinstance(raw, list):
+        entries = raw
+    elif isinstance(raw, dict):
+        entries = [raw]
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        parsed = _loads_lenient(text)
+        if parsed is None:
+            return []
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        if not isinstance(parsed, list):
+            return []
+        entries = parsed
+    else:
+        return []
+    items: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            continue
+        items.append({
+            "name": name,
+            "style": str(entry.get("style", "") or "").strip(),
+            "audio_tags": str(entry.get("audio_tags", "") or "").strip(),
+        })
+    return items
+
+
+def find_clone_pool_entry(pool: list[dict], voice_id: str) -> Optional[dict]:
+    """在克隆音色风格控制池中按 voice_id（name 字段）精确查找。"""
+    voice_id = str(voice_id or "").strip()
+    if not voice_id:
+        return None
+    for e in pool:
+        if e.get("name") == voice_id:
+            return e
+    return None
+
+
+def normalize_design_style_pool(raw: Any) -> list[dict]:
+    """归一化设计音色风格控制池 → list[{name, description}]。
+
+    输入为 JSON 字符串（text+editor_mode 配置，与 sing_styles 同格式）；
+    v2.2.9 起作为 design 音色描述的**配置权威数据源**（配置面板联动，
+    与「风格示例池」同组，描述可填分类名触发方案 A，供导演模式素材复用）。
+    name = 设计音色 voice_id；description 留空 = 用全局 design_voice_description。
+    容错：JSON 解析失败/非法项跳过不整体报错。
+    """
+    if isinstance(raw, list):
+        entries = raw
+    elif isinstance(raw, dict):
+        entries = [raw]
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        parsed = _loads_lenient(text)
+        if parsed is None:
+            return []
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        if not isinstance(parsed, list):
+            return []
+        entries = parsed
+    else:
+        return []
+    items: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            continue
+        items.append({
+            "name": name,
+            "description": str(entry.get("description", "") or "").strip(),
+        })
+    return items
+
+
+def find_design_pool_entry(pool: list[dict], voice_id: str) -> Optional[dict]:
+    """在设计音色风格控制池中按 voice_id（name 字段）精确查找。"""
+    voice_id = str(voice_id or "").strip()
+    if not voice_id:
+        return None
+    for e in pool:
+        if e.get("name") == voice_id:
+            return e
+    return None
+
+
 def resolve_sing_style(
     styles: list[dict],
     named: str,
@@ -338,10 +442,12 @@ class ConfigManager:
         "clone_voice_id": "",
         "clone_style_prompt": "",
         "clone_audio_tags": "",
+        "clone_style_pool": "[]",
         # Design settings
         "design_enabled": True,
         "design_model": "mimo-v2.5-tts-voicedesign",
         "design_voice_description": "",
+        "design_style_pool": "[]",
         "style_examples": STYLE_EXAMPLES_PRESET,
         # Presets
         "preset_gentle_female": "温柔的女生音色，轻柔细腻",
@@ -585,6 +691,113 @@ class ConfigManager:
     @property
     def clone_audio_tags(self) -> str:
         return str(self._flat.get("clone_audio_tags", ""))
+
+    @property
+    def clone_style_pool(self) -> list[dict]:
+        """克隆音色风格控制池（v2.2.8）：list[{name, style, audio_tags}]。
+
+        name = 克隆音色 voice_id；作为 per-voice 风格/标签的配置权威数据源，
+        与合成链路联动（resolve_clone_style_prompt / resolve_clone_audio_tags）。
+        """
+        return normalize_clone_style_pool(self._flat.get("clone_style_pool", "[]"))
+
+    def get_clone_pool_entry(self, voice_id: str) -> Optional[dict]:
+        """按克隆音色 voice_id 查风格控制池条目（未配置返回 None）。"""
+        return find_clone_pool_entry(self.clone_style_pool, voice_id)
+
+    def upsert_clone_pool_entry(
+        self, voice_id: str, style: str = "", audio_tags: str = ""
+    ) -> None:
+        """新增或更新克隆音色风格控制池条目（写回配置，与面板联动）。
+
+        条目存在则更新 style/audio_tags；不存在则追加。空值同样落库
+        （= 显式清空该音色 per-voice，回退全局）。
+        """
+        voice_id = str(voice_id or "").strip()
+        if not voice_id:
+            return
+        pool = self.clone_style_pool
+        entry = find_clone_pool_entry(pool, voice_id)
+        if entry is None:
+            pool.append({
+                "name": voice_id,
+                "style": str(style or "").strip(),
+                "audio_tags": str(audio_tags or "").strip(),
+            })
+        else:
+            entry["style"] = str(style or "").strip()
+            entry["audio_tags"] = str(audio_tags or "").strip()
+        self.set(
+            "clone_style_pool",
+            json.dumps(pool, ensure_ascii=False, indent=2),
+        )
+
+    def remove_clone_pool_entry(self, voice_id: str) -> None:
+        """删除克隆音色风格控制池条目（删除音色时联动清理）。"""
+        voice_id = str(voice_id or "").strip()
+        if not voice_id:
+            return
+        pool = self.clone_style_pool
+        kept = [e for e in pool if e.get("name") != voice_id]
+        if len(kept) != len(pool):
+            self.set(
+                "clone_style_pool",
+                json.dumps(kept, ensure_ascii=False, indent=2),
+            )
+
+    @property
+    def design_style_pool(self) -> list[dict]:
+        """设计音色风格控制池（v2.2.9）：list[{name, description}]。
+
+        name = 设计音色 voice_id；作为 design 音色描述的配置权威数据源，
+        与合成链路联动（resolve_design_description）。描述可填
+        style_examples 分类名（方案 A 精确引用），供导演模式素材复用。
+        """
+        return normalize_design_style_pool(
+            self._flat.get("design_style_pool", "[]")
+        )
+
+    def get_design_pool_entry(self, voice_id: str) -> Optional[dict]:
+        """按设计音色 voice_id 查风格控制池条目（未配置返回 None）。"""
+        return find_design_pool_entry(self.design_style_pool, voice_id)
+
+    def upsert_design_pool_entry(
+        self, voice_id: str, description: str = ""
+    ) -> None:
+        """新增或更新设计音色风格控制池条目（写回配置，与面板联动）。
+
+        条目存在则更新 description；不存在则追加。空值同样落库
+        （= 显式清空该音色描述，回退全局 design_voice_description）。
+        """
+        voice_id = str(voice_id or "").strip()
+        if not voice_id:
+            return
+        pool = self.design_style_pool
+        entry = find_design_pool_entry(pool, voice_id)
+        if entry is None:
+            pool.append({
+                "name": voice_id,
+                "description": str(description or "").strip(),
+            })
+        else:
+            entry["description"] = str(description or "").strip()
+        self.set(
+            "design_style_pool",
+            json.dumps(pool, ensure_ascii=False, indent=2),
+        )
+
+    def remove_design_pool_entry(self, voice_id: str) -> None:
+        """删除设计音色风格控制池条目（删除音色时联动清理）。"""
+        voice_id = str(voice_id or "").strip()
+        if not voice_id:
+            return
+        pool = self.design_style_pool
+        kept = [e for e in pool if e.get("name") != voice_id]
+        if len(kept) != len(pool):
+            self.set(
+                "design_style_pool",
+                json.dumps(kept, ensure_ascii=False, indent=2),
+            )
 
     @property
     def design_enabled(self) -> bool:

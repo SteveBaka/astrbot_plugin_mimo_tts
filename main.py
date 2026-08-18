@@ -73,8 +73,11 @@ from .voice.voice_manager import VoiceManager
 from .webapi import (
     api_clone_file,
     api_clone_init,
+    api_clone_style,
+    api_clone_style_pool,
     api_delete_session,
     api_delete_voice,
+    api_design_style_pool,
     api_design_voice,
     api_get_config,
     api_get_constants,
@@ -162,6 +165,9 @@ class MiMoTTSPlugin(Star):
         context.register_web_api(f"/{p}/voices/clone-init", partial(api_clone_init, self), ["POST"], "初始化克隆")
         context.register_web_api(f"/{p}/voices/clone-file", partial(api_clone_file, self), ["POST"], "上传克隆音频")
         context.register_web_api(f"/{p}/voices/design", partial(api_design_voice, self), ["POST"], "注册设计音色")
+        context.register_web_api(f"/{p}/voices/clone-style", partial(api_clone_style, self), ["POST"], "保存克隆音色风格")
+        context.register_web_api(f"/{p}/voices/clone-style-pool", partial(api_clone_style_pool, self), ["GET"], "克隆音色风格控制池")
+        context.register_web_api(f"/{p}/voices/design-style-pool", partial(api_design_style_pool, self), ["GET"], "设计音色风格控制池")
         context.register_web_api(f"/{p}/voices/delete", partial(api_delete_voice, self), ["POST"], "删除音色")
         context.register_web_api(f"/{p}/sessions", partial(api_list_sessions, self), ["GET"], "获取会话配置列表")
         context.register_web_api(f"/{p}/sessions/update", partial(api_update_session, self), ["POST"], "更新会话配置")
