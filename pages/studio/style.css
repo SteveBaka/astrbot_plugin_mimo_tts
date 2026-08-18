@@ -550,6 +550,26 @@ select.select-input { cursor: pointer; appearance: auto; }
   color: var(--text-secondary);
   line-height: 24px;
 }
+.design-tune-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(128,128,128,.18));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.design-tune-block .control-label {
+  margin-bottom: 0;
+}
+.design-tune-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.design-save-id {
+  flex: 1;
+  min-width: 0;
+}
 
 /* ═══════════════════════════════════════
    BUTTONS

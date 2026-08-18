@@ -129,8 +129,18 @@ class TTSSynthesizer:
                 return voice_id
         return self._config.get("default_voice", "mimo_default")
 
-    def resolve_design_description(self, uid: str, get_user_settings) -> str:
-        """Resolve the voice design description for the given uid."""
+    def resolve_design_description(
+        self, uid: str, get_user_settings,
+        design_description: Optional[str] = None,
+    ) -> str:
+        """Resolve the voice design description for the given uid.
+
+        ``design_description``（非空）优先——WebUI 试听一键保存（v2.2.5）
+        合成页「设计描述」实时 override，保证"试听的即保存的"；否则回退
+        选中设计音色描述 > 配置 design_voice_description。
+        """
+        if str(design_description or "").strip():
+            return str(design_description).strip()
         uset = get_user_settings(uid)
         current_voice = self.resolve_voice(uset["voice"])
         current_voice_info = self._voice_manager.get_voice(current_voice) or {}
@@ -181,7 +191,9 @@ class TTSSynthesizer:
             )
 
         if mode == "design":
-            description = self.resolve_design_description(uid, get_user_settings)
+            description = self.resolve_design_description(
+                uid, get_user_settings, uset.get("design_description")
+            )
             if description:
                 return "", self._config.design_model, mode, None
             raise RuntimeError(
@@ -203,7 +215,9 @@ class TTSSynthesizer:
             )
 
         if custom_model == "voicedesign":
-            description = self.resolve_design_description(uid, get_user_settings)
+            description = self.resolve_design_description(
+                uid, get_user_settings, uset.get("design_description")
+            )
             if description:
                 return "", self._config.design_model, "design", None
             raise RuntimeError(
@@ -440,7 +454,9 @@ class TTSSynthesizer:
             if mode == "clone":
                 prompt = self.build_clone_prompt(prompt)
             elif mode == "design":
-                design_description = self.resolve_design_description(uid, get_user_settings)
+                design_description = self.resolve_design_description(
+                    uid, get_user_settings, uset.get("design_description")
+                )
                 # 方案 A（§14.5）：设计描述精确等于示例池分类名 → 条目直取，
                 # 用该条目全部 words 生成词表提示 + 全部例句注入（快速切换 name）
                 entry = match_style_entry_by_name(

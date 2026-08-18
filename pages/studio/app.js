@@ -289,6 +289,9 @@
       const voicePolishEnabled = ref(false);
       const dialect = ref('');
       const volume = ref('');
+      const designDescription = ref('');
+      const designSaveId = ref('');
+      const savingDesign = ref(false);
       const showAdvanced = ref(false);
       const activePreset = ref('');
       const synthesizing = ref(false);
@@ -368,6 +371,10 @@
           voice_polish: voicePolishEnabled.value
         };
 
+        if (voiceMode.value === 'design') {
+          body.design_description = designDescription.value;
+        }
+
         if (emotion.value && emotion.value !== 'auto') {
           body.emotion = emotion.value;
         }
@@ -395,6 +402,38 @@
         }
       }
 
+      async function saveDesignVoice() {
+        const desc = designDescription.value.trim();
+        if (!desc) {
+          showError('请先填写设计描述');
+          return;
+        }
+        const id = designSaveId.value.trim() || desc;
+        if (id.length > 50) {
+          showError('音色 ID 过长（≤50 字符）');
+          return;
+        }
+        savingDesign.value = true;
+        try {
+          const res = await apiPost('voices/design', {
+            voice_id: id,
+            name: id,
+            description: desc
+          });
+          if (res && res.error) {
+            showError(res.error);
+          } else {
+            await loadVoices();
+            selectedVoice.value = id;
+            showSuccess(`已保存设计音色: ${id}，可直接在「音色」中选择试听`);
+          }
+        } catch (e) {
+          showError('保存失败：' + (e.message || e));
+        } finally {
+          savingDesign.value = false;
+        }
+      }
+
       async function loadSynthConfig() {
         const res = await apiGet('config');
         if (res && res.config) {
@@ -409,9 +448,10 @@
         breathEnabled, stressEnabled, laughterEnabled, pauseEnabled,
         voicePolishEnabled,
         dialect, volume, showAdvanced, activePreset, synthesizing,
+        designDescription, designSaveId, savingDesign,
         audioSrc, audioRef, registeredVoices,
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
-        applyPreset, runDetectEmotion, synthesize, icon
+        applyPreset, runDetectEmotion, synthesize, saveDesignVoice, icon
       };
     },
     template: `
@@ -456,6 +496,17 @@
         <select v-model="audioFormat" class="select-input">
           <option v-for="f in FORMATS" :key="f" :value="f">{{ f.toUpperCase() }}</option>
         </select>
+      </div>
+    </div>
+    <div v-if="voiceMode === 'design'" class="design-tune-block">
+      <label class="control-label">设计描述（实时试听）</label>
+      <textarea v-model="designDescription" placeholder="声音描述，如：温柔甜美 / 像薄荷糖一样清新；可填 style_examples 分类名精确引用" rows="3" class="text-input"></textarea>
+      <div class="design-tune-row">
+        <input v-model="designSaveId" placeholder="保存 ID（留空用描述）" class="select-input design-save-id">
+        <button class="btn-small" @click="saveDesignVoice" :disabled="savingDesign">
+          <span v-if="savingDesign" class="spinner"></span>
+          <span v-html="icon('save')"></span> 保存为设计音色
+        </button>
       </div>
     </div>
   </div>

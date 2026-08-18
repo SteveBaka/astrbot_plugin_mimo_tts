@@ -40,6 +40,13 @@
 
 安装后在插件管理中启用并配置插件。
 
+## 快速开始
+
+1. **填 API Key**：插件配置 →「API 设置」→ 填入 `api_key`（MiMO 开放平台获取）并保存；
+2. **直接体验**：默认开启自动 TTS（LLM 回复自动生成语音）；`/mimo_say 你好呀` 手动合成，`/tts_help` 查看常用命令；
+3. **进阶玩法**：`/presetlist` 一键预设风格、`/sing 小星星亮晶晶` 唱歌（风格库见「唱歌优化」）、`/voicegen 温柔甜美` 一键创建设计音色、`/voiceclone <ID> <音频路径>` 声音克隆；
+4. **可视化操作**：Voice Studio 插件页面支持试听、音色/配置/会话管理、日志查看。
+
 ## 配置
 
 > 补充说明：v1.3.0之后本插件支持在鉴权上同时兼容 `api-key` 与 `Authorization: Bearer <API_KEY>` 两种请求头写法，以适配 MiMO 原生平台和部分 OpenAI / NewAPI 兼容代理；原有 `api-key` 方式仍然保留。
@@ -207,7 +214,9 @@
 /ttsswitch <模式>          # 切换 default / design / clone 输出模式
 /voiceclone <ID> <路径>    # 声音克隆（可选: /voiceclone <音色名> 切换 /cancel <音色名> 删除）
 /voiceclone（无参数）       # 列出所有已注册的克隆音色
-/voicegen <ID> <描述>      # 声音设计
+/voicegen <ID> <描述>      # 声音设计（描述可填 style_examples 分类名，自动启用词表提示+画面感例句）
+/voicegen <分类名>         # 示例池分类名一键注册并切换设计音色（如 /voicegen 温柔甜美）
+/voicegen cancel <音色名>  # 取消注册设计音色（当前使用中自动回退默认音色）
 ```
 
 #### 声音设计（VoiceDesign）
@@ -218,6 +227,9 @@
 - `mimo-v2.5-tts-voicedesign` 会直接读取 `user` 消息中的音色描述文本来生成定制音色，不依赖普通 TTS 的预置 `audio.voice`。
 - 当输出模式切换为 `design` 时，插件会改用 `design_model` 发起合成，并优先采用当前设计音色描述或配置中的 `design_voice_description`。
 - 若使用 `/voicegen <ID> <描述>`，插件会记录这条描述，之后切到 `design` 模式时可继续按该描述进行设计音色朗读。
+- **一键注册（v2.2.4）**：`/voicegen <分类名>`（如 `/voicegen 温柔甜美`）——未注册但精确命中风格示例池分类名时，自动登记为设计音色并切换（方案 A：完整词表提示+画面感例句随示例池条目自动生效）；已注册后再执行走普通切换，不重复注册。示例池 6 类风格一键变成可切换的设计音色（`/voice 温柔甜美` 直接切）。
+- **删除（v2.2.4）**：`/voicegen cancel <音色名>` 取消注册设计音色；当前正在使用该音色时自动回退默认音色、输出模式切回「默认」。
+- **WebUI 试听一键保存（v2.2.5）**：Voice Studio 合成页选择「设计」模式后出现「设计描述」输入框——改描述即实时试听（`/tts` 接口按 `design_description` override，仅本次合成不落库）；试听满意点「保存为设计音色」（ID 留空用描述）→ 注册并自动选中，随时在「音色」下拉切换回听。调描述 → 试听 → 保存，设计音色体验闭环。
 
 #### 声音克隆（VoiceClone）
 
@@ -320,7 +332,7 @@ AstrBot/
 | `/voices` | 列出所有内置音色 | ✅ |
 | `/ttsswitch` | 切换 TTS 输出模式 | ✅ |
 | `/voiceclone` | 声音克隆 | ✅ |
-| `/voicegen` | 声音设计 | ✅ |
+| `/voicegen` | 声音设计（分类名一键注册 / cancel 删除） | ✅ |
 | `/ttsformat` | 设置音频输出格式 | ✅ |
 | `/ttsconfig` | 查看当前会话 TTS 配置 | ✅ |
 
@@ -368,6 +380,15 @@ AstrBot/
 
 # 快速切换参数
 /mimo_say 滚！ -emotion angry -speed 1.3 -stress on
+
+# 声音设计：示例池分类名一键注册并切换（方案 A：词表提示+画面感例句自动生效）
+/voicegen 温柔甜美
+
+# 声音设计：自定义描述注册
+/voicegen 我的声音 像薄荷糖一样清新
+
+# 取消设计音色注册（当前使用中自动回退默认音色）
+/voicegen cancel 我的声音
 ```
 
 ## 控制维度总览

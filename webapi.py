@@ -75,7 +75,8 @@ async def api_tts_synthesize(plugin):
     overrides = {}
     for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
                 "laughter", "pause", "dialect", "volume", "tts_mode",
-                "sing", "sing_style", "sing_voice_override"):
+                "sing", "sing_style", "sing_voice_override",
+                "design_description"):
         if key in body and body[key] is not None:
             overrides[key] = body[key]
 
