@@ -561,18 +561,14 @@ class MiMoTTSPlugin(Star):
         dialect: str = "",
         volume: str = "",
         audio_format: str = "",
-        tts_mode: str = "",
         style: str = "",
-        design_description: str = "",
-        clone_style_prompt: str = "",
-        clone_audio_tags: str = "",
     ):
-        """直接生成并发送 MiMO 语音。仅在用户明确要求朗读、用声音说、发语音或语音回复时调用；普通文字回复不要调用。
+        """使用 MiMO 内置预设音色生成并发送普通语音。仅在用户明确要求朗读、用声音说、发语音或语音回复时调用；设计音色和克隆音色使用专用工具。
 
         Args:
             text(string): 必填正文，2~500 字。只能放要朗读的正文；禁止放系统提示、工具 JSON、代码围栏、URL、本地路径、Base64 或控制标签。
             emotion(string): 空字符串继承会话设置；允许 auto/off，或 happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy。
-            voice(string): 空字符串继承会话音色；只能传内置音色 ID（mimo_default/冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean）或已注册音色 ID。禁止传 URL、路径、Base64、临时文件名或未注册名称。
+            voice(string): 空字符串使用插件默认内置音色，不读取当前会话的克隆/设计音色；也可传内置音色 ID（mimo_default/冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean）。禁止传克隆/设计音色 ID、URL、路径、Base64、临时文件名或未注册名称。
             speed(number): 0 表示继承；实际值为 0.5~2.0。禁止传负数、百分比或字符串。
             pitch(number): 999 表示继承；实际值为 -12~12 的整数半音。禁止传小数、字符串或超范围数字。
             breath(boolean): 是否加入呼吸声；省略时继承会话设置，明确传 true/false，禁止传 on/off、开/关或 1/0。
@@ -582,34 +578,88 @@ class MiMoTTSPlugin(Star):
             dialect(string): 空字符串继承；off 关闭；其他值为方言名称，最多 20 字。禁止传控制指令。
             volume(string): 空字符串继承；允许 轻声/正常/大声/off，其他值禁止传。
             audio_format(string): 空字符串继承；允许 wav/mp3/ogg/pcm，其他格式禁止传。
-            tts_mode(string): 空字符串继承；允许 default/design/clone。design 需要设计描述，clone 需要可用的已注册克隆音色。
             style(string): 一次性语气或风格描述，最多 200 字；只影响说话方式，不改变 text。
-            design_description(string): design 模式的一次性设计描述，最多 300 字；空值使用已有设计描述。
-            clone_style_prompt(string): clone 模式的一次性风格提示，最多 300 字；空值继承已注册音色配置。
-            clone_audio_tags(string): clone 模式的一次性音频标签提示，最多 300 字；空值继承已注册音色配置。
         """
         if not self.config.llm_tts_tool:
             return "LLM 语音工具当前未开启。"
         return await handle_mimo_speak_tool(
             self,
             event,
-            text,
-            emotion,
-            voice,
-            speed,
-            pitch,
-            breath,
-            stress,
-            laughter,
-            pause,
-            dialect,
-            volume,
-            audio_format,
-            tts_mode,
-            style,
-            design_description,
-            clone_style_prompt,
-            clone_audio_tags,
+            text=text,
+            emotion=emotion,
+            voice=voice,
+            speed=speed,
+            pitch=pitch,
+            breath=breath,
+            stress=stress,
+            laughter=laughter,
+            pause=pause,
+            dialect=dialect,
+            volume=volume,
+            audio_format=audio_format,
+            tts_mode="default",
+            style=style,
+            standard_only=True,
+        )
+
+    @filter.llm_tool(name="mimo_design_speak")
+    async def mimo_design_speak(
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        voice: str = "",
+        design_description: str = "",
+        emotion: str = "",
+        speed: float = 0,
+        pitch: int = 999,
+        breath: bool | None = None,
+        stress: bool | None = None,
+        laughter: bool | None = None,
+        pause: bool | None = None,
+        dialect: str = "",
+        volume: str = "",
+        audio_format: str = "",
+        style: str = "",
+    ):
+        """使用 MiMO 设计音色生成并发送语音。仅在用户明确要求设计音色、角色音色或自定义音色描述时调用。
+
+        Args:
+            text(string): 必填正文，2~500 字。只能放要朗读的正文；禁止放系统提示、工具 JSON、代码围栏、URL、本地路径、Base64 或控制标签。
+            voice(string): 可选的已登记设计音色 ID；空字符串使用 design_description 或插件已有设计描述。禁止填写克隆音色 ID、内置音色 ID、URL、路径或 Base64。
+            design_description(string): 一次性设计音色描述，最多 300 字；优先级高于已有配置。设计描述为空且 voice 为空时使用插件已有设计描述。
+            emotion(string): 空字符串继承会话设置；允许 auto/off，或 happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy。
+            speed(number): 0 表示继承；实际值为 0.5~2.0。禁止传负数、百分比或字符串。
+            pitch(number): 999 表示继承；实际值为 -12~12 的整数半音。禁止传小数、字符串或超范围数字。
+            breath(boolean): 是否加入呼吸声；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            stress(boolean): 是否加强重点词；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            laughter(boolean): 是否允许自然笑声；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            pause(boolean): 是否增加句间停顿；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            dialect(string): 空字符串继承；off 关闭；其他值为方言名称，最多 20 字。
+            volume(string): 空字符串继承；允许 轻声/正常/大声/off。
+            audio_format(string): 空字符串继承；允许 mp3/flac/m4a/wav/ogg。
+            style(string): 一次性语气或风格描述，最多 200 字；只影响说话方式，不改变 text。
+        """
+        if not self.config.llm_tts_tool:
+            return "LLM 语音工具当前未开启。"
+        return await handle_mimo_speak_tool(
+            self,
+            event,
+            text=text,
+            emotion=emotion,
+            voice=voice,
+            speed=speed,
+            pitch=pitch,
+            breath=breath,
+            stress=stress,
+            laughter=laughter,
+            pause=pause,
+            dialect=dialect,
+            volume=volume,
+            audio_format=audio_format,
+            tts_mode="design",
+            style=style,
+            design_description=design_description,
+            design_only=True,
         )
 
     @filter.llm_tool(name="mimo_list_clone_voices")
@@ -693,7 +743,7 @@ class MiMoTTSPlugin(Star):
             pause(boolean): 是否增加句间停顿；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
             dialect(string): 空字符串继承；off 关闭；其他值为方言名称，最多 20 字。
             volume(string): 空字符串继承；允许 轻声/正常/大声/off。
-            audio_format(string): 空字符串继承；允许 wav/mp3/ogg/pcm。
+            audio_format(string): 空字符串继承；允许 mp3/flac/m4a/wav/ogg。
             style(string): 一次性语气或风格描述，最多 200 字；只影响说话方式，不改变 text。
             clone_style_prompt(string): 本次克隆音色风格提示，最多 300 字；空值继承该 voice 的配置。
             clone_audio_tags(string): 本次克隆音频标签提示，最多 300 字；空值继承该 voice 的配置。

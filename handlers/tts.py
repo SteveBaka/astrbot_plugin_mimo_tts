@@ -20,6 +20,8 @@ SING_USAGE = (
     "参数可组合: /sing -s 小雪 -p 欢快地 <歌词>（提示词覆盖组内风格描述）"
 )
 
+CLONE_OUTPUT_FORMATS: tuple[str, ...] = ("mp3", "flac", "m4a", "wav", "ogg")
+
 
 async def handle_mimo_speak_tool(
     plugin,
@@ -36,12 +38,14 @@ async def handle_mimo_speak_tool(
     dialect: str = "",
     volume: str = "",
     audio_format: str = "",
-    tts_mode: str = "",
+    tts_mode: str = "default",
     style: str = "",
     design_description: str = "",
     clone_style_prompt: str = "",
     clone_audio_tags: str = "",
     clone_only: bool = False,
+    design_only: bool = False,
+    standard_only: bool = False,
 ) -> str:
     """Validate one-shot LLM TTS arguments and send the generated audio."""
     text = str(text or "").strip()
@@ -54,6 +58,17 @@ async def handle_mimo_speak_tool(
         return f"参数错误: emotion 只能是 {allowed}。"
 
     voice = str(voice or "").strip()
+    builtin_voices = {item["id"] for item in MIMO_VOICE_LIST}
+    if standard_only and not voice:
+        configured_voice = str(plugin.config.default_voice or "").strip()
+        voice = configured_voice if configured_voice in builtin_voices else "mimo_default"
+    if design_only and not voice:
+        configured_design = str(plugin.config.design_voice_id or "").strip()
+        design_info = plugin._voice_manager.get_voice(configured_design) or {}
+        if str(design_info.get("model", "")).lower() == "voicedesign":
+            voice = configured_design
+        elif not str(design_description or "").strip():
+            design_description = str(plugin.config.design_voice_description or "").strip()
     if clone_only and not voice:
         return "参数错误: voice 必须填写已登记的本地克隆音色 ID。"
     if clone_only:
@@ -62,8 +77,13 @@ async def handle_mimo_speak_tool(
             return "参数错误: voice 必须是已登记的克隆音色 ID；请先调用 mimo_list_clone_voices。"
         if not plugin._voice_manager.get_clone_audio_path(voice):
             return "参数错误: voice 对应的本地参考音频不可用，请重新登记该克隆音色。"
+    elif design_only and voice:
+        design_info = plugin._voice_manager.get_voice(voice) or {}
+        if str(design_info.get("model", "")).lower() != "voicedesign":
+            return "参数错误: voice 必须是已登记的设计音色 ID。"
+    elif standard_only and voice not in builtin_voices:
+        return "参数错误: 普通语音工具只能使用内置音色，请调用 mimo_design_speak 或 mimo_clone_speak。"
     elif voice:
-        builtin_voices = {item["id"] for item in MIMO_VOICE_LIST}
         registered_voices = {
             item.get("voice_id", "") for item in plugin._voice_manager.list_voices()
         }
@@ -100,11 +120,12 @@ async def handle_mimo_speak_tool(
         return "参数错误: volume 只能是 轻声、正常、大声、off 或空字符串。"
 
     audio_format = str(audio_format or "").strip().lower()
-    if audio_format and audio_format not in SUPPORTED_AUDIO_FORMATS:
-        return "参数错误: audio_format 只能是 " + ", ".join(SUPPORTED_AUDIO_FORMATS) + "。"
+    allowed_audio_formats = CLONE_OUTPUT_FORMATS if clone_only else SUPPORTED_AUDIO_FORMATS
+    if audio_format and audio_format not in allowed_audio_formats:
+        return "参数错误: audio_format 只能是 " + ", ".join(allowed_audio_formats) + "。"
 
-    tts_mode = str(tts_mode or "").strip().lower()
-    if tts_mode and tts_mode not in ("default", "design", "clone"):
+    tts_mode = str(tts_mode or "default").strip().lower()
+    if tts_mode not in ("default", "design", "clone"):
         return "参数错误: tts_mode 只能是 default、design 或 clone。"
 
     for name, value, limit in (
@@ -136,8 +157,7 @@ async def handle_mimo_speak_tool(
         overrides["dialect"] = "" if dialect.lower() == "off" else dialect
     if volume:
         overrides["volume"] = "" if volume.lower() == "off" else volume
-    if tts_mode:
-        overrides["tts_mode"] = tts_mode
+    overrides["tts_mode"] = tts_mode
     if style:
         overrides["style_hint"] = str(style).strip()
     if design_description:
