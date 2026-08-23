@@ -269,7 +269,7 @@ class TTSSynthesizer:
         """
         if uset is None:
             uset = get_user_settings(uid)
-        style = self._config.style_hint
+        style = uset.get("style_hint") or self._config.style_hint
         return build_control_prompt(
             emotion=emotion_override
             if emotion_override is not None

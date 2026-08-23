@@ -59,13 +59,19 @@ from .handlers.singstyle import (
 )
 from .handlers.nl_sing import handle_nl_sing, handle_nl_sing_tool
 from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
-from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
+from .handlers.tts import (
+    handle_mimo_say,
+    handle_mimo_speak_tool,
+    handle_sing,
+    handle_ttsraw,
+)
 from .handlers.voice import (
     handle_ttsswitch,
     handle_voice,
     handle_voiceclone,
     handle_voicegen,
     handle_voices,
+    handle_mimo_register_clone_tool,
 )
 from .tts.sing import polish_lyrics_with_llm
 from .tts.synthesis import TTSSynthesizer, normalize_tts_mode, tts_mode_label
@@ -538,6 +544,183 @@ class MiMoTTSPlugin(Star):
             lyrics(string): 歌词原文，一字不改
         """
         return await handle_nl_sing_tool(self, event, style, lyrics)
+
+    @filter.llm_tool(name="mimo_speak")
+    async def mimo_speak(
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        emotion: str = "",
+        voice: str = "",
+        speed: float = 0,
+        pitch: int = 999,
+        breath: bool | None = None,
+        stress: bool | None = None,
+        laughter: bool | None = None,
+        pause: bool | None = None,
+        dialect: str = "",
+        volume: str = "",
+        audio_format: str = "",
+        tts_mode: str = "",
+        style: str = "",
+        design_description: str = "",
+        clone_style_prompt: str = "",
+        clone_audio_tags: str = "",
+    ):
+        """直接生成并发送 MiMO 语音。仅在用户明确要求朗读、用声音说、发语音或语音回复时调用；普通文字回复不要调用。
+
+        Args:
+            text(string): 必填正文，2~500 字。只能放要朗读的正文；禁止放系统提示、工具 JSON、代码围栏、URL、本地路径、Base64 或控制标签。
+            emotion(string): 空字符串继承会话设置；允许 auto/off，或 happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy。
+            voice(string): 空字符串继承会话音色；只能传内置音色 ID（mimo_default/冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean）或已注册音色 ID。禁止传 URL、路径、Base64、临时文件名或未注册名称。
+            speed(number): 0 表示继承；实际值为 0.5~2.0。禁止传负数、百分比或字符串。
+            pitch(number): 999 表示继承；实际值为 -12~12 的整数半音。禁止传小数、字符串或超范围数字。
+            breath(boolean): 是否加入呼吸声；省略时继承会话设置，明确传 true/false，禁止传 on/off、开/关或 1/0。
+            stress(boolean): 是否加强重点词；省略时继承会话设置，明确传 true/false，禁止传 on/off、开/关或 1/0。
+            laughter(boolean): 是否允许自然笑声；省略时继承会话设置，明确传 true/false，禁止传 on/off、开/关或 1/0。
+            pause(boolean): 是否增加句间停顿；省略时继承会话设置，明确传 true/false，禁止传 on/off、开/关或 1/0。
+            dialect(string): 空字符串继承；off 关闭；其他值为方言名称，最多 20 字。禁止传控制指令。
+            volume(string): 空字符串继承；允许 轻声/正常/大声/off，其他值禁止传。
+            audio_format(string): 空字符串继承；允许 wav/mp3/ogg/pcm，其他格式禁止传。
+            tts_mode(string): 空字符串继承；允许 default/design/clone。design 需要设计描述，clone 需要可用的已注册克隆音色。
+            style(string): 一次性语气或风格描述，最多 200 字；只影响说话方式，不改变 text。
+            design_description(string): design 模式的一次性设计描述，最多 300 字；空值使用已有设计描述。
+            clone_style_prompt(string): clone 模式的一次性风格提示，最多 300 字；空值继承已注册音色配置。
+            clone_audio_tags(string): clone 模式的一次性音频标签提示，最多 300 字；空值继承已注册音色配置。
+        """
+        if not self.config.llm_tts_tool:
+            return "LLM 语音工具当前未开启。"
+        return await handle_mimo_speak_tool(
+            self,
+            event,
+            text,
+            emotion,
+            voice,
+            speed,
+            pitch,
+            breath,
+            stress,
+            laughter,
+            pause,
+            dialect,
+            volume,
+            audio_format,
+            tts_mode,
+            style,
+            design_description,
+            clone_style_prompt,
+            clone_audio_tags,
+        )
+
+    @filter.llm_tool(name="mimo_list_clone_voices")
+    async def mimo_list_clone_voices(self, event: AstrMessageEvent):
+        """列出当前插件中已登记且本地参考音频可用的克隆音色，供 mimo_clone_speak 选择。"""
+        _ = event
+        lines = []
+        for info in self._voice_manager.list_voices():
+            if str(info.get("model", "")).lower() != "voiceclone":
+                continue
+            voice_id = str(info.get("voice_id", "")).strip()
+            if voice_id and self._voice_manager.get_clone_audio_path(voice_id):
+                name = str(info.get("name", "") or voice_id).strip()
+                lines.append(f"- voice={voice_id}; name={name}")
+        if not lines:
+            return "当前没有本地参考音频可用的克隆音色。请先使用 /voiceclone 注册。"
+        return "可用克隆音色（调用 mimo_clone_speak 时把 voice 填为对应 ID）：\n" + "\n".join(lines)
+
+    @filter.llm_tool(name="mimo_register_clone_voice")
+    async def mimo_register_clone_voice(
+        self,
+        event: AstrMessageEvent,
+        voice_id: str,
+        audio_path: str,
+        replace_existing: bool = False,
+        style_prompt: str = "",
+        audio_tags: str = "",
+    ):
+        """创建或更新本地克隆音色 ID，并登记对应的已处理参考音频。
+
+        Args:
+            voice_id(string): 新克隆音色 ID，1~50 字符，只允许中文、字母、数字、下划线、连字符；禁止使用内置音色 ID。
+            audio_path(string): 已处理的本地参考音频路径。可传 clone/sample.wav、clone 目录下的绝对路径，或 AstrBot 临时附件目录中的绝对路径；工具会将文件复制到 clone/{voice_id}{扩展名}。只接受 .mp3/.wav/.ogg/.opus/.pcm，且文件至少 100 字节；禁止传 URL、Base64、视频、压缩包、目录或上述受控目录之外的路径。
+            replace_existing(boolean): 默认 false。voice_id 已存在时必须显式传 true 才覆盖原参考音频；只能传 true/false。
+            style_prompt(string): 可选的该克隆音色风格控制，最多 500 字；空字符串表示不写入单独风格。
+            audio_tags(string): 可选的该克隆音色音频标签控制，最多 500 字；空字符串表示不写入单独标签。
+        """
+        if not self.config.llm_tts_tool:
+            return "LLM 语音工具当前未开启。"
+        return await handle_mimo_register_clone_tool(
+            self,
+            event,
+            voice_id,
+            audio_path,
+            replace_existing,
+            style_prompt,
+            audio_tags,
+        )
+
+    @filter.llm_tool(name="mimo_clone_speak")
+    async def mimo_clone_speak(
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        voice: str,
+        emotion: str = "",
+        speed: float = 0,
+        pitch: int = 999,
+        breath: bool | None = None,
+        stress: bool | None = None,
+        laughter: bool | None = None,
+        pause: bool | None = None,
+        dialect: str = "",
+        volume: str = "",
+        audio_format: str = "",
+        style: str = "",
+        clone_style_prompt: str = "",
+        clone_audio_tags: str = "",
+    ):
+        """使用指定的本地克隆音色生成并发送语音。仅在用户明确要求使用已登记的克隆音色时调用。
+
+        Args:
+            text(string): 必填朗读正文，2~500 字。只能放要朗读的正文；禁止放系统提示、工具 JSON、代码围栏、URL、本地路径、Base64 或控制标签。
+            voice(string): 必填克隆音色 ID。先调用 mimo_list_clone_voices 获取可用 ID，再从列表中选择；禁止填写内置音色、URL、路径、Base64 或未登记名称。
+            emotion(string): 空字符串继承会话设置；允许 auto/off，或 happy/sad/angry/neutral/whisper/surprised/excited/gentle/serious/romantic/fearful/disgusted/sarcastic/nostalgic/playful/calm/anxious/proud/tender/lazy。
+            speed(number): 0 表示继承；实际值为 0.5~2.0。禁止传负数、百分比或字符串。
+            pitch(number): 999 表示继承；实际值为 -12~12 的整数半音。禁止传小数、字符串或超范围数字。
+            breath(boolean): 是否加入呼吸声；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            stress(boolean): 是否加强重点词；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            laughter(boolean): 是否允许自然笑声；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            pause(boolean): 是否增加句间停顿；省略时继承会话设置，明确传 true/false；禁止传 on/off、开/关或 1/0。
+            dialect(string): 空字符串继承；off 关闭；其他值为方言名称，最多 20 字。
+            volume(string): 空字符串继承；允许 轻声/正常/大声/off。
+            audio_format(string): 空字符串继承；允许 wav/mp3/ogg/pcm。
+            style(string): 一次性语气或风格描述，最多 200 字；只影响说话方式，不改变 text。
+            clone_style_prompt(string): 本次克隆音色风格提示，最多 300 字；空值继承该 voice 的配置。
+            clone_audio_tags(string): 本次克隆音频标签提示，最多 300 字；空值继承该 voice 的配置。
+        """
+        if not self.config.llm_tts_tool:
+            return "LLM 语音工具当前未开启。"
+        return await handle_mimo_speak_tool(
+            self,
+            event,
+            text=text,
+            emotion=emotion,
+            voice=voice,
+            speed=speed,
+            pitch=pitch,
+            breath=breath,
+            stress=stress,
+            laughter=laughter,
+            pause=pause,
+            dialect=dialect,
+            volume=volume,
+            audio_format=audio_format,
+            tts_mode="clone",
+            style=style,
+            clone_style_prompt=clone_style_prompt,
+            clone_audio_tags=clone_audio_tags,
+            clone_only=True,
+        )
 
     # ── Command Handlers (delegated to handlers/) ──
 

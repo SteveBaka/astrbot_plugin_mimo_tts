@@ -407,6 +407,7 @@ class ConfigManager:
         "nl_sing_enabled": False,
         "nl_sing_cooldown": 30,
         "nl_sing_tool": False,
+        "llm_tts_tool": True,
         "tts_output_mode": "default",
         "tts_example_inject": False,
         # TTS parameters
@@ -607,6 +608,11 @@ class ConfigManager:
     def nl_sing_tool(self) -> bool:
         """NL 唱歌 LLM 工具兜底开关（需与 nl_sing_enabled 同时开启）。"""
         return bool(self._flat.get("nl_sing_tool", False))
+
+    @property
+    def llm_tts_tool(self) -> bool:
+        """Direct LLM TTS tool switch."""
+        return bool(self._flat.get("llm_tts_tool", True))
 
     @property
     def nl_sing_cooldown(self) -> int:
