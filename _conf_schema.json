@@ -148,6 +148,12 @@
         "hint": "拦截 LLM 回复生成语音",
         "default": true
       },
+      "llm_tts_tool": {
+        "type": "bool",
+        "description": "LLM 直接语音工具",
+        "hint": "注册 mimo_speak 工具，让 LLM 在用户明确要求朗读或语音回复时直接生成并发送语音",
+        "default": true
+      },
       "send_text_with_tts": {
         "type": "bool",
         "description": "TTS 输出时同步发送文字",
