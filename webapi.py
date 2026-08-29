@@ -7,6 +7,8 @@ functools.partial(api_xxx, plugin_instance) 绑定插件实例。
 
 from __future__ import annotations
 
+from functools import partial
+
 import base64
 import re as _re
 from pathlib import Path
@@ -399,3 +401,31 @@ async def api_log_stats(plugin):
 
     return jsonify(plugin.plog.get_stats())
 
+
+def register_web_apis(context, plugin) -> None:
+    """注册 Voice Studio 插件页全部 REST 端点。"""
+    p = "astrbot_plugin_mimo_tts"
+    routes = [
+        ("config", api_get_config, ["GET"], "获取插件配置"),
+        ("config/update", api_update_config, ["POST"], "更新插件配置"),
+        ("tts", api_tts_synthesize, ["POST"], "TTS 语音合成"),
+        ("voices", api_list_voices, ["GET"], "获取音色列表"),
+        ("voices/clone-init", api_clone_init, ["POST"], "初始化克隆"),
+        ("voices/clone-file", api_clone_file, ["POST"], "上传克隆音频"),
+        ("voices/design", api_design_voice, ["POST"], "注册设计音色"),
+        ("voices/clone-style", api_clone_style, ["POST"], "保存克隆音色风格"),
+        ("voices/clone-style-pool", api_clone_style_pool, ["GET"], "克隆音色风格控制池"),
+        ("voices/design-style-pool", api_design_style_pool, ["GET"], "设计音色风格控制池"),
+        ("voices/delete", api_delete_voice, ["POST"], "删除音色"),
+        ("sessions", api_list_sessions, ["GET"], "获取会话配置列表"),
+        ("sessions/update", api_update_session, ["POST"], "更新会话配置"),
+        ("sessions/delete", api_delete_session, ["POST"], "删除会话配置"),
+        ("sessions/reset", api_reset_session, ["POST"], "重置会话配置"),
+        ("emotions", api_list_emotions, ["GET"], "获取情感列表"),
+        ("constants", api_get_constants, ["GET"], "获取常量数据"),
+        ("health", api_health, ["GET"], "健康检查"),
+        ("logs", api_get_logs, ["GET"], "获取插件日志"),
+        ("logs/stats", api_log_stats, ["GET"], "日志统计"),
+    ]
+    for path, fn, methods, desc in routes:
+        context.register_web_api(f"/{p}/{path}", partial(fn, plugin), methods, desc)

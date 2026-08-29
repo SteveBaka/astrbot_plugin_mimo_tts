@@ -9,6 +9,8 @@ into a internal dict for backward-compatible property access.
 
 from __future__ import annotations
 
+from astrbot.api import logger
+
 import json
 import re
 from typing import Any, Optional
@@ -109,6 +111,26 @@ def normalize_style_examples(raw: Any) -> list[dict]:
             "examples": _examples(entry.get("examples"))[:_EXAMPLE_TEXT_MAX],
         })
     return items[:STYLE_EXAMPLES_MAX]
+
+
+def migrate_sing_styles(cfg, astrbot_config=None) -> None:
+    """sing_styles 预设迁移：空值/旧版预设升级为当前预设。
+
+    AstrBot 只对缺失键填默认值，已保存值需自行迁移；写入后尝试持久化。
+    """
+    raw = str(cfg.get("sing_styles") or "").strip()
+    if raw in ("", "[]") or raw in (
+        _SING_STYLES_PRESET_V1.strip(),
+        _SING_STYLES_PRESET_V2.strip(),
+    ):
+        cfg.set("sing_styles", SING_STYLES_PRESET)
+        save = getattr(astrbot_config, "save_config", None)
+        if callable(save):
+            try:
+                save()
+                logger.info("MiMO TTS: sing_styles preset migrated/upgraded")
+            except Exception:
+                logger.warning("MiMO TTS: sing_styles preset migration not persisted")
 
 
 # 内置风格库预设（换行格式化；v2.2.14 起双组 + style_tags 显式标签字段：
@@ -431,8 +453,10 @@ class ConfigManager:
         "segment_pattern": "sentence",
         "segment_max_count": 10,
         "segment_voice_probability": 1.0,
+        "segment_text_fallback": True,
         # Voice polish (LLM)
         "enable_voice_polish": False,
+        "display_polished_text": False,
         "polish_llm_provider": "",
         "polish_prompt": "",
         "optimize_text_preview": False,
@@ -896,11 +920,21 @@ class ConfigManager:
             value = 1.0
         return max(0.0, min(1.0, value))
 
+    @property
+    def segment_text_fallback(self) -> bool:
+        """无语音段（掷骰未命中/合成失败）是否用纯文本兜底，防内容丢失。"""
+        return bool(self._flat.get("segment_text_fallback", True))
+
     # ── Voice polish (LLM) ──
 
     @property
     def enable_voice_polish(self) -> bool:
         return bool(self._flat.get("enable_voice_polish", False))
+
+    @property
+    def display_polished_text(self) -> bool:
+        """展示文字使用润色后文本，与语音内容一致（兜底小模型改写原文）。"""
+        return bool(self._flat.get("display_polished_text", False))
 
     @property
     def polish_llm_provider(self) -> str:

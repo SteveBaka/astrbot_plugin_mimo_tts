@@ -3,10 +3,16 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
-from astrbot.api import logger
-from astrbot.api.message_components import Plain, Record
+try:
+    from astrbot.api import logger
+    from astrbot.api.message_components import Plain, Record
+except ImportError:  # 独立导入（纯逻辑单测）时无 AstrBot 运行时，仅保证可导入
+    logger = logging.getLogger("astrbot")
+    Plain = type("Plain", (), {"__init__": lambda self, text="": setattr(self, "text", text)})
+    Record = type("Record", (), {})
 
 
 def should_skip(text: str, min_length: int, max_length: int, skip_patterns: list[str]) -> bool:
@@ -43,6 +49,41 @@ def strip_audio_tags(text: str) -> str:
     s = re.sub(r"[（\(][^）\)]{1,10}[）\)]", "", text)
     s = re.sub(r"[\[【][^\]】]{1,20}[\]】]", "", s)
     return re.sub(r"\s{2,}", " ", s).strip()
+
+
+_MD_SYMBOLS_RE = re.compile(r"\*+|`+|~~|__")
+_MD_HEADING_RE = re.compile(r"(?m)^\s{0,3}#{1,6}\s+")
+
+
+def strip_markdown_symbols(text: str) -> str:
+    """去除 Markdown 格式符号，避免被 TTS 朗读。
+
+    清洗对象：**加粗**、*斜体*、`代码`、~~删除线~~、__下划线__、行首 # 标题。
+    只删符号、保留文字内容，不触碰 MiMo 官方标签（开头 (风格) 与 [音频标签]）；
+    保留原有换行与空格结构（唱歌歌词链路不经过本函数，由调用方豁免）。
+    """
+    if not text:
+        return text
+    s = _MD_SYMBOLS_RE.sub("", str(text))
+    return _MD_HEADING_RE.sub("", s).strip()
+
+
+_TTS_STYLE_LEADING_RE = re.compile(r"^(?:\s*[（(][^）)]{1,12}[）)])+")
+_TTS_AUDIO_TAG_RE = re.compile(r"[\[【][^\]】]{1,20}[\]】]")
+
+
+def strip_tts_tags(text: str) -> str:
+    """去除 TTS 专用标签，用于用户侧展示文本（标签只应到 TTS 服务端与日志）。
+
+    清洗对象：开头的 (风格) 标签（如 ``(活泼)``，可多个连续）与正文中的
+    [音频标签]/【音频标签】（如 ``[叹气]``）。保留正文与普通括号内容
+    （如 ``(约380元)`` 这类正文括号不做剥离）。
+    """
+    if not text:
+        return text
+    s = _TTS_AUDIO_TAG_RE.sub("", str(text).lstrip())
+    s = _TTS_STYLE_LEADING_RE.sub("", s)
+    return re.sub(r"[ \t]{2,}", " ", s).strip()
 
 
 _SINGING_TAG_RE = re.compile(

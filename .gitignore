@@ -24,7 +24,6 @@ build/
 config.json
 *.log
 *.tmp
-docs/sing-mode-feature.md
 
 # internal dev reports (not shipped)
-docs/v2.2.0-implementation-report.md
+docs/

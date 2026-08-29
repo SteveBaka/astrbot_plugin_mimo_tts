@@ -23,7 +23,7 @@
 - [x]声音克隆 & 设计：支持自定义音色生成与调用
 - [x]输出模式切换：支持 默认 / 设计 / 克隆 三种 TTS 输出来源
 - [x]文字同步开关：可控制自动 TTS 时是否同时保留文字消息
-- [x]文本分段 TTS：长文本自动切分，首段文字快速回复，后续段落语音补充
+- [x]文本分段 TTS：长文本自动切分，每段独立掷骰出语音，命中段=文字+语音、未命中段=纯文字兜底（可配置丢弃），配合文字异步发送实现「先文字后语音」
 - [x]LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力
 - [x]Voice Studio WebUI：内置可视化管理界面，支持语音合成、音色管理、插件配置、会话管理
 - [x]错误原因透出：接口失败时直接返回具体报错原因
@@ -87,8 +87,10 @@
 | `enable_segmentation` | 启用文本分段 TTS | `false` |
 | `segment_pattern` | 分段规则（sentence/paragraph/comma/mixed） | `sentence` |
 | `segment_max_count` | 分段数量上限 | `10` |
-| `segment_voice_probability` | 分段语音输出概率（0.0~1.0） | `1.0` |
+| `segment_voice_probability` | 分段语音输出概率（0.0~1.0，每段独立掷骰） | `1.0` |
+| `segment_text_fallback` | 无语音段（未命中/合成失败）纯文字兜底，关闭则丢弃 | `true` |
 | `enable_voice_polish` | 启用 LLM 音色润色 | `false` |
+| `display_polished_text` | 展示文字用润色后文本（与语音内容一致，兜底小模型改写原文） | `false` |
 | `polish_llm_provider` | 润色 LLM Provider（留空用当前模型） | - |
 | `polish_prompt` | 润色提示词（专业语音润色专家，`{text}` 为原文占位符；留空用内置新模板） | - |
 | `optimize_text_preview` | 官方智能润色（仅设计模式，与 LLM 润色二选一） | `false` |

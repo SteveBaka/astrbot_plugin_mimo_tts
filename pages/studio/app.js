@@ -156,10 +156,10 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       fields: [
         { key: 'auto_tts', label: '自动 TTS', type: 'bool', hint: '拦截 LLM 回复生成语音' },
         { key: 'send_text_with_tts', label: 'TTS 同步发送文字', type: 'bool' },
-        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启时文字先行，语音后台合成后追加' },
+        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启且保留文字输出时，文字先行、语音后台合成后追加（分段模式与全文模式均生效）' },
         { key: 'audio_format', label: '音频格式', type: 'select', options: ['wav', 'mp3', 'ogg'] },
         { key: 'emotion_override', label: '默认情感覆盖', type: 'text', hint: '留空=自动检测' },
-        { key: 'tts_example_inject', label: 'TTS 风格示例注入', type: 'bool', hint: 'P2：开启后按当前情感匹配风格示例池并入 user 通道；默认关' },
+        { key: 'tts_example_inject', label: 'TTS 风格示例注入', type: 'bool', hint: '开启后按当前情感（emotion）匹配风格示例池，将画面感示例并入 user 控制通道。默认关闭：避免未经实测改变播报风格' },
         { key: 'probability', label: '自动 TTS 触发概率', type: 'slider', min: 0, max: 1, step: 0.1 }
       ]
     },
@@ -178,10 +178,11 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
     {
       title: '文本分段', ic: 'scissors',
       fields: [
-        { key: 'enable_segmentation', label: '启用文本分段', type: 'bool' },
-        { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'] },
-        { key: 'segment_max_count', label: '分段数量上限', type: 'number', hint: '0=不限制' },
-        { key: 'segment_voice_probability', label: '分段语音概率', type: 'slider', min: 0, max: 1, step: 0.1 },
+        { key: 'enable_segmentation', label: '启用文本分段', type: 'bool', hint: '长文本按规则切分多段输出，每段独立掷骰出语音' },
+        { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'], hint: 'sentence=句末标点，paragraph=空行，comma=逗号分号，mixed=混合' },
+        { key: 'segment_max_count', label: '分段数量上限', type: 'number', hint: '超过此数量的分段将被合并。0=不限制' },
+        { key: 'segment_voice_probability', label: '分段语音概率', type: 'slider', min: 0, max: 1, step: 0.1, hint: '全局触发通过后，每段独立掷骰。1.0=全部语音，0.0=全部文字' },
+        { key: 'segment_text_fallback', label: '无语音段落文字兜底', type: 'bool', hint: '未命中或合成失败的段落以纯文本发出，避免内容丢失；关闭则丢弃（纯语音流偏好）。时序请用「文字异步发送」控制' },
         { key: 'min_text_length', label: '最小文本长度', type: 'number' },
         { key: 'max_text_length', label: '最大文本长度', type: 'number' }
       ]
@@ -189,9 +190,10 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
     {
       title: '语音润色', ic: 'sparkles',
       fields: [
-        { key: 'enable_voice_polish', label: '启用 LLM 润色', type: 'bool', hint: '产生额外 LLM 调用' },
-        { key: 'polish_llm_provider', label: '润色 LLM Provider', type: 'text', hint: '留空使用当前对话模型' },
-        { key: 'polish_prompt', label: '润色提示词', type: 'textarea', hint: '{text} 为原文占位符' },
+        { key: 'enable_voice_polish', label: '启用 LLM 润色', type: 'bool', hint: 'TTS 前调用 LLM 注入 MiMO 音频标签（开头 (风格) + [音频标签]，已对齐官方词表），提升表现力。会产生额外 LLM 调用' },
+        { key: 'display_polished_text', label: '展示文字用润色后文本', type: 'bool', hint: '开启后展示文字与语音内容一致（用润色后文本，自动剥离 TTS 标签），兜底小模型改写原文导致的文声割裂。代价：文字需等待一次润色 LLM 调用' },
+        { key: 'polish_llm_provider', label: '润色 LLM Provider', type: 'text', hint: '留空使用当前对话模型。建议选择轻量快速的模型以减少延迟' },
+        { key: 'polish_prompt', label: '润色提示词', type: 'textarea', hint: '{text} 为原文占位符；留空用内置模板（已对齐 MiMO 官方标签词表）' },
         { key: 'optimize_text_preview', label: '官方智能润色', type: 'bool', hint: 'voicedesign 官方参数（仅设计模式生效），服务端润色省 LLM 调用；与 LLM 润色建议二选一' }
       ]
     },
@@ -1144,6 +1146,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         tts_mode: '', tts_enabled: true, text_enabled: true, text_async: false, format: 'wav',
         enable_segmentation: false, enable_voice_polish: false
       });
+      // 三态开关原始值（null=跟随全局）：勾选框只表达 开/关，未改动时回写原始值
+      let editOrig = {};
 
       async function loadSessions() {
         loading.value = true;
@@ -1170,7 +1174,18 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           editForm.format = s.format || 'wav';
           editForm.enable_segmentation = settings.enable_segmentation === true;
           editForm.enable_voice_polish = settings.enable_voice_polish === true;
+          editOrig = {
+            text_enabled: settings.text_enabled ?? null,
+            text_async: settings.text_async ?? null,
+            enable_segmentation: settings.enable_segmentation ?? null,
+            enable_voice_polish: settings.enable_voice_polish ?? null
+          };
         }
+      }
+
+      // 三态回写：勾选框未改动时保留原始值（null=跟随全局），改动才写显式布尔
+      function triValue(key, displayed) {
+        return editForm[key] === displayed ? editOrig[key] : editForm[key];
       }
 
       function cancelEdit() {
@@ -1187,10 +1202,10 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             pitch: editForm.pitch,
             tts_mode: editForm.tts_mode,
             tts_enabled: editForm.tts_enabled,
-            text_enabled: editForm.text_enabled,
-            text_async: editForm.text_async,
-            enable_segmentation: editForm.enable_segmentation,
-            enable_voice_polish: editForm.enable_voice_polish
+            text_enabled: triValue('text_enabled', true),
+            text_async: triValue('text_async', false),
+            enable_segmentation: triValue('enable_segmentation', false),
+            enable_voice_polish: triValue('enable_voice_polish', false)
           }
         };
         const res = await apiPost('sessions/update', payload);
@@ -1323,8 +1338,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           <span class="info-item">语速: <b>{{ data.settings?.speed ?? '-' }}</b></span>
           <span class="info-item">音高: <b>{{ data.settings?.pitch ?? '-' }}</b></span>
           <span class="info-item">TTS: <b>{{ data.settings?.tts_enabled !== false ? '开' : '关' }}</b></span>
-          <span class="info-item">文字: <b>{{ data.settings?.text_enabled !== false ? '开' : '关' }}</b></span>
-          <span class="info-item">异步: <b>{{ data.settings?.text_async === true ? '开' : '关' }}</b></span>
+          <span class="info-item">文字: <b>{{ data.settings?.text_enabled === null || data.settings?.text_enabled === undefined ? '跟随' : (data.settings.text_enabled ? '开' : '关') }}</b></span>
+          <span class="info-item">异步: <b>{{ data.settings?.text_async === true ? '开' : data.settings?.text_async === false ? '关' : '跟随' }}</b></span>
           <span class="info-item">格式: <b>{{ data.format || 'wav' }}</b></span>
         </div>
       </div>
@@ -1371,19 +1386,19 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             <label class="toggle"><input type="checkbox" v-model="editForm.tts_enabled"><span class="toggle-slider"></span></label>
           </div>
           <div class="control-group toggle-field full-width">
-            <span>TTS时文字同步输出</span>
+            <span>TTS时文字同步输出（关=跟随全局）</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.text_enabled"><span class="toggle-slider"></span></label>
           </div>
           <div class="control-group toggle-field full-width">
-            <span>文字异步发送（先发后补）</span>
+            <span>文字异步发送（未改动=跟随全局）</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.text_async"><span class="toggle-slider"></span></label>
           </div>
           <div class="control-group toggle-field full-width">
-            <span>启用文本分段</span>
+            <span>启用文本分段（未改动=跟随全局）</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.enable_segmentation"><span class="toggle-slider"></span></label>
           </div>
           <div class="control-group toggle-field full-width">
-            <span>启用 LLM 润色</span>
+            <span>启用 LLM 润色（未改动=跟随全局）</span>
             <label class="toggle"><input type="checkbox" v-model="editForm.enable_voice_polish"><span class="toggle-slider"></span></label>
           </div>
         </div>

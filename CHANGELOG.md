@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-08-30 v2.3.0
+
+### 修复（分段模式行为重构，issue #9 问题一 + 用户实测反馈链）
+
+- **分段「只剩纯语音」根因修复**：`/text off`（或 `send_text_with_tts=false`）时命中段跳过文字且 `result.chain=[]` 无兜底，配合默认 `segment_voice_probability=1.0`（每段必中）导致整条回复退化为纯语音流；按新决策矩阵补全所有开关组合行为，未命中/合成失败段有明确文字兜底出口；合成失败不再向聊天裸发 `[TTS 合成失败: ...]`，错误只写插件日志；
+- **删除死代码**：`on_decorating_result` 中 `if i == 0 and len(seg) <= min_text_length` 分支（仅当首段长度恰好等于 min_text_length 时可达）；
+- **分段模式接入 `text_async`**：文字异步发送此前仅在全文路径生效；现命中段支持「文字先发 + 语音后台串行补发」（单个后台任务按原顺序消费语音队列，不并行，避免顺序错乱与并发打满 TTS 服务端）；
+- **命中段「文字先于语音」次序保证**：捆绑链 `[文字, 语音]` 在部分平台适配器（QQ/NapCat 实测）被渲染成语音在前，拆为两次顺序 `event.send`（先文字、合成完紧接语音），次序不依赖平台渲染行为；
+- **`_polish` 函数 `uid` 未定义修复**（日志定位：`segment N delivery failed: name 'uid' is not defined`）：开启润色后每个命中段进入润色即抛 NameError、被兜底转纯文字，表现为命中段只有文字没有语音；
+- **`do_tts` Markdown 清洗调用补接**：v2.4.0 曾出现 import 已加、调用点丢失的漏接（ruff F401 揪出），非唱歌分支统一清洗合成文本；
+- **TTS 输入 Markdown 符号清洗**（日志取证：`**清炒蟹粉**` 原样进 TTS）：新增 `core/text_utils.strip_markdown_symbols()`，`do_tts` 非唱歌分支 + 润色输出双接入；清洗 `**`/`*`/反引号/`~~`/`__`/行首 `#`，不触碰 MiMo 官方标签，唱歌歌词豁免；
+- **TTS 标签不外露用户侧**：新增 `core/text_utils.strip_tts_tags()`（剥开头 `(风格)` 与 `[音频标签]`/`【…】`，保留正文与普通括号），接入分段全部展示出口与全文路径（含 display_polished 润色文本展示、上游 LLM 自带标签清除）；
+- **分段展示文本统一清洗 Markdown**：qq_official 等不支持 markdown 渲染的平台（表格/标题被管道剥掉只剩 `---`）；纯分隔线段（`---`/`***`/`___`）规划为 blank 整段丢弃，不再作为文字气泡发出；
+- **静默出口全量加日志**：`on_decorating_result` 的 5 个静默 return（TTS 未激活/空 chain/非 LLM 结果/含语音组件/长短与跳过规则）此前零日志（实测 1200 字回复超 `max_text_length=500` 被静默跳过不可观测），现每个出口记录原因与关键上下文；
+- **`enable_segmentation`/`enable_voice_polish` 会话快照修复**：旧实现首次创建会话时快照全局布尔，改全局对已有会话不生效，且 WebUI 会话级覆盖重启后丢失（`sanitize_user_settings` 未列入默认键被剥离）——改为三态 `None` 哨兵（None=实时跟随全局，True/False=会话级覆盖且可持久化），旧状态文件自动迁移。
+
+### 新增
+
+- **配置项 `segment_text_fallback`（默认 true，「文本分段」分组）**：无语音段（掷骰未命中/合成失败）是否纯文本兜底，关闭则丢弃（纯语音流偏好）；短于 `min_text_length` 的段为固定策略无条件发文字。文字与语音时序由 `send_text_async` 承担，两开关职责不重叠；
+- **配置项 `display_polished_text`（默认 false，「语音润色（LLM）」分组）**：展示文字用润色后文本，与语音内容一致，兜底小模型不遵守「保持原文不变」导致的文声割裂；全链路覆盖分段 BUNDLED/VOICE_ONLY/TEXT_FIRST/失败兜底与全文同步/异步，代价为文字等待一次润色 LLM 调用；
+- **测试**：新增 `tests/test_segmentation.py`（24 项：掷骰/短段/分隔线段/概率边界/rng 注入/决策表 2⁵ 全组合/Markdown 清洗/标签剥离），`core/text_utils` 支持无 AstrBot 运行时的独立导入。
+
+### 优化（对照 MiMO 官方文档校对，speech-synthesis-v2.5 + TTS API）
+
+- **润色提示词 V3**：规则 4 升级「严格保持原文内容一字不变」、新增「输出必须纯文本、禁 Markdown 格式符号」；标签示例全部对齐官方词表（哭笑/情绪/呼吸/停顿四类，[语速加快]/[语速放慢] 非官方词表已移除，[停顿] 官方认可保留），加表现力倾斜（优先 [轻笑]/[叹气]/[气声]/[撒娇]/[激动] 等有感染力标签，避免整段只剩功能性标签），数量收紧 1-3 个防堆砌；模板总长与上一版持平；
+- **旧默认模板等值迁移**：`polish_prompt` 配置面板残留的 V1（v2.2.x）/V2（v2.4.x 早期）默认模板自动迁移到 V3（`sing_styles` 预设迁移同款机制）；自定义过模板的用户不受影响；schema 默认值同步；
+- **Voice Studio 插件页对齐**：配置表补齐 `segment_text_fallback`/`display_polished_text` 两项（后端 `api_update_config` 白名单动态生成，仅缺展示层）；过期 hint 对齐（`tts_example_inject` 去内部代号、分段/润色组 hint 与 schema 同文）；会话编辑三态语义修复（null=跟随全局不再被勾选框钉死为显式 false，卡片信息条显示「跟随」）；
+- 配置面板「普通 TTS 风格示例注入」hint 文案更新（去内部代号，明确默认关闭理由）。
+
+### 重构
+
+- **分段逻辑分层**：新增 `core/segmentation.py`（规划层纯函数：切分掷骰 `plan_segments` + 唯一决策表 `resolve_delivery`，5 种投递动作 BUNDLED/TEXT_FIRST/VOICE_ONLY/TEXT_FALLBACK/DROP，可注入 rng 脱离 AstrBot 单测）与 `handlers/segmenting.py`（执行层只分发不做决策，含失败降级与后台语音队列）；`on_decorating_result` 分段分支从 55 行循环瘦身为「切分 → 执行 → 清空」；
+- **main.py 模块化拆分**（849 → 506 行，职责按官方 modular-split 指引收敛为 Star 子类/生命周期/薄 hooks/命令路由/共享访问器）：润色提示词模板与润色调用抽至 `core/polish.py`；自动 TTS 钩子整体抽至 `handlers/auto_tts.py`（`handle_auto_tts` + 后台补发 `send_tts_audio_background`，情感检测收敛为 `_detect_emotion` 单点）；Web API 注册抽至 `webapi.register_web_apis`（路由表白驱动）；sing_styles 预设迁移抽至 `core/config.migrate_sing_styles`；清理零引用代理方法（`_user_settings`/`_recent_files`/`_voice_manager_ref`/`_parse_opt`）与溯源式注释，拆分后全量导入路径 AST 核验通过；
+- 引入 ruff F 类（未定义名/未使用导入等）静态扫描作为回归防线，配合 py_compile/单测/node --check 构成本次全链路校验（`astrbot_review_path` 0 error，单测 24/24）。
+
 ## 2026-08-18 v2.2.9
 
 ### 修复

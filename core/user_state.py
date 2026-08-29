@@ -36,6 +36,9 @@ def sanitize_user_settings(data: dict) -> dict:
         "tts_enabled": True,
         "text_enabled": None,
         "text_async": None,
+        # None = 跟随插件全局配置；True/False = WebUI 会话级显式覆盖
+        "enable_segmentation": None,
+        "enable_voice_polish": None,
     }
     cleaned = dict(defaults)
     if isinstance(data, dict):
@@ -60,6 +63,10 @@ def sanitize_user_settings(data: dict) -> dict:
     cleaned["text_enabled"] = None if text_enabled is None else bool(text_enabled)
     text_async = cleaned.get("text_async", None)
     cleaned["text_async"] = None if text_async is None else bool(text_async)
+    # 三态开关（None=跟随全局）：归一化防止 WebUI 传入非布尔值
+    for key in ("enable_segmentation", "enable_voice_polish"):
+        value = cleaned.get(key, None)
+        cleaned[key] = None if value is None else bool(value)
     return cleaned
 
 
@@ -245,8 +252,9 @@ class UserStateManager:
                 "tts_enabled": True,
                 "text_enabled": None,
                 "text_async": None,
-                "enable_segmentation": cfg.enable_segmentation,
-                "enable_voice_polish": cfg.enable_voice_polish,
+                # None = 跟随全局（每次实时读 config，改全局配置立即生效）
+                "enable_segmentation": None,
+                "enable_voice_polish": None,
             }
         self.touch_user(uid)
         return self._user_settings[uid]
@@ -264,6 +272,16 @@ class UserStateManager:
         if text_async is None:
             return self._config.send_text_async
         return bool(text_async)
+
+    def segmentation_enabled(self, uid: str, normalize_tts_mode) -> bool:
+        """分段开关：None=跟随全局配置，True/False=WebUI 会话级覆盖。"""
+        value = self.get_settings(uid, normalize_tts_mode).get("enable_segmentation")
+        return self._config.enable_segmentation if value is None else bool(value)
+
+    def voice_polish_enabled(self, uid: str, normalize_tts_mode) -> bool:
+        """润色开关：None=跟随全局配置，True/False=WebUI 会话级覆盖。"""
+        value = self.get_settings(uid, normalize_tts_mode).get("enable_voice_polish")
+        return self._config.enable_voice_polish if value is None else bool(value)
 
     def get_effective_audio_format(self, uid: str) -> str:
         """Return the effective audio format for the given uid."""
