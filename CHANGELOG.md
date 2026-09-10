@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 2026-09-04 v2.3.2
+
+### 修复（缓存清理机制加固，补齐跨进程生命周期缺口）
+
+- **temp 音频孤儿文件回收**：`_recent_files` 仅存内存，进程崩溃/重启后 `data/temp/` 下已生成的音频文件无人认领，100MB 总量上限约束不到这些孤儿——新增 `UserStateManager.cleanup_temp_dir()` 目录级扫描，插件加载时执行；mtime 存活期不足 1 小时的文件保留（防插件热重载瞬间误删旧实例仍在写入的在途文件），其余孤儿删除并记日志；
+- **`_user_umo` / `_nl_sing_last` 无界增长修复**：两个派生映射（会话标识、自然语唱歌冷却）此前只增不减，长期运行的公群机器人慢性内存泄漏；现随 `_evict_stale_users` 与主设置同步淘汰（键不在 settings 存活集即清除），`restore()`/`reset_all()` 一并清理；`_nl_sing_last` 存储从 main.py 迁入 `UserStateManager`（main 经属性委托访问，handlers/nl_sing.py 零改动）；
+- **日志滚动窗口改为时间驱动**：`cleanup_old_logs()` 此前仅在插件加载时执行一次，AstrBot 长驻不重载时日志可远超 7 天窗口持续累积；现 `write()` 按天惰性触发（当日首次写日志时清理，`_last_cleanup_date` 守卫防重复），启动清理保留且共用同一守卫；
+- 移除死常量 `_MAX_LOG_LINES = 2000`（定义后从未引用）。
+
+### 测试
+
+- 新增 `tests/test_cache_cleanup.py`（11 项：孤儿扫描删除/近期保留/在途保护/缺目录回退/默认路径、派生映射淘汰/超限联动/restore/reset_all 清理、日志按天守卫/7 天窗口删除），新增 `tests/conftest.py` 为无 AstrBot 运行时提供 `astrbot.api` 最小桩；全套 35/35。
+
+### 清理
+
+- 移除 `tts/prompt_builder.py` 中已无消费方的 `detect_emotion` 兼容 re-export（handlers 已直连 `emotion.emotion_detector`）；同步修正 `emotion_detector` 过时注释。`astrbot_review_path` **0 error / 0 warning / 0 info**。
+
 ## 2026-08-30 v2.3.0
 
 ### 修复（分段模式行为重构，issue #9 问题一 + 用户实测反馈链）

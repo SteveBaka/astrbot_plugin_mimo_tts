@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Optional
 
 _MAX_LOG_AGE_DAYS = 7
-_MAX_LOG_LINES = 2000
 
 
 class PluginLogger:
@@ -27,6 +26,7 @@ class PluginLogger:
         self._config_ref = config_ref
         self._lock = threading.Lock()
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._last_cleanup_date = ""
 
     @property
     def enabled(self) -> bool:
@@ -56,6 +56,7 @@ class PluginLogger:
         """Write a log entry if logging is enabled."""
         if not self.enabled:
             return
+        self._maybe_cleanup_old_logs()
         entry = {
             "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "level": level,
@@ -81,15 +82,23 @@ class PluginLogger:
     def error(self, category: str, message: str, detail: Optional[str] = None) -> None:
         self.write("ERROR", category, message, detail)
 
+    def _maybe_cleanup_old_logs(self) -> None:
+        """每天首次写日志时触发清理，使滚动窗口时间驱动而非依赖插件重载。"""
+        if self._last_cleanup_date == datetime.now().strftime("%Y-%m-%d"):
+            return
+        self.cleanup_old_logs()
+
     def cleanup_old_logs(self) -> None:
         """Delete log files older than 7 days."""
+        self._last_cleanup_date = datetime.now().strftime("%Y-%m-%d")
         cutoff = time.time() - _MAX_LOG_AGE_DAYS * 86400
-        try:
-            for f in self._log_dir.glob("mimo_tts_*.log"):
-                if f.stat().st_mtime < cutoff:
-                    f.unlink(missing_ok=True)
-        except Exception:
-            pass
+        with self._lock:
+            try:
+                for f in self._log_dir.glob("mimo_tts_*.log"):
+                    if f.stat().st_mtime < cutoff:
+                        f.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     def read_logs(self, limit: int = 200, level: Optional[str] = None) -> list[dict]:
         """Read recent log entries from today's log file, newest first."""

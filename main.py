@@ -93,8 +93,6 @@ class MiMoTTSPlugin(Star):
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
         # 歌词润色回调注入：所有唱歌入口（命令/WebUI/NL）共用同一润色链路
         self.synth.lyrics_polisher = partial(polish_lyrics_with_llm, self)
-        # 自然语言唱歌：会话级冷却时间戳
-        self._nl_sing_last: dict[str, float] = {}
 
         # ── Plugin logger (WebUI log page) ──
         from .core.plugin_logger import PluginLogger
@@ -102,6 +100,7 @@ class MiMoTTSPlugin(Star):
         self.plog.cleanup_old_logs()
 
         self.user_state.load()
+        self.user_state.cleanup_temp_dir()
 
         register_web_apis(context, self)
 
@@ -114,6 +113,11 @@ class MiMoTTSPlugin(Star):
     @property
     def _state_file(self) -> Path:
         return self.user_state._state_file
+
+    @property
+    def _nl_sing_last(self) -> dict[str, float]:
+        """自然语言唱歌冷却时间戳（存储与淘汰归 user_state 管）。"""
+        return self.user_state.nl_sing_last
 
     def _get_user_settings(self, uid: str) -> dict:
         return self.user_state.get_settings(uid, normalize_tts_mode)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +109,9 @@ class UserStateManager:
 
     _MAX_IDLE_USERS = 500
     _CLEANUP_MAX_TOTAL_BYTES = 100 * 1024 * 1024
+    # temp 目录孤儿文件的最小存活期：合成通常数秒完成，
+    # 插件热重载瞬间旧实例可能仍在写盘，保留 1 小时缓冲避免误删在途文件
+    _TEMP_ORPHAN_MIN_AGE_SECONDS = 3600
 
     def __init__(self, data_dir: Path, config):
         self._data_dir = data_dir
@@ -117,6 +121,7 @@ class UserStateManager:
         self._user_format: dict[str, str] = {}
         self._user_umo: dict[str, str] = {}
         self._recent_files: list[tuple[float, Path]] = []
+        self._nl_sing_last: dict[str, float] = {}
         self._persist_lock = threading.Lock()
 
     @property
@@ -134,6 +139,11 @@ class UserStateManager:
     @property
     def recent_files(self) -> list[tuple[float, Path]]:
         return self._recent_files
+
+    @property
+    def nl_sing_last(self) -> dict[str, float]:
+        """自然语言唱歌的会话级冷却时间戳（内存态，随淘汰策略清理）。"""
+        return self._nl_sing_last
 
     def load(self) -> None:
         """Load user state from disk."""
@@ -214,12 +224,16 @@ class UserStateManager:
         """Restore current session settings to plugin defaults."""
         self._user_settings.pop(uid, None)
         self._user_format.pop(uid, None)
+        self._user_umo.pop(uid, None)
+        self._nl_sing_last.pop(uid, None)
         self.persist()
 
     def reset_all(self) -> None:
         """Clear all user state and remove the state file."""
         self._user_settings.clear()
         self._user_format.clear()
+        self._user_umo.clear()
+        self._nl_sing_last.clear()
         try:
             if self._state_file.exists():
                 self._state_file.unlink()
@@ -333,7 +347,50 @@ class UserStateManager:
                 for uid in list(store.keys())[:excess]:
                     store.pop(uid, None)
                     evicted = True
+        # 派生映射（会话标识、唱歌冷却）跟随主设置淘汰，防止无界增长
+        for derived in (self._user_umo, self._nl_sing_last):
+            stale = derived.keys() - self._user_settings.keys()
+            if stale:
+                for uid in stale:
+                    derived.pop(uid, None)
+                evicted = True
         return evicted
+
+    def cleanup_temp_dir(self, temp_dir: Path | None = None) -> int:
+        """Directory-level sweep of the temp audio dir.
+
+        ``_recent_files`` is memory-only, so audio files produced before a
+        process restart/crash are invisible to ``cleanup_recent_files`` —
+        this scan is the only way to reclaim them. Dir convention mirrors
+        tts/synthesis.py (``data_dir/temp``). Returns the number of files
+        removed.
+        """
+        target = temp_dir or (self._data_dir / "temp")
+        try:
+            candidates = [p for p in target.iterdir() if p.is_file()]
+        except Exception:
+            return 0
+        tracked = {p.resolve() for _, p in self._recent_files}
+        now = time.time()
+        removed = 0
+        for path in candidates:
+            try:
+                if path.resolve() in tracked:
+                    continue
+                # 保留存活期内的文件：热重载瞬间旧实例可能仍在写盘
+                if now - path.stat().st_mtime < self._TEMP_ORPHAN_MIN_AGE_SECONDS:
+                    continue
+                path.unlink(missing_ok=True)
+                removed += 1
+            except Exception:
+                continue
+        if removed:
+            logger.info(
+                "MiMO TTS: startup temp sweep removed %d orphaned audio file(s) in %s",
+                removed,
+                target,
+            )
+        return removed
 
     def cleanup_recent_files(self) -> None:
         """Clean up stale temp audio files and enforce disk limit."""

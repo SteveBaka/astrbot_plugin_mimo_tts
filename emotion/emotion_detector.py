@@ -207,9 +207,8 @@ class EmotionDetector:
 
 
 # ── Module-level convenience function ────────────────────────────
-# Provides a stateless one-shot emotion detection API without
-# requiring callers to instantiate ``EmotionDetector`` themselves.
-# Used by ``tts.prompt_builder.detect_emotion`` and ``main.py``.
+# 无状态一次性检测入口，调用方不必自建 EmotionDetector 实例。
+# 实际消费方：handlers/_helpers、handlers/auto_tts、handlers/segmenting。
 
 
 _default_detector: Optional[EmotionDetector] = None

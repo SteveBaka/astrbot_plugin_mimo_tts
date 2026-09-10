@@ -12,10 +12,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..emotion.emotion_detector import (
-    detect_emotion,  # noqa: F401  (re-export for backward compatibility)
-)
-
 # ── Emotion descriptions ─────────────────────────────────────
 
 EMOTION_DESCRIPTIONS: dict[str, str] = {
@@ -174,6 +170,3 @@ def build_control_prompt(
         parts.append(volume)
 
     return "，".join(parts) if parts else ""
-
-
-# detect_emotion re-exported at module level via top-level import.
