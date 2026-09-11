@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 2026-09-11 v2.4.0-test5
+
+> **内部测试版**：Voice Studio 导演**控制台**闭环（管理状态为主，合成即时验证）。
+
+### 新增（WebUI）
+
+- **REST**：`director/scenes`、`director/state`、`director/parse`、`director/apply`、`director/clear`；`/tts` 白名单增加 `director_mode` / `director_payload`（临时覆盖可选）。
+- **合成页「导演模式（控制台）」卡片**：
+  - 显示总开关；未启用时引导去配置；
+  - 会话 UID（默认 `webui`）、内置场景下拉、自定义描述（场景名/三维稿/LLM 自然语言）；
+  - **应用到会话**（session / once）→ 写 `user_state`，与 `/direct` 同一状态源；
+  - **清除导演场景**；当前状态摘要 + 刷新；
+  - design 模式提示不注入导演稿。
+- **合成语音默认吃会话已应用的导演状态**（uid=`webui` 时与控制台一致）；不另传 override。
+
+### 安装验证记录
+
+- **结果（2026-09-11）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.0-test5**；组件 **34**
+
+### 实测结论（P3 WebUI 收口）
+
+- 用户确认：**控制台应用场景 → 合成生效 → 清除恢复** 闭环通过  
+- 与聊天命令 `/direct` 同一 `user_state` 状态源；design 不注入（符合 §16.2）  
+- 原有合成/克隆/设计试听路径未回归破坏  
+
+### 建议实测
+
+1. 配置打开导演模式 → 合成页出现控制台卡片  
+2. 选「深夜电台」→ 应用到会话 → 合成 → 应有电台腔  
+3. 清除 → 再合成 → 恢复默认  
+4. design 模式合成 → 无导演稿  
+
 ## 2026-09-11 v2.4.0-test4
 
 > **内部测试版**：导演解析专用 Provider，便于固定更稳的 JSON 模型。

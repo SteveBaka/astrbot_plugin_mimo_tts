@@ -78,7 +78,8 @@ async def api_tts_synthesize(plugin):
     for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
                 "laughter", "pause", "dialect", "volume", "tts_mode",
                 "sing", "sing_style", "sing_voice_override",
-                "design_description", "clone_style_prompt"):
+                "design_description", "clone_style_prompt",
+                "director_mode", "director_payload"):
         if key in body and body[key] is not None:
             overrides[key] = body[key]
 
@@ -402,6 +403,159 @@ async def api_log_stats(plugin):
     return jsonify(plugin.plog.get_stats())
 
 
+def _director_uid(raw) -> str:
+    uid = str(raw or "webui").strip()[:100]
+    return uid or "webui"
+
+
+async def api_director_scenes(plugin):
+    """导演控制台：内置场景列表 + 全局开关状态。"""
+    from quart import jsonify
+
+    from .core.director_assets import BUILTIN_SCENES
+
+    scenes = [
+        {
+            "name": item.get("name", ""),
+            "character": item.get("character", ""),
+            "scene": item.get("scene", ""),
+            "guidance": item.get("guidance", ""),
+        }
+        for item in BUILTIN_SCENES.values()
+    ]
+    return jsonify({
+        "enabled": plugin.config.director_enabled,
+        "parse_llm": plugin.config.director_parse_llm,
+        "scenes": scenes,
+    })
+
+
+async def api_director_state(plugin):
+    """读取指定 uid 的导演会话状态（控制台主路径）。"""
+    from quart import jsonify, request
+
+    from .core.director_package import loads_package
+
+    uid = _director_uid(request.args.get("uid"))
+    uset = plugin._get_user_settings(uid)
+    pkg = loads_package(uset.get("director_payload"))
+    return jsonify({
+        "uid": uid,
+        "enabled": plugin.config.director_enabled,
+        "mode": str(uset.get("director_mode") or ""),
+        "scene_name": pkg.scene_name if pkg else "",
+        "summary": pkg.summary() if pkg else "",
+        "guidance_source": pkg.guidance_source if pkg else "",
+        "has_state": bool(pkg and uset.get("director_mode") in ("once", "session")),
+    })
+
+
+async def api_director_parse(plugin):
+    """把自由描述解析为 ScenePackage JSON（不写入会话）。"""
+    from quart import jsonify, request
+
+    from .core.director_llm import parse_director_with_llm
+    from .core.director_package import dumps_package
+    from .core.director_parser import parse_director_input
+
+    body = await request.json or {}
+    text = str(body.get("text") or "")[:800].strip()
+    uid = _director_uid(body.get("uid"))
+    if not text:
+        return jsonify({"error": "缺少场景描述"}), 400
+
+    pkg = parse_director_input(text)
+    if not pkg and plugin.config.director_parse_llm:
+        try:
+            pkg = await parse_director_with_llm(plugin, text, uid)
+        except Exception as e:
+            return jsonify({"error": f"LLM 解析失败: {e}"}), 500
+    if not pkg:
+        return jsonify({
+            "error": "无法识别该场景",
+            "hint": "可用内置场景名、三维稿，或开启 LLM 自由解析后重试",
+        }), 400
+    payload = dumps_package(pkg)
+    if not payload:
+        return jsonify({"error": "场景过长"}), 400
+    return jsonify({
+        "payload": payload,
+        "scene_name": pkg.scene_name,
+        "summary": pkg.summary(),
+        "guidance_source": pkg.guidance_source,
+    })
+
+
+async def api_director_apply(plugin):
+    """把场景应用到指定 uid 会话（session/once）。控制台主路径。"""
+    from quart import jsonify, request
+
+    from .core.director_llm import parse_director_with_llm
+    from .core.director_package import dumps_package, loads_package
+    from .core.director_parser import parse_director_input
+
+    if not plugin.config.director_enabled:
+        return jsonify({"error": "导演模式未启用，请先在插件配置中打开"}), 400
+
+    body = await request.json or {}
+    uid = _director_uid(body.get("uid"))
+    mode = str(body.get("mode") or "session").strip().lower()
+    if mode not in ("once", "session"):
+        return jsonify({"error": "mode 须为 session 或 once"}), 400
+
+    payload = str(body.get("payload") or "").strip()
+    text = str(body.get("text") or "")[:800].strip()
+
+    pkg = loads_package(payload) if payload else None
+    if not pkg:
+        if not text:
+            return jsonify({"error": "缺少 payload 或 text"}), 400
+        pkg = parse_director_input(text)
+        if not pkg and plugin.config.director_parse_llm:
+            try:
+                pkg = await parse_director_with_llm(plugin, text, uid)
+            except Exception as e:
+                return jsonify({"error": f"LLM 解析失败: {e}"}), 500
+        if not pkg:
+            return jsonify({"error": "无法识别该场景"}), 400
+
+    final_payload = dumps_package(pkg)
+    if not final_payload:
+        return jsonify({"error": "场景过长"}), 400
+
+    uset = plugin._get_user_settings(uid)
+    uset["director_mode"] = mode
+    uset["director_payload"] = final_payload
+    plugin._persist_current_state()
+    kind = "会话常驻" if mode == "session" else "仅下一次"
+    return jsonify({
+        "status": "ok",
+        "uid": uid,
+        "mode": mode,
+        "summary": pkg.summary(),
+        "message": f"已应用（{kind}）: {pkg.summary()}",
+    })
+
+
+async def api_director_clear(plugin):
+    """清除指定 uid 的导演会话状态。"""
+    from quart import jsonify, request
+
+    uid_raw = None
+    if request.method == "GET":
+        uid_raw = request.args.get("uid")
+    else:
+        body = await request.json or {}
+        uid_raw = body.get("uid")
+    uid = _director_uid(uid_raw)
+
+    uset = plugin._get_user_settings(uid)
+    uset["director_mode"] = ""
+    uset["director_payload"] = ""
+    plugin._persist_current_state()
+    return jsonify({"status": "ok", "uid": uid, "message": "已清除导演场景"})
+
+
 def register_web_apis(context, plugin) -> None:
     """注册 Voice Studio 插件页全部 REST 端点。"""
     p = "astrbot_plugin_mimo_tts"
@@ -426,6 +580,11 @@ def register_web_apis(context, plugin) -> None:
         ("health", api_health, ["GET"], "健康检查"),
         ("logs", api_get_logs, ["GET"], "获取插件日志"),
         ("logs/stats", api_log_stats, ["GET"], "日志统计"),
+        ("director/scenes", api_director_scenes, ["GET"], "导演内置场景"),
+        ("director/state", api_director_state, ["GET"], "导演会话状态"),
+        ("director/parse", api_director_parse, ["POST"], "解析导演场景描述"),
+        ("director/apply", api_director_apply, ["POST"], "应用导演场景到会话"),
+        ("director/clear", api_director_clear, ["POST", "GET"], "清除导演场景"),
     ]
     for path, fn, methods, desc in routes:
         context.register_web_api(f"/{p}/{path}", partial(fn, plugin), methods, desc)

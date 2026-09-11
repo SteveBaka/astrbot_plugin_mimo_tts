@@ -305,6 +305,17 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       const audioSrc = ref('');
       const audioRef = ref(null);
       const registeredVoices = ref([]);
+      // 导演控制台（WebUI = 管理状态；合成吃会话状态）
+      const directorUid = ref('webui');
+      const directorEnabled = ref(false);
+      const directorParseLlm = ref(false);
+      const directorScenes = ref([]);
+      const directorScenePick = ref('');
+      const directorCustom = ref('');
+      const directorApplyMode = ref('session');
+      const directorState = ref({ mode: '', summary: '' });
+      const directorBusy = ref(false);
+      const directorMsg = ref('');
 
       const modes = [
         { value: 'default', label: '默认' },
@@ -493,10 +504,94 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           cloneStylePrompt.value = res.config.clone_style_prompt || '';
           designDescription.value = res.config.design_voice_description || '';
           voicePolishEnabled.value = !!res.config.enable_voice_polish;
+          directorEnabled.value = !!res.config.director_enabled;
+          directorParseLlm.value = !!res.config.director_parse_llm;
         }
       }
 
-      onMounted(() => { loadVoices(); loadSynthConfig(); loadClonePool(); });
+      async function loadDirectorConsole() {
+        const scenes = await apiGet('director/scenes');
+        if (scenes) {
+          directorEnabled.value = !!scenes.enabled;
+          directorParseLlm.value = !!scenes.parse_llm;
+          directorScenes.value = scenes.scenes || [];
+          if (!directorScenePick.value && directorScenes.value.length) {
+            directorScenePick.value = directorScenes.value[0].name;
+          }
+        }
+        await refreshDirectorState();
+      }
+
+      async function refreshDirectorState() {
+        const st = await apiGet('director/state', { uid: directorUid.value });
+        if (st) {
+          directorState.value = {
+            mode: st.mode || '',
+            summary: st.summary || st.scene_name || '',
+          };
+        }
+      }
+
+      async function applyDirector() {
+        if (!directorEnabled.value) {
+          showError('导演模式未启用：请先在插件配置「导演模式」中打开总开关');
+          return;
+        }
+        directorBusy.value = true;
+        directorMsg.value = '';
+        try {
+          const custom = directorCustom.value.trim();
+          const body = {
+            uid: directorUid.value,
+            mode: directorApplyMode.value,
+          };
+          if (custom) {
+            body.text = custom;
+          } else if (directorScenePick.value) {
+            body.text = directorScenePick.value;
+          } else {
+            showError('请选择内置场景或填写自定义描述');
+            return;
+          }
+          const res = await apiPost('director/apply', body);
+          if (!res || res.error) {
+            showError((res && res.error) || '应用失败');
+          } else {
+            directorMsg.value = res.message || '已应用';
+            showSuccess(res.message || '已应用导演场景');
+            await refreshDirectorState();
+          }
+        } catch (e) {
+          showError('应用失败：' + (e.message || e));
+        } finally {
+          directorBusy.value = false;
+        }
+      }
+
+      async function clearDirector() {
+        directorBusy.value = true;
+        try {
+          const res = await apiPost('director/clear', { uid: directorUid.value });
+          if (res && res.status === 'ok') {
+            directorMsg.value = '';
+            showSuccess('已清除本会话导演场景');
+            await refreshDirectorState();
+          } else {
+            showError((res && res.error) || '清除失败');
+          }
+        } catch (e) {
+          showError('清除失败：' + (e.message || e));
+        } finally {
+          directorBusy.value = false;
+        }
+      }
+
+      onMounted(() => {
+        loadVoices();
+        loadSynthConfig();
+        loadClonePool();
+        loadDirectorConsole();
+      });
 
       return {
         text, voiceMode, selectedVoice, emotion, speed, pitch, audioFormat,
@@ -506,9 +601,13 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         designDescription, designSaveId, savingDesign,
         cloneStylePrompt, savingCloneStyle,
         audioSrc, audioRef, registeredVoices,
+        directorUid, directorEnabled, directorParseLlm, directorScenes,
+        directorScenePick, directorCustom, directorApplyMode, directorState,
+        directorBusy, directorMsg,
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
         applyPreset, runDetectEmotion, synthesize, saveDesignVoice,
-        saveCloneStyle, icon
+        saveCloneStyle, applyDirector, clearDirector, refreshDirectorState,
+        icon
       };
     },
     template: `
@@ -637,6 +736,66 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             <option value="大声">大声</option>
           </select>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title"><span v-html="icon('sparkles')"></span> 导演模式（控制台）</div>
+    <p class="control-hint" style="margin:0 0 10px;font-size:12px;opacity:.75;">
+      管理本会话导演场景；「合成语音」将使用下方已应用的状态。
+      design 模式不注入导演稿。总开关在插件配置「导演模式」。
+    </p>
+    <div v-if="!directorEnabled" class="design-tune-block">
+      <strong>导演模式未启用</strong> — 请在 AstrBot 插件配置中打开「启用导演模式」后刷新本页。
+    </div>
+    <div v-else class="design-tune-block">
+      <div class="form-grid">
+        <div class="control-group">
+          <label class="control-label">会话 UID</label>
+          <input type="text" v-model="directorUid" placeholder="默认 webui" class="text-input">
+        </div>
+        <div class="control-group">
+          <label class="control-label">应用方式</label>
+          <select v-model="directorApplyMode" class="select-input">
+            <option value="session">会话常驻（后续合成持续生效）</option>
+            <option value="once">仅下一次合成</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label class="control-label">内置场景</label>
+          <select v-model="directorScenePick" class="select-input">
+            <option v-for="s in directorScenes" :key="s.name" :value="s.name">{{ s.name }}</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label class="control-label">当前状态</label>
+          <div style="font-size:13px;padding-top:6px;">
+            <template v-if="directorState.mode">
+              <strong>{{ directorState.mode === 'session' ? '会话常驻' : '仅下一次' }}</strong>
+              <span v-if="directorState.summary"> — {{ directorState.summary }}</span>
+            </template>
+            <template v-else>未设置</template>
+            <button class="btn-link" style="margin-left:8px;" @click="refreshDirectorState">刷新</button>
+          </div>
+        </div>
+      </div>
+      <label class="control-label">自定义描述（可选，优先于内置场景）</label>
+      <textarea v-model="directorCustom"
+        placeholder="内置场景名，或粘贴「角色：… / 场景：… / 指导：…」；开启 LLM 自由解析后可填自然语言"
+        rows="3" class="text-input"></textarea>
+      <div class="design-tune-row">
+        <button class="btn-small" @click="applyDirector" :disabled="directorBusy || !directorEnabled">
+          <span v-if="directorBusy" class="spinner"></span>
+          <span v-html="icon('save')"></span> 应用到会话
+        </button>
+        <button class="btn-small" @click="clearDirector" :disabled="directorBusy || !directorEnabled">
+          清除导演场景
+        </button>
+        <span v-if="directorMsg" style="font-size:12px;opacity:.8;margin-left:8px;">{{ directorMsg }}</span>
+      </div>
+      <div v-if="voiceMode === 'design'" style="margin-top:8px;font-size:12px;opacity:.8;">
+        当前为 design 输出模式：合成时不注入导演稿（音色身份描述优先）。
       </div>
     </div>
   </div>
