@@ -646,18 +646,16 @@ class TTSSynthesizer:
                             emotion,
                         )
 
-        # 导演模式（§16.10 切片）：仅 default 且非唱歌；开关关闭时零改动
-        if (
-            mode == "default"
-            and not uset.get("sing")
-            and self._config.director_enabled
-        ):
+        # 导演模式（§16.10 / P3b）：default + clone + 唱歌（唱歌强制 default）；
+        # design 仍排除（user=音色身份，见 §16.2）。开关关闭时零改动。
+        if mode in ("default", "clone") and self._config.director_enabled:
             before = prompt
             prompt = apply_director_to_prompt(prompt, uset)
             if prompt != before:
                 logger.info(
-                    "MiMO TTS: director prompt applied mode=%s",
-                    uset.get("director_mode"),
+                    "MiMO TTS: director prompt applied mode=%s sing=%s",
+                    mode,
+                    bool(uset.get("sing")),
                 )
 
         raw = await provider.synthesize(

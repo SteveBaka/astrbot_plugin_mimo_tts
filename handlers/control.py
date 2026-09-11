@@ -82,6 +82,8 @@ async def handle_tts_help(plugin, event: AstrMessageEvent):
         *sing_lines,
         "",
         "/mimo_say <文本>  - 即时合成语音",
+        "/direct <场景|三维稿>  - 导演场景（会话常驻；off 清除；需配置开启导演模式）",
+        "/direct once <场景>  - 仅下一次合成使用该场景",
         "/ttsconfig  - 查看当前会话配置",
         "/tts_restore  - 将当前会话配置恢复为插件默认设置",
         "/tts_<on/off>  - 开启或关闭当前对话自动 TTS",

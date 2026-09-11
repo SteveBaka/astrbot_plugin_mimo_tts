@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 2026-09-11 v2.4.0-test2
+
+> **内部测试版**：P3b 多通道接入。test1 已实测 `/direct 深夜电台` + default 通道通过。
+
+### 新增 / 变更
+
+- **导演模式接入 clone 与唱歌**：`director_enabled` 且 mode 为 `default`/`clone` 时注入（唱歌强制 default，一并生效）；**design 仍排除**（user=音色身份）。
+- **内置场景扩至 6 个**：深夜电台 / 哄睡 / 元气早安 + **古风叙事 / 新闻播报 / emo 独白**。
+- **`/tts_help`**：增加 `/direct` 与 `/direct once` 说明。
+
+### 安装验证记录
+
+- 分支：`feat/director-mode`
+- 方式：`force_refresh`（reinstall_keep_config_data）
+- **结果（2026-09-11）**：安装/重载成功；failed **空**；**activated**；版本 **v2.4.0-test2**；组件 **34**（含 `direct`）
+
+### 建议实测
+
+1. `/direct 深夜电台` → `/ttsswitch clone` + `/mimo_say …`（需已有克隆音色）
+2. `/direct 哄睡` → `/sing …`（唱歌仍应正常）
+3. `/direct off` 后 clone/唱歌恢复未开启行为
+4. `/direct 新闻播报` 等新场景名
+
 ## 2026-09-11 v2.4.0-test1
 
 > **内部测试版**：导演模式 P3 垂直切片首次安装验证用。同功能定稿版见下方 v2.4.0 条目；本版号仅用于定位「本次安装对应哪次改动」。
