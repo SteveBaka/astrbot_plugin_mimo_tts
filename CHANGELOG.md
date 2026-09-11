@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 2026-09-11 v2.4.0-test1
+
+> **内部测试版**：导演模式 P3 垂直切片首次安装验证用。同功能定稿版见下方 v2.4.0 条目；本版号仅用于定位「本次安装对应哪次改动」。
+
+### 安装验证记录
+
+- 目标：AstrBot `http://192.168.66.23:6185`，插件 id `astrbot_plugin_mimo_tts`
+- 方式：`force_refresh=true`（reinstall_keep_config_data，保留 config + data）
+- 安装前：本地 127/127 单测、review 0 error
+- **安装后（2026-09-11）**：upload/reload **成功**；`failed` 列表**空**；插件 **activated**；版本 **v2.4.0-test1**；组件 **34**（含新命令 `direct`）
+
+### 操作提示（验证导演模式）
+
+1. Dashboard → 插件配置 →「导演模式」→ 勾选 **启用导演模式**
+2. `/direct 深夜电台` → 应回「已设置导演场景（会话常驻…）」
+3. `/mimo_say 今天过得怎么样` → 听感应偏深夜电台（慢、磁性）
+4. `/direct off` 后再 `/mimo_say …` → 恢复默认语气
+
+## 2026-09-11 v2.4.0
+
+### 新增（导演模式 P3 垂直切片，默认关闭）
+
+- **`/direct` 命令（公开）**：`/direct <内置场景名|三维稿>` 设会话常驻场景；`/direct once …` 仅下一次合成；`/direct` 查看；`/direct off` 清除。三维稿支持中文「角色/场景/指导」与英文 Role/Scene/Guidance|Direction 标签切分。
+- **内置场景**：深夜电台 / 哄睡 / 元气早安（零 LLM 快路径）。
+- **配置 `director_enabled`（默认 false，「导演模式」分组）**：关闭时全链路与 v2.3.2 等价。
+- **模块拆分**：`core/director_assets.py`（场景与骨架资产）、`core/director_package.py`（ScenePackage）、`core/director_parser.py`（解析）、`core/director_composer.py`（覆盖合并与渲染）、`handlers/director.py`（命令薄层）；`main.py` 仅注册命令。
+- **注入范围（本切片）**：仅 **default 预置音色且非唱歌**；clone/design/唱歌与 LLM 自由解析、`mimo_direct` 不在本版。
+- **覆盖语义**：会话 `speed≠1.0` 时过滤 guidance 中语速类提示；导演骨架拼接在既有 user 控制稿之后，不重复注入 style_hint。
+- **once 消费**：合成**成功后**清除，失败保留便于重试。
+
+### 测试
+
+- 新增 `tests/test_director_slice.py`（13 项：内置场景/中英标签解析/骨架省略/禁写清洗/序列化往返/显式语速过滤/开关无包零改动/坏 payload 原样返回）；`tests/conftest.py` 补齐 `astrbot.api` 桩与包骨架。全套 **127/127**。
+
 ## 2026-09-04 v2.3.2
 
 ### 修复（缓存清理机制加固，补齐跨进程生命周期缺口）

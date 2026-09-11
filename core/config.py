@@ -431,6 +431,7 @@ class ConfigManager:
         "nl_sing_tool": False,
         "tts_output_mode": "default",
         "tts_example_inject": False,
+        "director_enabled": False,
         # TTS parameters
         "emotion_override": "",
         "default_speed": 1.0,
@@ -679,6 +680,10 @@ class ConfigManager:
     @property
     def style_hint(self) -> str:
         return str(self._flat.get("style_hint", ""))
+
+    @property
+    def director_enabled(self) -> bool:
+        return bool(self._flat.get("director_enabled", False))
 
     @property
     def breath_enabled(self) -> bool:

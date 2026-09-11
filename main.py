@@ -46,6 +46,7 @@ from .handlers.singstyle import (
     handle_singstyle_show,
 )
 from .handlers.nl_sing import handle_nl_sing, handle_nl_sing_tool
+from .handlers.director import handle_direct
 from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
 from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
 from .handlers.voice import (
@@ -227,6 +228,12 @@ class MiMoTTSPlugin(Star):
             self.plog.info("TTS", f"合成完成 {size_kb}KB → {audio_path.name}")
             self.user_state.recent_files.append((time.time(), audio_path))
             self.user_state.cleanup_recent_files()
+            # 导演 once：成功后消费，失败保留便于重试
+            uset = self._get_user_settings(uid)
+            if uset.get("director_mode") == "once":
+                uset["director_mode"] = ""
+                uset["director_payload"] = ""
+                self._persist_current_state()
         return audio_path
 
     async def terminate(self) -> None:
@@ -269,6 +276,12 @@ class MiMoTTSPlugin(Star):
     async def cmd_sing(self, event: AstrMessageEvent):
         """唱歌模式 /sing [-音色名] [-s 风格组] [-p 提示词] <歌词>，支持 (风格) 括号简写"""
         async for item in handle_sing(self, event):
+            yield item
+
+    @filter.command("direct")
+    async def cmd_direct(self, event: AstrMessageEvent):
+        """导演模式 /direct <场景|三维稿> | once | off — 设置本对话朗读场景"""
+        async for item in handle_direct(self, event):
             yield item
 
     @filter.command_group("singstyle")

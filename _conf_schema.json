@@ -351,6 +351,18 @@
       }
     }
   },
+  "director_settings": {
+    "description": "导演模式",
+    "type": "object",
+    "items": {
+      "director_enabled": {
+        "type": "bool",
+        "description": "启用导演模式",
+        "hint": "开启后可用 /direct 设置场景（内置场景名或「角色/场景/指导」三维稿），注入普通 TTS 的 user 控制通道。关闭时全链路与未开启一致。本版仅 default 预置音色通道，不含 LLM 自由解析",
+        "default": false
+      }
+    }
+  },
   "clone_settings": {
     "description": "声音克隆",
     "type": "object",

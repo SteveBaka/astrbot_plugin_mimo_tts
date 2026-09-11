@@ -40,6 +40,9 @@ def sanitize_user_settings(data: dict) -> dict:
         # None = 跟随插件全局配置；True/False = WebUI 会话级显式覆盖
         "enable_segmentation": None,
         "enable_voice_polish": None,
+        # 导演模式："" / "once" / "session"；payload 为 ScenePackage JSON
+        "director_mode": "",
+        "director_payload": "",
     }
     cleaned = dict(defaults)
     if isinstance(data, dict):
@@ -68,6 +71,11 @@ def sanitize_user_settings(data: dict) -> dict:
     for key in ("enable_segmentation", "enable_voice_polish"):
         value = cleaned.get(key, None)
         cleaned[key] = None if value is None else bool(value)
+    director_mode = str(cleaned.get("director_mode", "") or "").strip().lower()
+    cleaned["director_mode"] = (
+        director_mode if director_mode in ("once", "session") else ""
+    )
+    cleaned["director_payload"] = str(cleaned.get("director_payload", "") or "")[:2000]
     return cleaned
 
 
@@ -269,6 +277,8 @@ class UserStateManager:
                 # None = 跟随全局（每次实时读 config，改全局配置立即生效）
                 "enable_segmentation": None,
                 "enable_voice_polish": None,
+                "director_mode": "",
+                "director_payload": "",
             }
         self.touch_user(uid)
         return self._user_settings[uid]

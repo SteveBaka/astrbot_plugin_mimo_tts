@@ -1,0 +1,104 @@
+# -*- coding: utf-8 -*-
+"""导演模式命令：/direct（公开，即时类）"""
+
+from __future__ import annotations
+
+import re
+
+from astrbot.api import logger
+from astrbot.api.event import AstrMessageEvent, MessageEventResult
+
+from ..core.director_assets import list_builtin_scene_names
+from ..core.director_package import dumps_package, loads_package
+from ..core.director_parser import parse_director_input
+
+DIRECTOR_USAGE = (
+    "用法: /direct <场景名或三维稿> — 设置本对话导演场景（默认会话常驻）\n"
+    "     /direct once <场景名或三维稿> — 仅下一次合成生效\n"
+    "     /direct — 查看当前导演场景\n"
+    "     /direct off — 清除导演场景\n"
+    "内置场景: " + "、".join(list_builtin_scene_names()) + "\n"
+    "也可粘贴完整稿（角色：… / 场景：… / 指导：…）"
+)
+
+
+def _extract_args(event: AstrMessageEvent) -> str:
+    raw = str(event.message_str or "").strip()
+    m = re.match(r"^/?direct(?:@[^\s]+)?(?:\s+(?P<rest>.*))?$", raw, re.IGNORECASE)
+    return (m.group("rest") or "").strip() if m else raw
+
+
+async def handle_direct(plugin, event: AstrMessageEvent):
+    """/direct <场景|三维稿> | once | off — 管理当前对话导演模式场景"""
+    arg = _extract_args(event)
+    uid, uset = plugin._get_event_settings(event)
+
+    if not plugin.config.get("director_enabled", False):
+        yield MessageEventResult().message(
+            "导演模式未启用。请在插件配置「导演模式」中打开 director_enabled。"
+        )
+        return
+
+    if not arg:
+        mode = str(uset.get("director_mode") or "")
+        pkg = loads_package(uset.get("director_payload"))
+        if mode and pkg:
+            kind = "会话常驻" if mode == "session" else "仅下一次"
+            yield MessageEventResult().message(
+                f"当前导演场景（{kind}）: {pkg.summary()}\n"
+                "清除: /direct off　临时一次: /direct once <场景>"
+            )
+        else:
+            yield MessageEventResult().message(
+                "当前未设置导演场景。\n" + DIRECTOR_USAGE
+            )
+        return
+
+    low = arg.lower()
+    if low in ("off", "clear", "关闭"):
+        uset["director_mode"] = ""
+        uset["director_payload"] = ""
+        plugin._persist_current_state()
+        yield MessageEventResult().message("已清除本对话导演场景。")
+        return
+
+    mode = "session"
+    body = arg
+    if low.startswith("once ") or low == "once":
+        mode = "once"
+        body = arg[4:].strip()
+        if not body:
+            yield MessageEventResult().message(
+                "用法: /direct once <场景名或三维稿>"
+            )
+            return
+
+    pkg = parse_director_input(body)
+    if not pkg:
+        yield MessageEventResult().message(
+            "无法识别该场景。\n"
+            "可用内置场景: "
+            + "、".join(list_builtin_scene_names())
+            + "\n或使用三维稿:\n角色：…\n场景：…\n指导：…"
+        )
+        return
+
+    payload = dumps_package(pkg)
+    if not payload:
+        yield MessageEventResult().message("场景过长，已拒绝写入。请精简后重试。")
+        return
+
+    uset["director_mode"] = mode
+    uset["director_payload"] = payload
+    plugin._persist_current_state()
+    logger.info(
+        "MiMO TTS: director set uid=%s mode=%s scene=%s source=%s",
+        uid,
+        mode,
+        pkg.scene_name or "(custom)",
+        pkg.guidance_source,
+    )
+    kind = "会话常驻，后续合成生效" if mode == "session" else "仅下一次合成"
+    yield MessageEventResult().message(
+        f"已设置导演场景（{kind}）: {pkg.summary()}\n关闭: /direct off"
+    )
