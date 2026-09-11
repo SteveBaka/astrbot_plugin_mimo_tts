@@ -358,8 +358,39 @@
       "director_enabled": {
         "type": "bool",
         "description": "启用导演模式",
-        "hint": "开启后可用 /direct 设置场景（内置场景名或「角色/场景/指导」三维稿），注入普通 TTS 的 user 控制通道。关闭时全链路与未开启一致。本版仅 default 预置音色通道，不含 LLM 自由解析",
+        "hint": "开启后可用 /direct 设置场景（内置场景名或「角色/场景/指导」三维稿），注入 default/克隆/唱歌的 user 控制通道。关闭时全链路与未开启一致",
         "default": false
+      },
+      "director_parse_llm": {
+        "type": "bool",
+        "description": "LLM 自由解析",
+        "hint": "内置场景与三维稿未命中时，用 LLM 把自然语言描述整理成导演场景（需先启用导演模式）。失败会降级为无法识别，不中断其它功能。默认关闭",
+        "default": false
+      },
+      "director_parse_llm_provider": {
+        "type": "string",
+        "description": "导演解析 LLM Provider",
+        "hint": "专用于「LLM 自由解析」的模型。留空则回退「润色 LLM Provider」，再回退当前对话模型。建议选 JSON/指令跟随更稳的模型",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "director_parse_prompt": {
+        "type": "string",
+        "description": "导演解析提示词",
+        "hint": "{text} 为用户描述占位符；留空用内置模板",
+        "default": ""
+      },
+      "director_timeout": {
+        "type": "int",
+        "description": "导演解析超时（秒）",
+        "hint": "0=不限制；超时降级为无法识别",
+        "default": 8
+      },
+      "director_cache_ttl": {
+        "type": "int",
+        "description": "导演解析缓存（秒）",
+        "hint": "同描述+同模板命中缓存，避免重复调用 LLM；0=关闭",
+        "default": 300
       }
     }
   },

@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-09-11 v2.4.0-test4
+
+> **内部测试版**：导演解析专用 Provider，便于固定更稳的 JSON 模型。
+
+### 新增
+
+- **`director_parse_llm_provider`**（配置「导演模式」，`select_provider`）：专用于 LLM 自由解析。  
+  回退链：**专用 Provider → 润色 Provider → 当前对话模型**（与唱歌润色同构）。
+
+### 安装验证记录
+
+- **结果（2026-09-11）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.0-test4**；组件 **34**
+
+### 建议实测
+
+1. 在配置里选定一个 JSON 更稳的 Provider  
+2. `/direct 雨天傍晚低落独白` → 应用该模型解析  
+3. 留空 Provider → 行为与 test3 相同（回退润色/当前对话）
+
+## 2026-09-11 v2.4.0-test3
+
+> **内部测试版**：P3c B1 — 导演模式可选 LLM 自由解析。P3/P3b（test1/test2）已实测通过并收口。
+
+### 新增
+
+- **`director_parse_llm`（默认 false）**：内置场景与三维稿未命中时，用 LLM 把自然语言描述整理成 ScenePackage（JSON → `sanitize_package`）。
+- 配置：`director_parse_prompt`（`{text}` 占位，留空用内置）、`director_timeout`（默认 8s）、`director_cache_ttl`（默认 300s，同描述缓存）。
+- Provider 链：复用 `polish_llm_provider` > 当前对话模型；`llm_generate` 裸调用（无 system_prompt/历史）。
+- 失败/超时/坏 JSON：提示无法识别，**不中断**其它功能；快路径优先，LLM 仅兜底。
+- 模块：`core/director_llm.py`；handlers 仅在快路径失败且开关开启时调用。
+
+### 安装验证记录
+
+- **结果（2026-09-11）**：`force_refresh` 安装/重载成功；failed **空**；**activated**；版本 **v2.4.0-test3**；组件 **34**
+
+### 建议实测
+
+1. 仅开 `director_enabled`：`/direct 雨天傍晚低落独白` → 提示可开 LLM  
+2. 再开 `director_parse_llm`：同上 → 应写入场景并 `/mimo_say` 生效  
+3. 乱写极短无意义描述 → 失败提示，无崩溃  
+4. 同描述再 `/direct` 一次 → 日志可见 cache hit（若有日志权限）
+
 ## 2026-09-11 v2.4.0-test2
 
 > **内部测试版**：P3b 多通道接入。test1 已实测 `/direct 深夜电台` + default 通道通过。
@@ -15,6 +57,19 @@
 - 分支：`feat/director-mode`
 - 方式：`force_refresh`（reinstall_keep_config_data）
 - **结果（2026-09-11）**：安装/重载成功；failed **空**；**activated**；版本 **v2.4.0-test2**；组件 **34**（含 `direct`）
+
+### 实测结论（P3 收口）
+
+- test1：`/direct 深夜电台` + default 通道 **用户实测通过**
+- test2：clone / 唱歌路径 **效果已出现**（用户实测）
+- 收口时工作区干净；仅曾出现 polish/auto_tts 可执行位噪音，已用 `chmod` 消除（无逻辑 diff）
+
+### 建议补测（P3 验收清单，未强制）
+
+1. `/direct once 哄睡` → 仅下一次生效，再合成应无导演稿  
+2. `/direct off` → 三通道回到未开启听感  
+3. 关闭配置「启用导演模式」→ `/direct` 提示未启用，合成零注入  
+4. 会话 ` /speed 2.0` + 导演场景 → 不被场景包语速类提示覆盖  
 
 ### 建议实测
 

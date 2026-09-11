@@ -18,7 +18,8 @@ DIRECTOR_USAGE = (
     "     /direct — 查看当前导演场景\n"
     "     /direct off — 清除导演场景\n"
     "内置场景: " + "、".join(list_builtin_scene_names()) + "\n"
-    "也可粘贴完整稿（角色：… / 场景：… / 指导：…）"
+    "也可粘贴完整稿（角色：… / 场景：… / 指导：…）；"
+    "开启「LLM 自由解析」后可直接输入自然语言场景描述"
 )
 
 
@@ -74,12 +75,26 @@ async def handle_direct(plugin, event: AstrMessageEvent):
             return
 
     pkg = parse_director_input(body)
+    if not pkg and plugin.config.get("director_parse_llm", False):
+        from ..core.director_llm import parse_director_with_llm
+
+        try:
+            pkg = await parse_director_with_llm(plugin, body, uid)
+        except Exception as e:
+            logger.warning("MiMO TTS: director LLM parse error: %s", e)
+            pkg = None
     if not pkg:
+        llm_on = bool(plugin.config.get("director_parse_llm", False))
+        if llm_on:
+            tail = "（已尝试 LLM 自由解析仍未成功，请精简描述或改用内置场景/三维稿）"
+        else:
+            tail = "（可开启配置「LLM 自由解析」后用自然语言描述）"
         yield MessageEventResult().message(
             "无法识别该场景。\n"
             "可用内置场景: "
             + "、".join(list_builtin_scene_names())
-            + "\n或使用三维稿:\n角色：…\n场景：…\n指导：…"
+            + "\n或使用三维稿:\n角色：…\n场景：…\n指导：…\n"
+            + tail
         )
         return
 

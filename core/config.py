@@ -432,6 +432,11 @@ class ConfigManager:
         "tts_output_mode": "default",
         "tts_example_inject": False,
         "director_enabled": False,
+        "director_parse_llm": False,
+        "director_parse_llm_provider": "",
+        "director_parse_prompt": "",
+        "director_timeout": 8,
+        "director_cache_ttl": 300,
         # TTS parameters
         "emotion_override": "",
         "default_speed": 1.0,
@@ -684,6 +689,34 @@ class ConfigManager:
     @property
     def director_enabled(self) -> bool:
         return bool(self._flat.get("director_enabled", False))
+
+    @property
+    def director_parse_llm(self) -> bool:
+        return bool(self._flat.get("director_parse_llm", False))
+
+    @property
+    def director_parse_llm_provider(self) -> str:
+        return str(self._flat.get("director_parse_llm_provider", "") or "")
+
+    @property
+    def director_parse_prompt(self) -> str:
+        return str(self._flat.get("director_parse_prompt", "") or "")
+
+    @property
+    def director_timeout(self) -> int:
+        try:
+            value = int(self._flat.get("director_timeout", 8) or 0)
+        except (TypeError, ValueError):
+            value = 8
+        return max(0, value)
+
+    @property
+    def director_cache_ttl(self) -> int:
+        try:
+            value = int(self._flat.get("director_cache_ttl", 300) or 0)
+        except (TypeError, ValueError):
+            value = 300
+        return max(0, value)
 
     @property
     def breath_enabled(self) -> bool:
