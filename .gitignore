@@ -25,5 +25,8 @@ config.json
 *.log
 *.tmp
 
-# internal dev reports (not shipped)
+# 开发向内容：不随插件分发、不进 git
+# - docs/：内部设计/实施报告
+# - tests/：本地回归单测（开发环境用；插件 ZIP 亦由 pack hard exclude 排除）
 docs/
+tests/
