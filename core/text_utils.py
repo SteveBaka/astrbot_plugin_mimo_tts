@@ -198,13 +198,23 @@ def build_audio_only_chain(chain, text: str, audio_component) -> list:
     return new_chain
 
 
-def log_tts_text(uid: str, mode: str, sing: bool, text: str) -> None:
-    """Log TTS input parameters."""
+def log_tts_text(
+    uid: str,
+    mode: str,
+    sing: bool,
+    text: str,
+    director: str = "",
+) -> None:
+    """Log TTS input text（= 实际送给服务端的 assistant 正文，即“说了什么”）。
+
+    ``director``：once/session/空，便于把听感问题对回场景包。
+    """
     logger.info(
-        "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s text=%r",
+        "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s director=%s text=%r",
         uid,
         mode,
         sing,
+        director or "-",
         text,
     )
 

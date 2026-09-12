@@ -524,7 +524,19 @@ class TTSSynthesizer:
             # 等符号，TTS 会原样读出；保留 (风格) 与 [音频标签]
             final_text = strip_markdown_symbols(text)
 
-        log_tts_text(uid, uset.get("tts_mode", "default"), uset["sing"], final_text)
+        # 说出口的正文 = final_text；director 标注便于对回场景（design 本不注入）
+        director_mode = (
+            str(uset.get("director_mode") or "")
+            if self._config.director_enabled
+            else ""
+        )
+        log_tts_text(
+            uid,
+            uset.get("tts_mode", "default"),
+            uset["sing"],
+            final_text,
+            director=director_mode,
+        )
 
         if uset["sing"]:
             # 唱歌仅 mimo-v2.5-tts（预置音色）支持：强制回退 default 模型，

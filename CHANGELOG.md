@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 2026-09-11 v2.4.0-test6
+
+> **内部测试版**：P3 产品收尾——「说了什么」可测 + README 对齐。
+
+### 变更
+
+- **合成日志增强**：`synthesize text` 增加 `director=` 标注（once/session/-），便于把听感对回场景；**`text=` 仍是实际送服务端的 assistant 正文（即说出口的内容）**。
+- **README**：配置表补导演三项；新增「导演模式」用法节；命令总览加入 `/direct`。
+
+### 如何确认「语音说了什么」（验收）
+
+| 层级 | 看什么 |
+|------|--------|
+| **正文（说了什么）** | 日志 `[MiMO TTS] synthesize text … text='…'` —— **唯一权威**（分段时每段各一条） |
+| **怎么说** | 同请求 `director prompt applied`；或 WebUI 控制台场景摘要 |
+| **聊天侧对照** | 自动 TTS 时与 bot 文字回复对照（`send_text_with_tts` 开启时一致；润色/Markdown 清洗后可能有差异） |
+| **单元测试** | mock `provider.synthesize` 捕获 `text=` / `control_prompt=`（本仓未做 E2E 音频转写） |
+
+> 不做 ASR 回环：成本高且非必须；**日志正文 = API assistant 字段**。
+
+### 日志校对（2026-09-12，用户实测 + AstrBot broker）
+
+clone 会话链路与设计一致：
+
+- `director set session 哄睡` → `synthesize text director=session` + `prompt applied`
+- `director set once 元气早安` → `synthesize text director=once` + `prompt applied`
+- 随后 `director=-`（once 成功消费）
+
+**语义备忘**：once 后写覆盖，会顶掉原 session 字段，用尽后不会自动回到旧 session 场景。
+
+### 安装验证记录
+
+- **结果（2026-09-11）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.0-test6**；组件 **34**
+
+### 自动 TTS 补测清单（P3 收尾）
+
+1. `/direct 哄睡` → 同对话让 bot 正常回复（自动 TTS）→ 听感应偏哄睡；日志 `director=session`  
+2. `/direct once …` 若先被自动 TTS 消费，再 `/mimo_say` 不应再带场景  
+3. `/direct off` 后自动 TTS / `/mimo_say` 均无导演稿  
+
 ## 2026-09-11 v2.4.0-test5
 
 > **内部测试版**：Voice Studio 导演**控制台**闭环（管理状态为主，合成即时验证）。

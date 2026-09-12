@@ -68,6 +68,9 @@
 | `design_model` | 音色设计模型 | `mimo-v2.5-tts-voicedesign` |
 | `design_voice_description` | 设计音色描述：可填 style_examples 分类名精确引用（如"温柔甜美"，自动补全词表提示+画面感示例，快速切换），或自由描述（官方词自动匹配示例池） | - |
 | `style_examples` | 风格示例池（导演模式先导，JSON：name/words/examples；design 描述命中风格词时自动并入参考示例） | 内置 6 类 |
+| `director_enabled` | 启用导演模式（/direct + WebUI 控制台；注入 default/克隆/唱歌） | `false` |
+| `director_parse_llm` | LLM 自由解析（内置场景/三维稿未命中时） | `false` |
+| `director_parse_llm_provider` | 导演解析专用 LLM Provider（留空回退润色→当前对话） | 空 |
 | `clone_model` | 音色克隆模型 | `mimo-v2.5-tts-voiceclone` |
 | `clone_voice_id` | 克隆音色 ID | - |
 | `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
@@ -158,6 +161,23 @@
 > 防误触：风格/音色名需已存在（未命中会回复可用列表）；无风格句式要求歌词 ≥4 字且非疑问句（"你会唱歌吗"不触发）；同一对话有冷却（默认 30 秒）。
 >
 > 再开启「NL 唱歌 LLM 工具兜底」后，正则未命中的自由措辞（如"来一段小雪唱的"）由 LLM 工具解析演唱（后台合成不阻塞回复，未命中风格名自动作为一次性提示词）。需确认 WebUI 工具面板中 `mimo_sing_song` 已启用。
+
+### 导演模式（可选）
+
+在插件配置「导演模式」中打开 **启用导演模式** 后：
+
+```
+/direct 深夜电台                 # 会话常驻（后续合成持续生效）
+/direct once 哄睡                # 仅下一次合成
+/direct                          # 查看当前场景
+/direct off                      # 清除
+```
+
+- 内置场景：深夜电台 / 哄睡 / 元气早安 / 古风叙事 / 新闻播报 / emo 独白  
+- 也可粘贴三维稿：`角色：…` / `场景：…` / `指导：…`  
+- 开启 **LLM 自由解析** 后可直接输入自然语言场景描述  
+- 注入 **default / 克隆 / 唱歌** 的 user 控制通道；**design 不注入**  
+- Voice Studio 合成页「导演模式（控制台）」可应用/清除，与命令同一会话状态  
 
 ### 唱歌风格组（管理）
 ```
@@ -313,6 +333,7 @@ AstrBot/
 |------|---------|:--------:|
 | `/mimo_say` | 即时合成语音 | 否 |
 | `/sing` | 唱歌模式（-音色/-s 风格组/-p 提示词/括号简写） | 否 |
+| `/direct` | 导演模式场景（会话常驻 / once / off；需配置开启） | 否 |
 | `/singstyle` | 唱歌风格组管理（show/list/set/reset） | ✅ |
 | `/ttsinfo` | 查看插件版本与功能信息 | 否 |
 | `/ttsraw` | 纯文本合成（不带情感） | ✅ |
