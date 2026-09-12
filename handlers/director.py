@@ -9,7 +9,11 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
 
 from ..core.director_assets import list_builtin_scene_names
-from ..core.director_characters import character_to_package, looks_like_character_name
+from ..core.director_characters import (
+    apply_character_voice,
+    character_to_package,
+    looks_like_character_name,
+)
 from ..core.director_package import dumps_package, loads_package
 from ..core.director_parser import match_builtin_scene, parse_director_input
 
@@ -40,25 +44,6 @@ def _match_character(plugin, body: str):
     if not entry:
         return None
     return character_to_package(entry), entry
-
-
-def _maybe_bind_voice(plugin, uset: dict, entry: dict) -> str:
-    """会话音色仍为默认时绑定角色音色；已自定义则不覆盖。"""
-    voice = str(entry.get("voice") or "").strip()
-    if not voice:
-        return ""
-    current = str(uset.get("voice") or "").strip()
-    default = str(plugin.config.get("default_voice", "") or "mimo_default").strip()
-    if current and current != default and current != "mimo_default":
-        return f"保留当前音色 {current}；角色默认为 {voice}"
-    try:
-        resolved = plugin.synth.resolve_voice(voice) if plugin.synth else voice
-    except Exception:
-        resolved = voice
-    if resolved:
-        uset["voice"] = resolved
-        return f"已切换音色 → {resolved}"
-    return ""
 
 
 def _extract_args(event: AstrMessageEvent) -> str:
@@ -129,9 +114,9 @@ async def handle_direct(plugin, event: AstrMessageEvent):
     matched_char = _match_character(plugin, body)
     if matched_char:
         pkg, entry = matched_char
-        voice_note = _maybe_bind_voice(plugin, uset, entry)
+        voice_note = apply_character_voice(plugin, uset, entry)
         logger.info(
-            "MiMO TTS: character apply uid=%s id=%s layer=%s voice=%s",
+            "MiMO TTS: character apply uid=%s id=%s layer=%s voice=%s source=command",
             uid,
             entry.get("id"),
             "pending" if mode == "once" else "sticky",
@@ -181,11 +166,12 @@ async def handle_direct(plugin, event: AstrMessageEvent):
         uset["director_pending"] = payload
     plugin._persist_current_state()
     logger.info(
-        "MiMO TTS: director set uid=%s layer=%s scene=%s source=%s",
+        "MiMO TTS: director set uid=%s layer=%s scene=%s source=%s character_id=%s",
         uid,
         "sticky" if mode == "session" else "pending",
         pkg.scene_name or "(custom)",
         pkg.guidance_source,
+        pkg.character_id or "-",
     )
     if mode == "session":
         msg = (

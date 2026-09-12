@@ -17,7 +17,7 @@ from .director_assets import (
     DIRECTOR_USER_TEXT_HARD_MAX,
 )
 
-_GUIDANCE_SOURCES = frozenset({"manual", "builtin", "auto"})
+_GUIDANCE_SOURCES = frozenset({"manual", "builtin", "auto", "character"})
 
 
 @dataclass

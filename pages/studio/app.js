@@ -210,7 +210,23 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       title: '声音设计', ic: 'palette',
       fields: [
         { key: 'design_model', label: '设计模型', type: 'text' },
-        { key: 'design_voice_description', label: '设计音色描述', type: 'textarea', hint: '可填 style_examples 分类名精确引用（如 温柔甜美，自动补全词表提示+示例），或自由描述（官方词自动匹配示例池）' }
+        { key: 'design_voice_description', label: '设计音色描述', type: 'textarea', hint: '可填 style_examples 分类名精确引用（如 温柔甜美，自动补全词表提示+示例），或自由描述（官方词自动匹配示例池）' },
+        { key: 'style_examples', label: '风格示例池', type: 'json', hint: '†† JSON 数组。每项 name/words/examples；design/clone 风格词命中时自动并入画面感例句' },
+        { key: 'design_style_pool', label: '设计音色风格控制池', type: 'json', hint: '†† JSON 数组。每项 name（设计音色 ID）/ description（可填示例池分类名）；留空用全局描述' }
+      ]
+    },
+    {
+      title: '导演模式', ic: 'sparkles',
+      fields: [
+        { key: 'director_enabled', label: '启用导演模式', type: 'bool', hint: '总开关：/direct + 合成页控制台；注入 default/克隆/唱歌 的 user 控制通道（design 不注入）。关闭时全链路与未开启一致' },
+        { key: 'director_characters_enabled', label: '启用角色库', type: 'bool', hint: '开启后可用 /direct <角色名> 或控制台角色下拉；条目在下方「角色库」JSON 维护' },
+        { key: 'character_require_voice', label: '角色强制绑定音色', type: 'bool', hint: '角色条目须含合法 voice（预置或已注册克隆/设计）；应用时若会话音色仍为默认则自动切换' },
+        { key: 'director_parse_llm', label: 'LLM 自由解析', type: 'bool', hint: '内置场景/角色/三维稿未命中时，用 LLM 把自然语言整理成导演场景。失败提示无法识别，不中断其它功能' },
+        { key: 'director_parse_llm_provider', label: '导演解析 Provider', type: 'text', hint: '留空回退润色 Provider，再回退当前对话模型；建议 JSON/指令跟随更稳的模型' },
+        { key: 'director_parse_prompt', label: '导演解析提示词', type: 'textarea', hint: '{text} 为用户描述占位符；留空用内置模板' },
+        { key: 'director_timeout', label: '导演解析超时（秒）', type: 'number', hint: '0=不限制；超时降级为无法识别' },
+        { key: 'director_cache_ttl', label: '导演解析缓存（秒）', type: 'number', hint: '同描述命中缓存避免重复 LLM；0=关闭' },
+        { key: 'director_characters', label: '角色库', type: 'json', hint: '†† JSON 数组，最外层必须有 [ ]。每项 id/name/character/baseline_guidance/scene/voice/style_words/enabled。保存立即生效。应用：/direct <角色名> 或控制台角色下拉' }
       ]
     },
     {
@@ -310,6 +326,9 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       const directorEnabled = ref(false);
       const directorParseLlm = ref(false);
       const directorScenes = ref([]);
+      const directorCharacters = ref([]);
+      const directorCharactersEnabled = ref(false);
+      const directorCharPick = ref('');
       const directorScenePick = ref('');
       const directorCustom = ref('');
       const directorApplyMode = ref('session');
@@ -515,6 +534,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           directorEnabled.value = !!scenes.enabled;
           directorParseLlm.value = !!scenes.parse_llm;
           directorScenes.value = scenes.scenes || [];
+          directorCharacters.value = scenes.characters || [];
+          directorCharactersEnabled.value = !!scenes.characters_enabled;
           if (!directorScenePick.value && directorScenes.value.length) {
             directorScenePick.value = directorScenes.value[0].name;
           }
@@ -546,12 +567,15 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             uid: directorUid.value,
             mode: directorApplyMode.value,
           };
+          // 优先级：自定义描述 > 角色 > 内置场景
           if (custom) {
             body.text = custom;
+          } else if (directorCharactersEnabled.value && directorCharPick.value) {
+            body.character_id = directorCharPick.value;
           } else if (directorScenePick.value) {
             body.text = directorScenePick.value;
           } else {
-            showError('请选择内置场景或填写自定义描述');
+            showError('请选择角色/内置场景或填写自定义描述');
             return;
           }
           const res = await apiPost('director/apply', body);
@@ -603,6 +627,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         cloneStylePrompt, savingCloneStyle,
         audioSrc, audioRef, registeredVoices,
         directorUid, directorEnabled, directorParseLlm, directorScenes,
+        directorCharacters, directorCharactersEnabled, directorCharPick,
         directorScenePick, directorCustom, directorApplyMode, directorState,
         directorBusy, directorMsg,
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
@@ -744,7 +769,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
   <div class="card">
     <div class="section-title"><span v-html="icon('sparkles')"></span> 导演模式（控制台）</div>
     <p class="control-hint" style="margin:0 0 10px;font-size:12px;opacity:.75;">
-      管理本会话导演场景（会话常驻 sticky + 仅下一次 pending 双层；pending 优先）。
+      管理本会话导演场景（sticky + pending 双层；pending 优先）。应用优先级：自定义描述 > 角色 > 内置场景。
       「合成语音」将使用下方已应用的状态。design 模式不注入导演稿。总开关在插件配置「导演模式」。
     </p>
     <div v-if="!directorEnabled" class="design-tune-block">
@@ -764,6 +789,18 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           </select>
         </div>
         <div class="control-group">
+          <label class="control-label">角色（优先）</label>
+          <select v-model="directorCharPick" class="select-input" :disabled="!directorCharactersEnabled">
+            <option value="">— 不用角色，用下方场景 —</option>
+            <option v-for="c in directorCharacters" :key="c.id" :value="c.id">
+              {{ c.name }}{{ c.voice ? '（' + c.voice + '）' : '' }}
+            </option>
+          </select>
+          <div v-if="!directorCharactersEnabled" style="font-size:12px;opacity:.7;margin-top:4px;">
+            配置中未开启「启用角色库」
+          </div>
+        </div>
+        <div class="control-group">
           <label class="control-label">内置场景</label>
           <select v-model="directorScenePick" class="select-input">
             <option v-for="s in directorScenes" :key="s.name" :value="s.name">{{ s.name }}</option>
@@ -776,10 +813,12 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
               <div v-if="directorState.sticky">
                 <strong>会话常驻</strong>
                 <span v-if="directorState.sticky.summary"> — {{ directorState.sticky.summary }}</span>
+                <span v-if="directorState.sticky.character_id" style="opacity:.65;font-size:12px;"> [{{ directorState.sticky.character_id }}]</span>
               </div>
               <div v-if="directorState.pending">
                 <strong>仅下一次</strong>（优先）
                 <span v-if="directorState.pending.summary"> — {{ directorState.pending.summary }}</span>
+                <span v-if="directorState.pending.character_id" style="opacity:.65;font-size:12px;"> [{{ directorState.pending.character_id }}]</span>
               </div>
             </template>
             <template v-else>未设置</template>
@@ -1171,17 +1210,60 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       const saving = ref(false);
       const sections = CONFIG_SECTIONS;
 
+      // 池类 JSON：单对象自动包成数组；最终以字符串下发（schema type=text）
+      const JSON_LIST_KEYS = new Set([
+        'sing_styles', 'style_examples', 'director_characters',
+        'design_style_pool', 'clone_style_pool'
+      ]);
+
+      function normalizeJsonPayload(key, rawText) {
+        let parsed;
+        try {
+          parsed = JSON.parse(rawText || '[]');
+        } catch (e) {
+          throw new Error((key || 'JSON') + ' 格式错误：' + (e.message || e));
+        }
+        if (
+          JSON_LIST_KEYS.has(key) &&
+          parsed &&
+          typeof parsed === 'object' &&
+          !Array.isArray(parsed)
+        ) {
+          parsed = [parsed];
+        }
+        // 缩进写入：Dashboard / Voice Studio 都能分段阅读（紧凑单行难编辑）
+        return JSON.stringify(parsed, null, 2);
+      }
+
+      function plainValue(v) {
+        // 剥离 Vue reactive 代理，避免 bridge 序列化失败
+        return JSON.parse(JSON.stringify(v));
+      }
+
+      function formatJsonField(key) {
+        try {
+          const parsed = JSON.parse(jsonText[key] || '[]');
+          jsonText[key] = JSON.stringify(parsed, null, 2);
+        } catch (e) {
+          showError('格式化失败：' + (e.message || e));
+        }
+      }
+
       async function loadConfig() {
         loading.value = true;
         const res = await apiGet('config');
         if (res && res.config) {
           Object.keys(res.config).forEach(k => {
-            config[k] = res.config[k];
+            try {
+              config[k] = plainValue(res.config[k]);
+            } catch (e) {
+              config[k] = res.config[k];
+            }
           });
           CONFIG_SECTIONS.forEach(s => s.fields.forEach(f => {
             if (f.type === 'json') {
               const v = config[f.key];
-              if (v === undefined || v === null) {
+              if (v === undefined || v === null || v === '') {
                 jsonText[f.key] = '[]';
               } else if (typeof v === 'string') {
                 try { jsonText[f.key] = JSON.stringify(JSON.parse(v), null, 2); }
@@ -1197,43 +1279,47 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
 
       async function saveSection(section) {
         saving.value = true;
-        for (const f of section.fields) {
-          if (f.type === 'json') {
-            try {
-              config[f.key] = JSON.parse(jsonText[f.key] || '[]');
-            } catch (e) {
-              showError(f.label + ' JSON 格式错误：' + e.message);
-              saving.value = false;
-              return;
+        try {
+          const payload = {};
+          for (const f of section.fields) {
+            if (config[f.key] === undefined) continue;
+            if (f.type === 'json') {
+              payload[f.key] = normalizeJsonPayload(f.key, jsonText[f.key]);
+            } else {
+              payload[f.key] = plainValue(config[f.key]);
             }
           }
-        }
-        const payload = {};
-        section.fields.forEach(f => {
-          if (config[f.key] !== undefined) {
-            payload[f.key] = config[f.key];
+          const res = await apiPost('config/update', payload);
+          if (res && res.error) {
+            showError(res.error);
+          } else if (res) {
+            // 回写规范化后的 JSON 文本，避免界面与已保存值漂移
+            section.fields.forEach(f => {
+              if (f.type === 'json' && payload[f.key] !== undefined) {
+                try { jsonText[f.key] = JSON.stringify(JSON.parse(payload[f.key]), null, 2); }
+                catch (e) { /* keep */ }
+              }
+            });
+            const needsReload = section.fields.some(f =>
+              ['enable_plugin_log', 'timeout', 'max_retries'].includes(f.key)
+            );
+            const msg = needsReload
+              ? section.title + ' 已保存（部分配置需重载插件后生效）'
+              : section.title + ' 已保存';
+            showSuccess(msg);
+          } else {
+            showError('保存失败：接口无响应（请查看浏览器控制台）');
           }
-        });
-        const res = await apiPost('config/update', payload);
-        if (res && res.error) {
-          showError(res.error);
-        } else if (res) {
-          const needsReload = section.fields.some(f =>
-            ['enable_plugin_log', 'timeout', 'max_retries'].includes(f.key)
-          );
-          const msg = needsReload
-            ? section.title + ' 已保存（部分配置需重载插件后生效）'
-            : section.title + ' 已保存';
-          showSuccess(msg);
-        } else {
-          showError('保存失败');
+        } catch (e) {
+          showError('保存失败：' + (e && e.message ? e.message : e));
+        } finally {
+          saving.value = false;
         }
-        saving.value = false;
       }
 
       onMounted(() => { loadConfig(); });
 
-      return { config, jsonText, loading, saving, sections, saveSection, icon };
+      return { config, jsonText, loading, saving, sections, saveSection, formatJsonField, icon };
     },
     template: `
 <div class="page config-page">
@@ -1285,8 +1371,14 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           </template>
 
           <template v-else-if="field.type === 'json'">
-            <textarea v-model="jsonText[field.key]" rows="8" class="text-input"
-              :placeholder="field.hint || ''" spellcheck="false"></textarea>
+            <div class="json-editor-wrap">
+              <textarea v-model="jsonText[field.key]" rows="12" class="text-input json-editor"
+                :placeholder="field.hint || 'JSON 数组，最外层必须有 [ ]'" spellcheck="false"></textarea>
+              <div class="json-editor-bar">
+                <button type="button" class="btn-link" @click="formatJsonField(field.key)">格式化 JSON</button>
+                <span class="json-editor-hint">每项之间用逗号分隔；保存后立即生效</span>
+              </div>
+            </div>
           </template>
         </div>
       </div>

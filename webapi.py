@@ -409,7 +409,7 @@ def _director_uid(raw) -> str:
 
 
 async def api_director_scenes(plugin):
-    """导演控制台：内置场景列表 + 全局开关状态。"""
+    """导演控制台：内置场景 + 角色列表 + 全局开关状态。"""
     from quart import jsonify
 
     from .core.director_assets import BUILTIN_SCENES
@@ -423,10 +423,28 @@ async def api_director_scenes(plugin):
         }
         for item in BUILTIN_SCENES.values()
     ]
+    store = getattr(plugin, "director_characters", None)
+    characters = store.list_api_items() if store else []
     return jsonify({
         "enabled": plugin.config.director_enabled,
         "parse_llm": plugin.config.director_parse_llm,
+        "characters_enabled": plugin.config.director_characters_enabled,
         "scenes": scenes,
+        "characters": characters,
+    })
+
+
+async def api_director_characters(plugin):
+    """角色库列表（控制台下拉；与配置池同源）。"""
+    from quart import jsonify
+
+    store = getattr(plugin, "director_characters", None)
+    items = store.list_api_items() if store else []
+    return jsonify({
+        "enabled": plugin.config.director_enabled
+        and plugin.config.director_characters_enabled,
+        "source": store.source if store else "empty",
+        "characters": items,
     })
 
 
@@ -450,11 +468,13 @@ async def api_director_state(plugin):
             "scene_name": pending.scene_name if pending else "",
             "summary": pending.summary() if pending else "",
             "guidance_source": pending.guidance_source if pending else "",
+            "character_id": pending.character_id if pending else "",
         } if pending else None,
         "sticky": {
             "scene_name": sticky.scene_name if sticky else "",
             "summary": sticky.summary() if sticky else "",
             "guidance_source": sticky.guidance_source if sticky else "",
+            "character_id": sticky.character_id if sticky else "",
         } if sticky else None,
         "has_state": bool(pending or sticky),
         # 兼容旧前端字段：effective 层摘要
@@ -462,6 +482,7 @@ async def api_director_state(plugin):
         "scene_name": (_pkg.scene_name if _pkg else ""),
         "summary": (_pkg.summary() if _pkg else ""),
         "guidance_source": (_pkg.guidance_source if _pkg else ""),
+        "character_id": (_pkg.character_id if _pkg else ""),
     })
 
 
@@ -502,9 +523,12 @@ async def api_director_parse(plugin):
 
 
 async def api_director_apply(plugin):
-    """把场景应用到指定 uid 会话（session/once）。控制台主路径。"""
+    """把场景/角色应用到指定 uid 会话（session/once）。控制台主路径。"""
     from quart import jsonify, request
 
+    from astrbot.api import logger
+
+    from .core.director_characters import apply_character_voice, character_to_package
     from .core.director_llm import parse_director_with_llm
     from .core.director_package import dumps_package, loads_package
     from .core.director_parser import parse_director_input
@@ -520,11 +544,30 @@ async def api_director_apply(plugin):
 
     payload = str(body.get("payload") or "").strip()
     text = str(body.get("text") or "")[:800].strip()
+    character_id = str(body.get("character_id") or "").strip()
 
     pkg = loads_package(payload) if payload else None
+    voice_note = ""
+    if not pkg and character_id:
+        if not plugin.config.director_characters_enabled:
+            return jsonify({"error": "角色库未启用，请在配置中打开"}), 400
+        store = getattr(plugin, "director_characters", None)
+        entry = store.get(character_id) if store else None
+        if not entry:
+            return jsonify({"error": f"未找到角色: {character_id}"}), 400
+        pkg = character_to_package(entry)
+        uset = plugin._get_user_settings(uid)
+        voice_note = apply_character_voice(plugin, uset, entry)
+        logger.info(
+            "MiMO TTS: character apply uid=%s id=%s layer=%s voice=%s source=webui",
+            uid,
+            entry.get("id"),
+            "pending" if mode == "once" else "sticky",
+            entry.get("voice") or "",
+        )
     if not pkg:
         if not text:
-            return jsonify({"error": "缺少 payload 或 text"}), 400
+            return jsonify({"error": "缺少 character_id / payload / text"}), 400
         pkg = parse_director_input(text)
         if not pkg and plugin.config.director_parse_llm:
             try:
@@ -545,14 +588,27 @@ async def api_director_apply(plugin):
     else:
         uset["director_pending"] = final_payload
     plugin._persist_current_state()
+    logger.info(
+        "MiMO TTS: director set uid=%s layer=%s scene=%s source=%s character_id=%s origin=webui",
+        uid,
+        "sticky" if mode == "session" else "pending",
+        pkg.scene_name or "(custom)",
+        pkg.guidance_source,
+        pkg.character_id or "-",
+    )
     kind = "会话常驻" if mode == "session" else "仅下一次（优先）"
+    message = f"已应用（{kind}）: {pkg.summary()}"
+    if voice_note:
+        message += f"；{voice_note}"
     return jsonify({
         "status": "ok",
         "uid": uid,
         "mode": mode,
         "layer": "sticky" if mode == "session" else "pending",
         "summary": pkg.summary(),
-        "message": f"已应用（{kind}）: {pkg.summary()}",
+        "character_id": pkg.character_id,
+        "guidance_source": pkg.guidance_source,
+        "message": message,
     })
 
 
@@ -601,7 +657,8 @@ def register_web_apis(context, plugin) -> None:
         ("health", api_health, ["GET"], "健康检查"),
         ("logs", api_get_logs, ["GET"], "获取插件日志"),
         ("logs/stats", api_log_stats, ["GET"], "日志统计"),
-        ("director/scenes", api_director_scenes, ["GET"], "导演内置场景"),
+        ("director/scenes", api_director_scenes, ["GET"], "导演内置场景与角色"),
+        ("director/characters", api_director_characters, ["GET"], "导演角色库列表"),
         ("director/state", api_director_state, ["GET"], "导演会话状态"),
         ("director/parse", api_director_parse, ["POST"], "解析导演场景描述"),
         ("director/apply", api_director_apply, ["POST"], "应用导演场景到会话"),

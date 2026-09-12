@@ -1,5 +1,97 @@
 # CHANGELOG
 
+## 2026-09-12 v2.4.1-beta8
+
+> **内部测试版**：修复 Voice Studio 保存 JSON 后 Dashboard 变成「一长条」。
+
+### 修复
+
+- 保存 JSON 池时改为 **2 空格缩进**写入配置（此前 `JSON.stringify(parsed)` 紧凑单行，Dashboard 编辑器只剩一行）。
+- 「格式化 JSON」按钮输出与保存格式一致，预览即所存。
+
+### 验证
+
+- 单测 **145/145**；`node --check` 通过。
+
+## 2026-09-12 v2.4.1-beta7
+
+> **内部测试版**：角色库 JSON 编辑体验对齐「克隆音色风格控制池」。
+
+### 变更
+
+- **`_conf_schema` 角色库**：描述改为「角色库（JSON）」；hint 与克隆池同款结构；默认双示例角色（小茵 / 电台主播），便于分段编辑。
+- **Voice Studio 配置页**：JSON 字段改为等宽字体、更高编辑区、「格式化 JSON」按钮；池类字段标签独占一行。
+
+### 验证
+
+- 单测 **145/145**；`node --check` 通过。
+
+## 2026-09-12 v2.4.1-beta6
+
+> **内部测试版**：修复 Voice Studio 配置页 **JSON 编辑器「保存失败」**。
+
+### 修复
+
+- **保存失败根因**：JSON 字段被 `JSON.parse` 成对象后写入 Vue `reactive`，再交给 bridge `apiPost`；**reactive 代理序列化失败** → 接口无响应 → 前端只显示「保存失败」。
+- **处理**：
+  1. payload 深拷贝（`JSON.parse(JSON.stringify(...))`）剥离代理；
+  2. JSON 字段以**字符串**下发（与 schema `type: text` 一致）；
+  3. 池类字段（角色库/风格库/示例池等）单对象 `{}` 自动包成 `[{...}]`；
+  4. 错误提示带上具体原因（不再只有「保存失败」）。
+
+### 验证
+
+- 单测 **145/145**；`node --check` 通过。
+
+## 2026-09-12 v2.4.1-beta5
+
+> **内部测试版**：Voice Studio「插件配置」页补上**导演模式**分组（此前仅 Dashboard 原生 schema 可见）。
+
+### 变更
+
+- **配置页新增「导演模式」**：启用导演模式 / 角色库 / 强制绑音色 / LLM 解析（开关、Provider、提示词、超时、缓存）/ **角色库 JSON**。
+- **顺带补齐「声音设计」**：`style_examples` 风格示例池、`design_style_pool` 设计音色风格控制池（与配置面板同源字段）。
+- 保存走既有 `config/update`，与 Dashboard 插件配置双向一致；角色库 JSON **保存即生效**。
+
+### 验证
+
+- 单测 **145/145**；`node --check` 通过。
+
+## 2026-09-12 v2.4.1-beta4
+
+> **内部测试版**：修复 `guidance_source=character` 被回退为 `manual`；韵律叠层观察项入档。
+
+### 修复
+
+- **`sanitize_package` 白名单**：加入 `character`。此前角色包 `guidance_source` 被判非法并回退 `manual`，日志 `director set source=manual` 无法与角色对账。
+
+### 观察项（不改合成逻辑）
+
+- WebUI clone + pending=`emo 独白`：句间停顿偏长——**场景「慢、停顿偏多」+ 正文 `[停顿]`×2 + clone 叠层**；已并入设计稿 §16.11「韵律叠层观察项」（与起音杂音同类），频繁复现再收窄。
+
+### 验证
+
+- 单测 **146/146**。
+
+## 2026-09-12 v2.4.1-beta3
+
+> **内部测试版**：WebUI 控制台角色下拉 + REST；`guidance_source=character` 便于日志对账。
+
+### 新增
+
+- **REST**：`GET director/characters`；`director/scenes` 一并返回 `characters` / `characters_enabled`。
+- **apply**：body 可传 `character_id`（优先于 text）；命令与 WebUI 共用音色绑定逻辑。
+- **WebUI 导演控制台**：
+  - 「角色（优先）」下拉（配置未开角色库时禁用并提示）；
+  - 应用优先级：自定义描述 > 角色 > 内置场景；
+  - 状态行显示 `character_id`。
+- **日志**：`character apply … source=command|webui`；`director set … character_id=xiaoyin source=character`。
+
+### 验证
+
+- 单测 **145/145**。
+- **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta3**；组件 **35**
+
 ## 2026-09-12 v2.4.1-beta2
 
 > **内部测试版**：角色库改为**配置 JSON 权威**（与「风格示例池」同构）；去掉 `/char reload`。

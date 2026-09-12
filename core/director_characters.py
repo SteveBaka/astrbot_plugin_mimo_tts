@@ -130,7 +130,7 @@ def parse_characters_payload(raw: Any) -> list[dict]:
 
 
 def character_to_package(entry: dict) -> Optional[ScenePackage]:
-    """角色条目 → ScenePackage（带 character_id，guidance 可空）。"""
+    """角色条目 → ScenePackage（带 character_id；source=character 便于日志对账）。"""
     if not entry:
         return None
     return sanitize_package(
@@ -141,7 +141,7 @@ def character_to_package(entry: dict) -> Optional[ScenePackage]:
             "scene": entry.get("scene") or "",
             "guidance": entry.get("baseline_guidance") or "",
             "style_words": entry.get("style_words") or [],
-            "guidance_source": "builtin",
+            "guidance_source": "character",
         }
     )
 
@@ -279,3 +279,38 @@ class CharacterStore:
     def summary_line(self, entry: dict) -> str:
         voice = entry.get("voice") or "—"
         return f"{entry.get('name')}（{entry.get('id')}，音色 {voice}）"
+
+    def list_api_items(self) -> list[dict]:
+        """控制台下拉用摘要（含 id/name/voice）。"""
+        self.refresh_if_changed()
+        return [
+            {
+                "id": e.get("id", ""),
+                "name": e.get("name", ""),
+                "voice": e.get("voice", ""),
+                "summary": self.summary_line(e),
+            }
+            for e in self._entries
+            if e.get("enabled", True)
+        ]
+
+
+def apply_character_voice(plugin, uset: dict, entry: dict) -> str:
+    """会话音色仍为默认时绑定角色音色；已自定义则不覆盖。返回提示文案。"""
+    voice = str(entry.get("voice") or "").strip()
+    if not voice:
+        return ""
+    current = str(uset.get("voice") or "").strip()
+    default = str(
+        plugin.config.get("default_voice", "") or "mimo_default"
+    ).strip()
+    if current and current != default and current != "mimo_default":
+        return f"保留当前音色 {current}；角色默认为 {voice}"
+    try:
+        resolved = plugin.synth.resolve_voice(voice) if plugin.synth else voice
+    except Exception:
+        resolved = voice
+    if resolved:
+        uset["voice"] = resolved
+        return f"已切换音色 → {resolved}"
+    return ""

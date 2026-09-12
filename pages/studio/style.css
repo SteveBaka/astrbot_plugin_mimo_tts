@@ -875,6 +875,35 @@ select.select-input { cursor: pointer; appearance: auto; }
 .config-field .text-input,
 .config-field .select-input { flex: 1; }
 .config-field .toggle { flex-shrink: 0; }
+/* JSON 池编辑器：等宽、可分段阅读（与 Dashboard 代码编辑器观感对齐） */
+.config-field:has(.json-editor-wrap) {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.config-field:has(.json-editor-wrap) .control-label {
+  min-width: 100%;
+  margin-bottom: 6px;
+}
+.json-editor-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+textarea.json-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  min-height: 220px;
+  tab-size: 2;
+  white-space: pre;
+  overflow-x: auto;
+}
+.json-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.json-editor-hint {
+  font-size: 12px;
+  opacity: 0.65;
+}
 .config-save { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .toggle-field {
   display: flex;
