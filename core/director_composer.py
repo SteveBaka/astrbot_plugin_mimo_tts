@@ -79,19 +79,44 @@ def merge_director_into_prompt(base_prompt: str, director_text: str) -> str:
 
 def resolve_effective_director(
     uset: Optional[dict] = None,
+    characters=None,
 ) -> tuple[Optional[ScenePackage], str]:
     """双层取包：pending 优先，其次 sticky。返回 ``(pkg, layer)``。
 
     ``layer`` ∈ ``{"", "pending", "sticky"}``；无有效包时 ``pkg`` 为 None。
+    ``characters`` 为可选 CharacterStore；命中 ``character_id`` 时用库内容展开。
     """
     uset = uset or {}
     pending = loads_package(uset.get("director_pending"))
     if pending:
-        return pending, "pending"
+        return _expand_character(pending, characters), "pending"
     sticky = loads_package(uset.get("director_sticky"))
     if sticky:
-        return sticky, "sticky"
+        return _expand_character(sticky, characters), "sticky"
     return None, ""
+
+
+def _expand_character(
+    pkg: ScenePackage, characters=None
+) -> ScenePackage:
+    """按 character_id 从角色库刷新 character/guidance；无库或未命中则原样。"""
+    if not pkg or not pkg.character_id or characters is None:
+        return pkg
+    entry = characters.get(pkg.character_id)
+    if not entry:
+        return pkg
+    character = str(entry.get("character") or pkg.character or "")
+    guidance = str(entry.get("baseline_guidance") or pkg.guidance or "")
+    scene = pkg.scene or str(entry.get("scene") or "")
+    return ScenePackage(
+        scene_name=pkg.scene_name or str(entry.get("name") or ""),
+        character_id=pkg.character_id,
+        character=character,
+        scene=scene,
+        guidance=guidance,
+        style_words=list(pkg.style_words or entry.get("style_words") or []),
+        guidance_source=pkg.guidance_source,
+    )
 
 
 def director_state_label(uset: Optional[dict] = None) -> str:
@@ -109,16 +134,19 @@ def director_state_label(uset: Optional[dict] = None) -> str:
 
 
 def apply_director_to_prompt(
-    base_prompt: str, uset: Optional[dict] = None
+    base_prompt: str,
+    uset: Optional[dict] = None,
+    characters=None,
 ) -> str:
     """从 uset 双层导演状态合成最终 user 控制稿；无包时原样返回。
 
     ``base_prompt`` 已含 emotion/style_hint 等（build_control_prompt），
     此处只把导演骨架拼接在后，避免重复注入 style_hint。
     pending 优先于 sticky；不合并两层。
+    ``characters``：可选 CharacterStore，按 character_id 展开库内容。
     """
     uset = uset or {}
-    pkg, _layer = resolve_effective_director(uset)
+    pkg, _layer = resolve_effective_director(uset, characters=characters)
     if not pkg:
         return base_prompt
     pkg = filter_conflicts(pkg, uset)

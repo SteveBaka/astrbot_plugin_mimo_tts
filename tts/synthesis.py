@@ -660,7 +660,11 @@ class TTSSynthesizer:
         # design 仍排除（user=音色身份，见 §16.2）。开关关闭时零改动。
         if mode in ("default", "clone") and self._config.director_enabled:
             before = prompt
-            prompt = apply_director_to_prompt(prompt, uset)
+            prompt = apply_director_to_prompt(
+                prompt,
+                uset,
+                characters=getattr(self, "director_characters", None),
+            )
             if prompt != before:
                 logger.info(
                     "MiMO TTS: director prompt applied mode=%s sing=%s",

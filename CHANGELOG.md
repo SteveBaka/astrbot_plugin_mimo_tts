@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 2026-09-12 v2.4.1-beta1
+
+> **内部测试版**：导演角色库 P5-M1 首切片（文件存储 + 查询 + `/direct <角色名>` + 合成展开）。
+
+### 新增
+
+- **角色库文件**：`plugin_data/astrbot_plugin_mimo_tts/director/characters.json`（权威资产，可手改；首次自动写入示例角色「小茵」）。
+- **配置**：`director_characters_enabled`（默认关）、`character_require_voice`（默认开）。
+- **命令**：`/char` 列表、`/char show <名>`、`/char reload`（管理员重读 JSON）。
+- **应用**：`/direct 小茵` / `/direct once 小茵`（**不要求** `@角色`；`@小茵` 为可选别名）。
+- **匹配流水线**：内置场景 → 角色短名精确匹配 → 三维稿 → LLM；长文/含三维标签不查角色库。
+- **合成展开**：payload 含 `character_id` 时从库刷新 character/guidance（改库立即生效）。
+- **音色**：应用角色时若会话音色仍为默认 → 自动绑定角色 `voice`；已自定义则不覆盖。
+
+### 边界（beta1）
+
+- 未做 `/char add/set/del` 与 WebUI 管理（手改 JSON + reload）。
+- 未做 `asset_ref` 长文档读取。
+- design 通道仍不注入导演。
+
+### 验证
+
+- 单测 **144/144**；ruff F/E9 通过。
+- **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta1**；组件 **35**（新增 `/char`）
+
 ## 2026-09-12 v2.4.0
 
 > **导演模式 P3 正式版**（内部 test1–test7 收口）。默认关闭；关闭时全链路与 v2.3.2 等价。

@@ -391,6 +391,18 @@
         "description": "导演解析缓存（秒）",
         "hint": "同描述+同模板命中缓存，避免重复调用 LLM；0=关闭",
         "default": 300
+      },
+      "director_characters_enabled": {
+        "type": "bool",
+        "description": "启用角色库",
+        "hint": "开启后可用 /direct <角色名> 应用命名角色（绑音色）。角色文件在 plugin_data/director/characters.json，可用 /char 查看、/char reload 重载",
+        "default": false
+      },
+      "character_require_voice": {
+        "type": "bool",
+        "description": "角色强制绑定音色",
+        "hint": "新建/编辑角色时必须提供合法音色 ID（预置或已注册克隆/设计）",
+        "default": true
       }
     }
   },

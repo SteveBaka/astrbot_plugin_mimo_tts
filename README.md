@@ -169,11 +169,14 @@
 ```
 /direct 深夜电台                 # 会话常驻（sticky，持续生效）
 /direct once 哄睡                # 仅下一次（pending，优先于常驻，用尽回落）
+/direct 小茵                     # 应用角色库角色（需开启「启用角色库」）
 /direct                          # 查看当前场景（两层分别显示）
 /direct off                      # 清除常驻 + 一次性
+/char                            # 列出角色库；/char show <名> 查看
 ```
 
 - **双层**：会话常驻与「仅下一次」可同时存在；`once` 用尽后自动回到常驻场景  
+- **角色库**（v2.4.1）：条目在 `plugin_data/.../director/characters.json`，`/char reload` 重载；`/direct <角色名>` 应用  
 - 内置场景：深夜电台 / 哄睡 / 元气早安 / 古风叙事 / 新闻播报 / emo 独白  
 - 也可粘贴三维稿：`角色：…` / `场景：…` / `指导：…`  
 - 开启 **LLM 自由解析** 后可直接输入自然语言场景描述  
@@ -334,7 +337,8 @@ AstrBot/
 |------|---------|:--------:|
 | `/mimo_say` | 即时合成语音 | 否 |
 | `/sing` | 唱歌模式（-音色/-s 风格组/-p 提示词/括号简写） | 否 |
-| `/direct` | 导演模式场景（会话常驻 sticky / once pending / off；需配置开启） | 否 |
+| `/direct` | 导演模式场景（会话常驻 sticky / once pending / 角色名 / off；需配置开启） | 否 |
+| `/char` | 导演角色库查询（list/show；reload 管理员） | 否 |
 | `/singstyle` | 唱歌风格组管理（show/list/set/reset） | ✅ |
 | `/ttsinfo` | 查看插件版本与功能信息 | 否 |
 | `/ttsraw` | 纯文本合成（不带情感） | ✅ |

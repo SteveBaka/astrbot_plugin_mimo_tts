@@ -15,6 +15,7 @@ from astrbot.api.star import Context, Star, StarTools
 
 from .core.config import ConfigManager, migrate_sing_styles
 from .core.constants import SEGMENT_PATTERNS, SKIP_PATTERNS
+from .core.director_characters import CharacterStore
 from .core.polish import polish_text_with_llm
 from .core.text_utils import should_skip, split_text
 from .core.user_state import UserStateManager
@@ -47,6 +48,7 @@ from .handlers.singstyle import (
 )
 from .handlers.nl_sing import handle_nl_sing, handle_nl_sing_tool
 from .handlers.director import handle_direct
+from .handlers.characters import handle_char
 from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
 from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
 from .handlers.voice import (
@@ -94,6 +96,9 @@ class MiMoTTSPlugin(Star):
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
         # 歌词润色回调注入：所有唱歌入口（命令/WebUI/NL）共用同一润色链路
         self.synth.lyrics_polisher = partial(polish_lyrics_with_llm, self)
+        # 角色库（plugin_data/director/characters.json）；合成时按 character_id 展开
+        self.director_characters = CharacterStore(self._data_dir)
+        self.synth.director_characters = self.director_characters
 
         # ── Plugin logger (WebUI log page) ──
         from .core.plugin_logger import PluginLogger
@@ -102,6 +107,7 @@ class MiMoTTSPlugin(Star):
 
         self.user_state.load()
         self.user_state.cleanup_temp_dir()
+        self.director_characters.load()
 
         register_web_apis(context, self)
 
@@ -279,8 +285,14 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("direct")
     async def cmd_direct(self, event: AstrMessageEvent):
-        """导演模式 /direct <场景|三维稿> | once | off — 设置本对话朗读场景"""
+        """导演模式 /direct <场景|角色名|三维稿> | once | off — 设置本对话朗读场景"""
         async for item in handle_direct(self, event):
+            yield item
+
+    @filter.command("char")
+    async def cmd_char(self, event: AstrMessageEvent):
+        """导演角色库 /char [show <名>|reload] — 查询角色；应用用 /direct <角色名>"""
+        async for item in handle_char(self, event):
             yield item
 
     @filter.command_group("singstyle")

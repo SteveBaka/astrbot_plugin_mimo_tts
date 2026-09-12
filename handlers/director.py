@@ -9,18 +9,56 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
 
 from ..core.director_assets import list_builtin_scene_names
+from ..core.director_characters import character_to_package, looks_like_character_name
 from ..core.director_package import dumps_package, loads_package
-from ..core.director_parser import parse_director_input
+from ..core.director_parser import match_builtin_scene, parse_director_input
 
 DIRECTOR_USAGE = (
-    "用法: /direct <场景名或三维稿> — 设置会话常驻场景（sticky，持续生效）\n"
-    "     /direct once <场景名或三维稿> — 仅下一次合成生效（pending，优先）\n"
+    "用法: /direct <场景名|角色名|三维稿> — 设置会话常驻场景（sticky，持续生效）\n"
+    "     /direct once <场景名|角色名|三维稿> — 仅下一次合成生效（pending，优先）\n"
     "     /direct — 查看当前导演场景\n"
     "     /direct off — 清除常驻与一次性场景\n"
     "内置场景: " + "、".join(list_builtin_scene_names()) + "\n"
     "也可粘贴完整稿（角色：… / 场景：… / 指导：…）；"
     "开启「LLM 自由解析」后可直接输入自然语言场景描述"
 )
+
+
+def _match_character(plugin, body: str):
+    """角色库精确匹配（场景优先；短名且无三维标签才查）。"""
+    if not plugin.config.get("director_characters_enabled", False):
+        return None
+    store = getattr(plugin, "director_characters", None)
+    if store is None:
+        return None
+    if not looks_like_character_name(body):
+        return None
+    # 内置场景优先于角色
+    if match_builtin_scene(body):
+        return None
+    entry = store.match_name(body)
+    if not entry:
+        return None
+    return character_to_package(entry), entry
+
+
+def _maybe_bind_voice(plugin, uset: dict, entry: dict) -> str:
+    """会话音色仍为默认时绑定角色音色；已自定义则不覆盖。"""
+    voice = str(entry.get("voice") or "").strip()
+    if not voice:
+        return ""
+    current = str(uset.get("voice") or "").strip()
+    default = str(plugin.config.get("default_voice", "") or "mimo_default").strip()
+    if current and current != default and current != "mimo_default":
+        return f"保留当前音色 {current}；角色默认为 {voice}"
+    try:
+        resolved = plugin.synth.resolve_voice(voice) if plugin.synth else voice
+    except Exception:
+        resolved = voice
+    if resolved:
+        uset["voice"] = resolved
+        return f"已切换音色 → {resolved}"
+    return ""
 
 
 def _extract_args(event: AstrMessageEvent) -> str:
@@ -81,11 +119,26 @@ async def handle_direct(plugin, event: AstrMessageEvent):
         body = arg[4:].strip()
         if not body:
             yield MessageEventResult().message(
-                "用法: /direct once <场景名或三维稿>"
+                "用法: /direct once <场景名|角色名|三维稿>"
             )
             return
+    # 可选别名：/direct @小茵 ≡ /direct 小茵
+    body = body.lstrip("@").strip()
 
-    pkg = parse_director_input(body)
+    voice_note = ""
+    matched_char = _match_character(plugin, body)
+    if matched_char:
+        pkg, entry = matched_char
+        voice_note = _maybe_bind_voice(plugin, uset, entry)
+        logger.info(
+            "MiMO TTS: character apply uid=%s id=%s layer=%s voice=%s",
+            uid,
+            entry.get("id"),
+            "pending" if mode == "once" else "sticky",
+            entry.get("voice") or "",
+        )
+    else:
+        pkg = parse_director_input(body)
     if not pkg and plugin.config.get("director_parse_llm", False):
         from ..core.director_llm import parse_director_with_llm
 
@@ -97,13 +150,20 @@ async def handle_direct(plugin, event: AstrMessageEvent):
     if not pkg:
         llm_on = bool(plugin.config.get("director_parse_llm", False))
         if llm_on:
-            tail = "（已尝试 LLM 自由解析仍未成功，请精简描述或改用内置场景/三维稿）"
+            tail = "（已尝试 LLM 自由解析仍未成功，请精简描述或改用内置场景/角色/三维稿）"
         else:
             tail = "（可开启配置「LLM 自由解析」后用自然语言描述）"
+        char_hint = ""
+        store = getattr(plugin, "director_characters", None)
+        if store and plugin.config.get("director_characters_enabled", False):
+            names = [e["name"] for e in store.list_enabled()[:8]]
+            if names:
+                char_hint = "\n可用角色: " + "、".join(names)
         yield MessageEventResult().message(
             "无法识别该场景。\n"
             "可用内置场景: "
             + "、".join(list_builtin_scene_names())
+            + char_hint
             + "\n或使用三维稿:\n角色：…\n场景：…\n指导：…\n"
             + tail
         )
@@ -137,4 +197,6 @@ async def handle_direct(plugin, event: AstrMessageEvent):
             f"已设置一次性场景（优先于会话常驻，用尽后回落）: {pkg.summary()}\n"
             "清除全部: /direct off"
         )
+    if voice_note:
+        msg += f"\n{voice_note}"
     yield MessageEventResult().message(msg)

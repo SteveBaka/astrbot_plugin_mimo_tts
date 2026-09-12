@@ -437,6 +437,8 @@ class ConfigManager:
         "director_parse_prompt": "",
         "director_timeout": 8,
         "director_cache_ttl": 300,
+        "director_characters_enabled": False,
+        "character_require_voice": True,
         # TTS parameters
         "emotion_override": "",
         "default_speed": 1.0,
@@ -689,6 +691,14 @@ class ConfigManager:
     @property
     def director_enabled(self) -> bool:
         return bool(self._flat.get("director_enabled", False))
+
+    @property
+    def director_characters_enabled(self) -> bool:
+        return bool(self._flat.get("director_characters_enabled", False))
+
+    @property
+    def character_require_voice(self) -> bool:
+        return bool(self._flat.get("character_require_voice", True))
 
     @property
     def director_parse_llm(self) -> bool:
