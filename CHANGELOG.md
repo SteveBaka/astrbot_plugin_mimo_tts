@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 2026-09-12 v2.4.1-beta2
+
+> **内部测试版**：角色库改为**配置 JSON 权威**（与「风格示例池」同构）；去掉 `/char reload`。
+
+### 变更
+
+- **权威数据源**：配置项 `director_characters`（Dashboard JSON 编辑器，`editor_mode`）。
+- **保存即生效**：改配置并保存后，下次 `/direct`/`/char`/合成自动刷新（原 reload 语义内建）。
+- **`/char reload` 移除**：命令提示改为「配置面板保存即生效」；`/char` 仍可 list/show。
+- **plugin_data 文件**：`director/characters.json` 仅作 **beta1 兼容/迁移兜底**（配置为空时读取并打迁移日志）；配置有内容则以配置为准，不再写文件。
+- **默认示例**：schema 内置「小茵」JSON 预设（与风格示例池同款）。
+
+### 验证
+
+- 单测 **145/145**。
+- **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta2**；组件 **35**
+
 ## 2026-09-12 v2.4.1-beta1
 
 > **内部测试版**：导演角色库 P5-M1 首切片（文件存储 + 查询 + `/direct <角色名>` + 合成展开）。
@@ -24,6 +41,7 @@
 
 - 单测 **144/144**；ruff F/E9 通过。
 - **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta1**；组件 **35**（新增 `/char`）
+- **日志闭环**：`characters loaded n=1` + `character apply id=xiaoyin layer=sticky voice=茉莉`（用户实测）
 
 ## 2026-09-12 v2.4.0
 

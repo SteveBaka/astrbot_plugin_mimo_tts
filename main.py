@@ -96,8 +96,10 @@ class MiMoTTSPlugin(Star):
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
         # 歌词润色回调注入：所有唱歌入口（命令/WebUI/NL）共用同一润色链路
         self.synth.lyrics_polisher = partial(polish_lyrics_with_llm, self)
-        # 角色库（plugin_data/director/characters.json）；合成时按 character_id 展开
-        self.director_characters = CharacterStore(self._data_dir)
+        # 角色库：配置 director_characters 权威（保存即生效）；file 仅迁移兜底
+        self.director_characters = CharacterStore(
+            config=self.config, data_dir=self._data_dir
+        )
         self.synth.director_characters = self.director_characters
 
         # ── Plugin logger (WebUI log page) ──
@@ -291,7 +293,7 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("char")
     async def cmd_char(self, event: AstrMessageEvent):
-        """导演角色库 /char [show <名>|reload] — 查询角色；应用用 /direct <角色名>"""
+        """导演角色库 /char [show <名>] — 查询角色；管理在配置面板「角色库」"""
         async for item in handle_char(self, event):
             yield item
 

@@ -439,6 +439,7 @@ class ConfigManager:
         "director_cache_ttl": 300,
         "director_characters_enabled": False,
         "character_require_voice": True,
+        "director_characters": "",
         # TTS parameters
         "emotion_override": "",
         "default_speed": 1.0,
@@ -699,6 +700,11 @@ class ConfigManager:
     @property
     def character_require_voice(self) -> bool:
         return bool(self._flat.get("character_require_voice", True))
+
+    @property
+    def director_characters(self) -> Any:
+        """角色库原始配置（JSON 字符串或列表）；解析见 CharacterStore。"""
+        return self._flat.get("director_characters", "")
 
     @property
     def director_parse_llm(self) -> bool:

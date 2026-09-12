@@ -395,7 +395,7 @@
       "director_characters_enabled": {
         "type": "bool",
         "description": "启用角色库",
-        "hint": "开启后可用 /direct <角色名> 应用命名角色（绑音色）。角色文件在 plugin_data/director/characters.json，可用 /char 查看、/char reload 重载",
+        "hint": "开启后可用 /direct <角色名> 应用命名角色（绑音色）。在下方「角色库」JSON 中维护条目，保存即生效",
         "default": false
       },
       "character_require_voice": {
@@ -403,6 +403,15 @@
         "description": "角色强制绑定音色",
         "hint": "新建/编辑角色时必须提供合法音色 ID（预置或已注册克隆/设计）",
         "default": true
+      },
+      "director_characters": {
+        "type": "text",
+        "description": "角色库（导演模式）",
+        "hint": "‼️ JSON 数组，最外层必须有 [ ]。每项：id（小写字母/数字/_/-）/ name（展示与匹配名）/ character（身份散文）/ baseline_guidance（默认指导）/ scene（默认场景，可空）/ voice（预置或已注册音色）/ style_words / enabled。缺括号/全角引号自动修复，仍错回退空库。与「风格示例池」同款编辑器：保存后立即生效，无需命令重载。应用：/direct <角色名> 或 /direct once <角色名>",
+        "obvious_hint": true,
+        "editor_mode": true,
+        "editor_language": "json",
+        "default": "[\n  {\n    \"id\": \"xiaoyin\",\n    \"name\": \"小茵\",\n    \"character\": \"二十岁出头的邻家学姐，说话轻、尾音软，偶尔带一点鼻音。\",\n    \"baseline_guidance\": \"整体偏温柔、语速稍慢；句尾自然收，不夸张。\",\n    \"scene\": \"\",\n    \"voice\": \"茉莉\",\n    \"style_words\": [\"温柔\"],\n    \"enabled\": true,\n    \"note\": \"示例角色，可删\"\n  }\n]"
       }
     }
   },

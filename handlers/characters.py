@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""角色库命令：/char（查询公开；reload 管理员）"""
+"""角色库命令：/char（查询公开；管理走配置面板，无需 reload）"""
 
 from __future__ import annotations
 
@@ -13,9 +13,8 @@ CHAR_USAGE = (
     "用法:\n"
     "  /char — 列出启用中的角色\n"
     "  /char show <名> — 查看角色摘要\n"
-    "  /char reload — 重读 characters.json（管理员）\n"
     "应用角色: /direct <角色名> 或 /direct once <角色名>\n"
-    "权威文件: plugin_data/astrbot_plugin_mimo_tts/director/characters.json"
+    "管理: 插件配置「导演模式 → 角色库」JSON，保存即生效"
 )
 
 
@@ -30,7 +29,7 @@ def _store(plugin):
 
 
 async def handle_char(plugin, event: AstrMessageEvent):
-    """/char [show <名>|reload] — 角色库查询与重载"""
+    """/char [show <名>] — 角色库查询（管理见配置面板）"""
     arg = _extract_args(event)
     store = _store(plugin)
     if store is None:
@@ -54,13 +53,13 @@ async def handle_char(plugin, event: AstrMessageEvent):
         entries = store.list_enabled()
         if not entries:
             yield MessageEventResult().message(
-                "角色库为空。可编辑 plugin_data 下 director/characters.json 后 /char reload。"
+                "角色库为空。请在插件配置「导演模式 → 角色库」JSON 中添加后保存。"
             )
             return
-        lines = ["启用中的角色:"]
+        lines = [f"启用中的角色（数据源: {store.source}）:"]
         for e in entries:
             lines.append("· " + store.summary_line(e))
-        lines.append("应用: /direct <角色名>")
+        lines.append("应用: /direct <角色名>　管理: 配置面板「角色库」")
         yield MessageEventResult().message("\n".join(lines))
         return
 
@@ -84,15 +83,9 @@ async def handle_char(plugin, event: AstrMessageEvent):
         return
 
     if low == "reload":
-        try:
-            ok = bool(event.is_admin())
-        except Exception:
-            ok = False
-        if not ok:
-            yield MessageEventResult().message("该命令仅管理员可用。")
-            return
-        n = store.reload()
-        yield MessageEventResult().message(f"已重读角色库，共 {n} 条。")
+        yield MessageEventResult().message(
+            "无需 /char reload：在配置面板修改「角色库」JSON 并保存后立即生效。"
+        )
         return
 
     yield MessageEventResult().message(CHAR_USAGE)
