@@ -79,7 +79,7 @@ async def api_tts_synthesize(plugin):
                 "laughter", "pause", "dialect", "volume", "tts_mode",
                 "sing", "sing_style", "sing_voice_override",
                 "design_description", "clone_style_prompt",
-                "director_mode", "director_payload"):
+                "director_sticky", "director_pending"):
         if key in body and body[key] is not None:
             overrides[key] = body[key]
 
@@ -431,22 +431,37 @@ async def api_director_scenes(plugin):
 
 
 async def api_director_state(plugin):
-    """读取指定 uid 的导演会话状态（控制台主路径）。"""
+    """读取指定 uid 的导演会话状态（双层：pending / sticky）。"""
     from quart import jsonify, request
 
+    from .core.director_composer import resolve_effective_director
     from .core.director_package import loads_package
 
     uid = _director_uid(request.args.get("uid"))
     uset = plugin._get_user_settings(uid)
-    pkg = loads_package(uset.get("director_payload"))
+    sticky = loads_package(uset.get("director_sticky"))
+    pending = loads_package(uset.get("director_pending"))
+    _pkg, layer = resolve_effective_director(uset)
     return jsonify({
         "uid": uid,
         "enabled": plugin.config.director_enabled,
-        "mode": str(uset.get("director_mode") or ""),
-        "scene_name": pkg.scene_name if pkg else "",
-        "summary": pkg.summary() if pkg else "",
-        "guidance_source": pkg.guidance_source if pkg else "",
-        "has_state": bool(pkg and uset.get("director_mode") in ("once", "session")),
+        "effective": layer,
+        "pending": {
+            "scene_name": pending.scene_name if pending else "",
+            "summary": pending.summary() if pending else "",
+            "guidance_source": pending.guidance_source if pending else "",
+        } if pending else None,
+        "sticky": {
+            "scene_name": sticky.scene_name if sticky else "",
+            "summary": sticky.summary() if sticky else "",
+            "guidance_source": sticky.guidance_source if sticky else "",
+        } if sticky else None,
+        "has_state": bool(pending or sticky),
+        # 兼容旧前端字段：effective 层摘要
+        "mode": layer,
+        "scene_name": (_pkg.scene_name if _pkg else ""),
+        "summary": (_pkg.summary() if _pkg else ""),
+        "guidance_source": (_pkg.guidance_source if _pkg else ""),
     })
 
 
@@ -524,14 +539,18 @@ async def api_director_apply(plugin):
         return jsonify({"error": "场景过长"}), 400
 
     uset = plugin._get_user_settings(uid)
-    uset["director_mode"] = mode
-    uset["director_payload"] = final_payload
+    # 双层：session→sticky，once→pending；互不覆盖
+    if mode == "session":
+        uset["director_sticky"] = final_payload
+    else:
+        uset["director_pending"] = final_payload
     plugin._persist_current_state()
-    kind = "会话常驻" if mode == "session" else "仅下一次"
+    kind = "会话常驻" if mode == "session" else "仅下一次（优先）"
     return jsonify({
         "status": "ok",
         "uid": uid,
         "mode": mode,
+        "layer": "sticky" if mode == "session" else "pending",
         "summary": pkg.summary(),
         "message": f"已应用（{kind}）: {pkg.summary()}",
     })
@@ -550,10 +569,12 @@ async def api_director_clear(plugin):
     uid = _director_uid(uid_raw)
 
     uset = plugin._get_user_settings(uid)
+    uset["director_sticky"] = ""
+    uset["director_pending"] = ""
     uset["director_mode"] = ""
     uset["director_payload"] = ""
     plugin._persist_current_state()
-    return jsonify({"status": "ok", "uid": uid, "message": "已清除导演场景"})
+    return jsonify({"status": "ok", "uid": uid, "message": "已清除导演场景（常驻 + 一次性）"})
 
 
 def register_web_apis(context, plugin) -> None:

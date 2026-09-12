@@ -228,11 +228,10 @@ class MiMoTTSPlugin(Star):
             self.plog.info("TTS", f"合成完成 {size_kb}KB → {audio_path.name}")
             self.user_state.recent_files.append((time.time(), audio_path))
             self.user_state.cleanup_recent_files()
-            # 导演 once：成功后消费，失败保留便于重试
+            # 导演 once：只消费 pending；sticky 常驻层保留（失败保留便于重试）
             uset = self._get_user_settings(uid)
-            if uset.get("director_mode") == "once":
-                uset["director_mode"] = ""
-                uset["director_payload"] = ""
+            if str(uset.get("director_pending") or "").strip():
+                uset["director_pending"] = ""
                 self._persist_current_state()
         return audio_path
 

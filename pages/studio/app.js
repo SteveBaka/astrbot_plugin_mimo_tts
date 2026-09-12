@@ -313,7 +313,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       const directorScenePick = ref('');
       const directorCustom = ref('');
       const directorApplyMode = ref('session');
-      const directorState = ref({ mode: '', summary: '' });
+      const directorState = ref({ pending: null, sticky: null, effective: '' });
       const directorBusy = ref(false);
       const directorMsg = ref('');
 
@@ -526,8 +526,9 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         const st = await apiGet('director/state', { uid: directorUid.value });
         if (st) {
           directorState.value = {
-            mode: st.mode || '',
-            summary: st.summary || st.scene_name || '',
+            pending: st.pending || null,
+            sticky: st.sticky || null,
+            effective: st.effective || st.mode || '',
           };
         }
       }
@@ -574,7 +575,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           const res = await apiPost('director/clear', { uid: directorUid.value });
           if (res && res.status === 'ok') {
             directorMsg.value = '';
-            showSuccess('已清除本会话导演场景');
+            showSuccess('已清除本会话导演场景（常驻 + 一次性）');
             await refreshDirectorState();
           } else {
             showError((res && res.error) || '清除失败');
@@ -743,8 +744,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
   <div class="card">
     <div class="section-title"><span v-html="icon('sparkles')"></span> 导演模式（控制台）</div>
     <p class="control-hint" style="margin:0 0 10px;font-size:12px;opacity:.75;">
-      管理本会话导演场景；「合成语音」将使用下方已应用的状态。
-      design 模式不注入导演稿。总开关在插件配置「导演模式」。
+      管理本会话导演场景（会话常驻 sticky + 仅下一次 pending 双层；pending 优先）。
+      「合成语音」将使用下方已应用的状态。design 模式不注入导演稿。总开关在插件配置「导演模式」。
     </p>
     <div v-if="!directorEnabled" class="design-tune-block">
       <strong>导演模式未启用</strong> — 请在 AstrBot 插件配置中打开「启用导演模式」后刷新本页。
@@ -758,8 +759,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         <div class="control-group">
           <label class="control-label">应用方式</label>
           <select v-model="directorApplyMode" class="select-input">
-            <option value="session">会话常驻（后续合成持续生效）</option>
-            <option value="once">仅下一次合成</option>
+            <option value="session">会话常驻（sticky，持续生效）</option>
+            <option value="once">仅下一次（pending，优先，用尽回落）</option>
           </select>
         </div>
         <div class="control-group">
@@ -769,11 +770,17 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           </select>
         </div>
         <div class="control-group">
-          <label class="control-label">当前状态</label>
-          <div style="font-size:13px;padding-top:6px;">
-            <template v-if="directorState.mode">
-              <strong>{{ directorState.mode === 'session' ? '会话常驻' : '仅下一次' }}</strong>
-              <span v-if="directorState.summary"> — {{ directorState.summary }}</span>
+          <label class="control-label">当前状态（双层）</label>
+          <div style="font-size:13px;padding-top:6px;line-height:1.5;">
+            <template v-if="directorState.sticky || directorState.pending">
+              <div v-if="directorState.sticky">
+                <strong>会话常驻</strong>
+                <span v-if="directorState.sticky.summary"> — {{ directorState.sticky.summary }}</span>
+              </div>
+              <div v-if="directorState.pending">
+                <strong>仅下一次</strong>（优先）
+                <span v-if="directorState.pending.summary"> — {{ directorState.pending.summary }}</span>
+              </div>
             </template>
             <template v-else>未设置</template>
             <button class="btn-link" style="margin-left:8px;" @click="refreshDirectorState">刷新</button>

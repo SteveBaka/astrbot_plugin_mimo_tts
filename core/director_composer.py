@@ -77,18 +77,48 @@ def merge_director_into_prompt(base_prompt: str, director_text: str) -> str:
     return f"{head}，{body}"
 
 
+def resolve_effective_director(
+    uset: Optional[dict] = None,
+) -> tuple[Optional[ScenePackage], str]:
+    """双层取包：pending 优先，其次 sticky。返回 ``(pkg, layer)``。
+
+    ``layer`` ∈ ``{"", "pending", "sticky"}``；无有效包时 ``pkg`` 为 None。
+    """
+    uset = uset or {}
+    pending = loads_package(uset.get("director_pending"))
+    if pending:
+        return pending, "pending"
+    sticky = loads_package(uset.get("director_sticky"))
+    if sticky:
+        return sticky, "sticky"
+    return None, ""
+
+
+def director_state_label(uset: Optional[dict] = None) -> str:
+    """合成日志标注：pending / sticky / pending+sticky / 空。"""
+    uset = uset or {}
+    has_pending = bool(str(uset.get("director_pending") or "").strip())
+    has_sticky = bool(str(uset.get("director_sticky") or "").strip())
+    if has_pending and has_sticky:
+        return "pending+sticky"
+    if has_pending:
+        return "pending"
+    if has_sticky:
+        return "sticky"
+    return ""
+
+
 def apply_director_to_prompt(
     base_prompt: str, uset: Optional[dict] = None
 ) -> str:
-    """从 uset 读取导演状态并合成最终 user 控制稿；无包时原样返回。
+    """从 uset 双层导演状态合成最终 user 控制稿；无包时原样返回。
 
     ``base_prompt`` 已含 emotion/style_hint 等（build_control_prompt），
     此处只把导演骨架拼接在后，避免重复注入 style_hint。
+    pending 优先于 sticky；不合并两层。
     """
     uset = uset or {}
-    if str(uset.get("director_mode") or "") not in ("once", "session"):
-        return base_prompt
-    pkg = loads_package(uset.get("director_payload"))
+    pkg, _layer = resolve_effective_director(uset)
     if not pkg:
         return base_prompt
     pkg = filter_conflicts(pkg, uset)

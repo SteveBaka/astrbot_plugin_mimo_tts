@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Optional
 from astrbot.api import logger
 
 from ..core.constants import MIMO_VOICE_LIST
-from ..core.director_composer import apply_director_to_prompt
+from ..core.director_composer import apply_director_to_prompt, director_state_label
 from ..core.style_lib import (
     EMOTION_TO_TAG,
     extract_style_words,
@@ -526,9 +526,7 @@ class TTSSynthesizer:
 
         # 说出口的正文 = final_text；director 标注便于对回场景（design 本不注入）
         director_mode = (
-            str(uset.get("director_mode") or "")
-            if self._config.director_enabled
-            else ""
+            director_state_label(uset) if self._config.director_enabled else ""
         )
         log_tts_text(
             uid,

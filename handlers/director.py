@@ -13,10 +13,10 @@ from ..core.director_package import dumps_package, loads_package
 from ..core.director_parser import parse_director_input
 
 DIRECTOR_USAGE = (
-    "用法: /direct <场景名或三维稿> — 设置本对话导演场景（默认会话常驻）\n"
-    "     /direct once <场景名或三维稿> — 仅下一次合成生效\n"
+    "用法: /direct <场景名或三维稿> — 设置会话常驻场景（sticky，持续生效）\n"
+    "     /direct once <场景名或三维稿> — 仅下一次合成生效（pending，优先）\n"
     "     /direct — 查看当前导演场景\n"
-    "     /direct off — 清除导演场景\n"
+    "     /direct off — 清除常驻与一次性场景\n"
     "内置场景: " + "、".join(list_builtin_scene_names()) + "\n"
     "也可粘贴完整稿（角色：… / 场景：… / 指导：…）；"
     "开启「LLM 自由解析」后可直接输入自然语言场景描述"
@@ -29,8 +29,22 @@ def _extract_args(event: AstrMessageEvent) -> str:
     return (m.group("rest") or "").strip() if m else raw
 
 
+def _format_director_status(uset: dict) -> str:
+    sticky = loads_package(uset.get("director_sticky"))
+    pending = loads_package(uset.get("director_pending"))
+    if not sticky and not pending:
+        return ""
+    lines: list[str] = []
+    if sticky:
+        lines.append(f"会话常驻: {sticky.summary()}")
+    if pending:
+        lines.append(f"仅下一次（优先）: {pending.summary()}")
+    lines.append("清除: /direct off　临时一次: /direct once <场景>")
+    return "\n".join(lines)
+
+
 async def handle_direct(plugin, event: AstrMessageEvent):
-    """/direct <场景|三维稿> | once | off — 管理当前对话导演模式场景"""
+    """/direct <场景|三维稿> | once | off — 双层管理常驻与一次性场景"""
     arg = _extract_args(event)
     uid, uset = plugin._get_event_settings(event)
 
@@ -41,14 +55,9 @@ async def handle_direct(plugin, event: AstrMessageEvent):
         return
 
     if not arg:
-        mode = str(uset.get("director_mode") or "")
-        pkg = loads_package(uset.get("director_payload"))
-        if mode and pkg:
-            kind = "会话常驻" if mode == "session" else "仅下一次"
-            yield MessageEventResult().message(
-                f"当前导演场景（{kind}）: {pkg.summary()}\n"
-                "清除: /direct off　临时一次: /direct once <场景>"
-            )
+        status = _format_director_status(uset)
+        if status:
+            yield MessageEventResult().message(f"当前导演场景:\n{status}")
         else:
             yield MessageEventResult().message(
                 "当前未设置导演场景。\n" + DIRECTOR_USAGE
@@ -57,10 +66,12 @@ async def handle_direct(plugin, event: AstrMessageEvent):
 
     low = arg.lower()
     if low in ("off", "clear", "关闭"):
+        uset["director_sticky"] = ""
+        uset["director_pending"] = ""
         uset["director_mode"] = ""
         uset["director_payload"] = ""
         plugin._persist_current_state()
-        yield MessageEventResult().message("已清除本对话导演场景。")
+        yield MessageEventResult().message("已清除本对话导演场景（常驻 + 一次性）。")
         return
 
     mode = "session"
@@ -103,17 +114,27 @@ async def handle_direct(plugin, event: AstrMessageEvent):
         yield MessageEventResult().message("场景过长，已拒绝写入。请精简后重试。")
         return
 
-    uset["director_mode"] = mode
-    uset["director_payload"] = payload
+    # 双层互不覆盖：session 只写 sticky；once 只写 pending
+    if mode == "session":
+        uset["director_sticky"] = payload
+    else:
+        uset["director_pending"] = payload
     plugin._persist_current_state()
     logger.info(
-        "MiMO TTS: director set uid=%s mode=%s scene=%s source=%s",
+        "MiMO TTS: director set uid=%s layer=%s scene=%s source=%s",
         uid,
-        mode,
+        "sticky" if mode == "session" else "pending",
         pkg.scene_name or "(custom)",
         pkg.guidance_source,
     )
-    kind = "会话常驻，后续合成生效" if mode == "session" else "仅下一次合成"
-    yield MessageEventResult().message(
-        f"已设置导演场景（{kind}）: {pkg.summary()}\n关闭: /direct off"
-    )
+    if mode == "session":
+        msg = (
+            f"已设置会话常驻场景: {pkg.summary()}\n"
+            "不影响已设置的一次性场景；关闭: /direct off"
+        )
+    else:
+        msg = (
+            f"已设置一次性场景（优先于会话常驻，用尽后回落）: {pkg.summary()}\n"
+            "清除全部: /direct off"
+        )
+    yield MessageEventResult().message(msg)

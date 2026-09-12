@@ -1,188 +1,64 @@
 # CHANGELOG
 
-## 2026-09-11 v2.4.0-test6
+## 2026-09-12 v2.4.0
 
-> **内部测试版**：P3 产品收尾——「说了什么」可测 + README 对齐。
+> **导演模式 P3 正式版**（内部 test1–test7 收口）。默认关闭；关闭时全链路与 v2.3.2 等价。
 
-### 变更
+### 新增：导演模式
 
-- **合成日志增强**：`synthesize text` 增加 `director=` 标注（once/session/-），便于把听感对回场景；**`text=` 仍是实际送服务端的 assistant 正文（即说出口的内容）**。
-- **README**：配置表补导演三项；新增「导演模式」用法节；命令总览加入 `/direct`。
+- **`/direct` 命令（公开）**
+  - `/direct <内置场景名|三维稿|自然语言>` → 会话常驻（sticky）
+  - `/direct once <…>` → 仅下一次合成（pending，优先于常驻，用尽自动回落）
+  - `/direct` 查看两层状态；`/direct off` 双层全清
+  - 三维稿：中文「角色/场景/指导」或英文 Role/Scene/Guidance
+- **双层状态（P3 增强）**
+  - `director_sticky` + `director_pending`；once **不**再覆盖会话常驻
+  - 旧单槽 `director_mode`/`director_payload` 自动迁移（已有新字段不覆盖）
+  - pending 成功消费后只清 pending，回落 sticky
+- **内置场景 ×6**：深夜电台 / 哄睡 / 元气早安 / 古风叙事 / 新闻播报 / emo 独白
+- **可选 LLM 自由解析**：`director_parse_llm` + `director_parse_prompt` + 超时/缓存 + 专用 Provider（回退：专用 → 润色 → 当前对话）；失败不中断其它功能
+- **注入范围**：default / 克隆 / 唱歌；**design 不注入**（user=音色身份）
+- **配置分组「导演模式」**：`director_enabled` 等，默认全关
+- **模块**：`core/director_*` + `handlers/director.py`；`main.py` 仅注册
 
-### 如何确认「语音说了什么」（验收）
+### 新增：Voice Studio 导演控制台
 
-| 层级 | 看什么 |
-|------|--------|
-| **正文（说了什么）** | 日志 `[MiMO TTS] synthesize text … text='…'` —— **唯一权威**（分段时每段各一条） |
-| **怎么说** | 同请求 `director prompt applied`；或 WebUI 控制台场景摘要 |
-| **聊天侧对照** | 自动 TTS 时与 bot 文字回复对照（`send_text_with_tts` 开启时一致；润色/Markdown 清洗后可能有差异） |
-| **单元测试** | mock `provider.synthesize` 捕获 `text=` / `control_prompt=`（本仓未做 E2E 音频转写） |
+- REST：`director/scenes|state|parse|apply|clear`；`/tts` 临时覆盖 `director_sticky`/`director_pending`
+- 合成页控制台卡片：UID / 内置场景 / 自定义描述 / 应用（session|once）/ 清除 / 分层状态
+- 与 `/direct` 同一 `user_state` 状态源；合成默认吃已应用状态
 
-> 不做 ASR 回环：成本高且非必须；**日志正文 = API assistant 字段**。
+### 日志与可观测
 
-### 日志校对（2026-09-12，用户实测 + AstrBot broker）
+- `synthesize text … director=pending|sticky|pending+sticky|-`（`text=` = 实际朗读正文）
+- `director set … layer=sticky|pending`；`director prompt applied mode=default|clone|…`
+- 不做 ASR 回环：正文以 API assistant 字段为准
 
-clone 会话链路与设计一致：
+### 使用示例
 
-- `director set session 哄睡` → `synthesize text director=session` + `prompt applied`
-- `director set once 元气早安` → `synthesize text director=once` + `prompt applied`
-- 随后 `director=-`（once 成功消费）
+```
+/direct 哄睡
+/direct once 元气早安
+/mimo_say …          # director=pending+sticky，元气
+/mimo_say …          # director=sticky，回落哄睡
+/direct off          # 双层全清
+```
 
-**语义备忘**：once 后写覆盖，会顶掉原 session 字段，用尽后不会自动回到旧 session 场景。
+### 边界
 
-### 安装验证记录
+1. 场景包级双层；**不做**逐维粘性（P5）
+2. 自动 TTS 会消费 pending
+3. design 不注入；`mimo_direct` / `director_for_design` 未实现
+4. clone + 哄睡等慢速场景叠层过重时，起音可能有轻微杂音（观察项，频繁再收窄）
 
-- **结果（2026-09-11）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.0-test6**；组件 **34**
+### 验证（2026-09-12）
 
-### 自动 TTS 补测清单（P3 收尾）
-
-1. `/direct 哄睡` → 同对话让 bot 正常回复（自动 TTS）→ 听感应偏哄睡；日志 `director=session`  
-2. `/direct once …` 若先被自动 TTS 消费，再 `/mimo_say` 不应再带场景  
-3. `/direct off` 后自动 TTS / `/mimo_say` 均无导演稿  
-
-## 2026-09-11 v2.4.0-test5
-
-> **内部测试版**：Voice Studio 导演**控制台**闭环（管理状态为主，合成即时验证）。
-
-### 新增（WebUI）
-
-- **REST**：`director/scenes`、`director/state`、`director/parse`、`director/apply`、`director/clear`；`/tts` 白名单增加 `director_mode` / `director_payload`（临时覆盖可选）。
-- **合成页「导演模式（控制台）」卡片**：
-  - 显示总开关；未启用时引导去配置；
-  - 会话 UID（默认 `webui`）、内置场景下拉、自定义描述（场景名/三维稿/LLM 自然语言）；
-  - **应用到会话**（session / once）→ 写 `user_state`，与 `/direct` 同一状态源；
-  - **清除导演场景**；当前状态摘要 + 刷新；
-  - design 模式提示不注入导演稿。
-- **合成语音默认吃会话已应用的导演状态**（uid=`webui` 时与控制台一致）；不另传 override。
-
-### 安装验证记录
-
-- **结果（2026-09-11）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.0-test5**；组件 **34**
-
-### 实测结论（P3 WebUI 收口）
-
-- 用户确认：**控制台应用场景 → 合成生效 → 清除恢复** 闭环通过  
-- 与聊天命令 `/direct` 同一 `user_state` 状态源；design 不注入（符合 §16.2）  
-- 原有合成/克隆/设计试听路径未回归破坏  
-
-### 建议实测
-
-1. 配置打开导演模式 → 合成页出现控制台卡片  
-2. 选「深夜电台」→ 应用到会话 → 合成 → 应有电台腔  
-3. 清除 → 再合成 → 恢复默认  
-4. design 模式合成 → 无导演稿  
-
-## 2026-09-11 v2.4.0-test4
-
-> **内部测试版**：导演解析专用 Provider，便于固定更稳的 JSON 模型。
-
-### 新增
-
-- **`director_parse_llm_provider`**（配置「导演模式」，`select_provider`）：专用于 LLM 自由解析。  
-  回退链：**专用 Provider → 润色 Provider → 当前对话模型**（与唱歌润色同构）。
-
-### 安装验证记录
-
-- **结果（2026-09-11）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.0-test4**；组件 **34**
-
-### 建议实测
-
-1. 在配置里选定一个 JSON 更稳的 Provider  
-2. `/direct 雨天傍晚低落独白` → 应用该模型解析  
-3. 留空 Provider → 行为与 test3 相同（回退润色/当前对话）
-
-## 2026-09-11 v2.4.0-test3
-
-> **内部测试版**：P3c B1 — 导演模式可选 LLM 自由解析。P3/P3b（test1/test2）已实测通过并收口。
-
-### 新增
-
-- **`director_parse_llm`（默认 false）**：内置场景与三维稿未命中时，用 LLM 把自然语言描述整理成 ScenePackage（JSON → `sanitize_package`）。
-- 配置：`director_parse_prompt`（`{text}` 占位，留空用内置）、`director_timeout`（默认 8s）、`director_cache_ttl`（默认 300s，同描述缓存）。
-- Provider 链：复用 `polish_llm_provider` > 当前对话模型；`llm_generate` 裸调用（无 system_prompt/历史）。
-- 失败/超时/坏 JSON：提示无法识别，**不中断**其它功能；快路径优先，LLM 仅兜底。
-- 模块：`core/director_llm.py`；handlers 仅在快路径失败且开关开启时调用。
-
-### 安装验证记录
-
-- **结果（2026-09-11）**：`force_refresh` 安装/重载成功；failed **空**；**activated**；版本 **v2.4.0-test3**；组件 **34**
-
-### 建议实测
-
-1. 仅开 `director_enabled`：`/direct 雨天傍晚低落独白` → 提示可开 LLM  
-2. 再开 `director_parse_llm`：同上 → 应写入场景并 `/mimo_say` 生效  
-3. 乱写极短无意义描述 → 失败提示，无崩溃  
-4. 同描述再 `/direct` 一次 → 日志可见 cache hit（若有日志权限）
-
-## 2026-09-11 v2.4.0-test2
-
-> **内部测试版**：P3b 多通道接入。test1 已实测 `/direct 深夜电台` + default 通道通过。
-
-### 新增 / 变更
-
-- **导演模式接入 clone 与唱歌**：`director_enabled` 且 mode 为 `default`/`clone` 时注入（唱歌强制 default，一并生效）；**design 仍排除**（user=音色身份）。
-- **内置场景扩至 6 个**：深夜电台 / 哄睡 / 元气早安 + **古风叙事 / 新闻播报 / emo 独白**。
-- **`/tts_help`**：增加 `/direct` 与 `/direct once` 说明。
-
-### 安装验证记录
-
-- 分支：`feat/director-mode`
-- 方式：`force_refresh`（reinstall_keep_config_data）
-- **结果（2026-09-11）**：安装/重载成功；failed **空**；**activated**；版本 **v2.4.0-test2**；组件 **34**（含 `direct`）
-
-### 实测结论（P3 收口）
-
-- test1：`/direct 深夜电台` + default 通道 **用户实测通过**
-- test2：clone / 唱歌路径 **效果已出现**（用户实测）
-- 收口时工作区干净；仅曾出现 polish/auto_tts 可执行位噪音，已用 `chmod` 消除（无逻辑 diff）
-
-### 建议补测（P3 验收清单，未强制）
-
-1. `/direct once 哄睡` → 仅下一次生效，再合成应无导演稿  
-2. `/direct off` → 三通道回到未开启听感  
-3. 关闭配置「启用导演模式」→ `/direct` 提示未启用，合成零注入  
-4. 会话 ` /speed 2.0` + 导演场景 → 不被场景包语速类提示覆盖  
-
-### 建议实测
-
-1. `/direct 深夜电台` → `/ttsswitch clone` + `/mimo_say …`（需已有克隆音色）
-2. `/direct 哄睡` → `/sing …`（唱歌仍应正常）
-3. `/direct off` 后 clone/唱歌恢复未开启行为
-4. `/direct 新闻播报` 等新场景名
-
-## 2026-09-11 v2.4.0-test1
-
-> **内部测试版**：导演模式 P3 垂直切片首次安装验证用。同功能定稿版见下方 v2.4.0 条目；本版号仅用于定位「本次安装对应哪次改动」。
-
-### 安装验证记录
-
-- 目标：AstrBot `http://192.168.66.23:6185`，插件 id `astrbot_plugin_mimo_tts`
-- 方式：`force_refresh=true`（reinstall_keep_config_data，保留 config + data）
-- 安装前：本地 127/127 单测、review 0 error
-- **安装后（2026-09-11）**：upload/reload **成功**；`failed` 列表**空**；插件 **activated**；版本 **v2.4.0-test1**；组件 **34**（含新命令 `direct`）
-
-### 操作提示（验证导演模式）
-
-1. Dashboard → 插件配置 →「导演模式」→ 勾选 **启用导演模式**
-2. `/direct 深夜电台` → 应回「已设置导演场景（会话常驻…）」
-3. `/mimo_say 今天过得怎么样` → 听感应偏深夜电台（慢、磁性）
-4. `/direct off` 后再 `/mimo_say …` → 恢复默认语气
-
-## 2026-09-11 v2.4.0
-
-### 新增（导演模式 P3 垂直切片，默认关闭）
-
-- **`/direct` 命令（公开）**：`/direct <内置场景名|三维稿>` 设会话常驻场景；`/direct once …` 仅下一次合成；`/direct` 查看；`/direct off` 清除。三维稿支持中文「角色/场景/指导」与英文 Role/Scene/Guidance|Direction 标签切分。
-- **内置场景**：深夜电台 / 哄睡 / 元气早安（零 LLM 快路径）。
-- **配置 `director_enabled`（默认 false，「导演模式」分组）**：关闭时全链路与 v2.3.2 等价。
-- **模块拆分**：`core/director_assets.py`（场景与骨架资产）、`core/director_package.py`（ScenePackage）、`core/director_parser.py`（解析）、`core/director_composer.py`（覆盖合并与渲染）、`handlers/director.py`（命令薄层）；`main.py` 仅注册命令。
-- **注入范围（本切片）**：仅 **default 预置音色且非唱歌**；clone/design/唱歌与 LLM 自由解析、`mimo_direct` 不在本版。
-- **覆盖语义**：会话 `speed≠1.0` 时过滤 guidance 中语速类提示；导演骨架拼接在既有 user 控制稿之后，不重复注入 style_hint。
-- **once 消费**：合成**成功后**清除，失败保留便于重试。
-
-### 测试
-
-- 新增 `tests/test_director_slice.py`（13 项：内置场景/中英标签解析/骨架省略/禁写清洗/序列化往返/显式语速过滤/开关无包零改动/坏 payload 原样返回）；`tests/conftest.py` 补齐 `astrbot.api` 桩与包骨架。全套 **127/127**。
+| 项 | 结果 |
+|----|------|
+| 单测 | **136/136** |
+| review | **0 error** |
+| 安装 | force_refresh → activated，failed 空，组件 34 |
+| 双层闭环日志 | set sticky → set pending → `pending+sticky` → `sticky` 回落 → off 双清 |
+| 听感 | 用户确认闭环；clone 起音杂音见边界 4 |
 
 ## 2026-09-04 v2.3.2
 

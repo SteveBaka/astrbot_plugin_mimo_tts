@@ -207,7 +207,7 @@ def log_tts_text(
 ) -> None:
     """Log TTS input text（= 实际送给服务端的 assistant 正文，即“说了什么”）。
 
-    ``director``：once/session/空，便于把听感问题对回场景包。
+    ``director``：pending / sticky / pending+sticky / 空，便于把听感问题对回场景包。
     """
     logger.info(
         "[MiMO TTS] synthesize text uid=%s mode=%s sing=%s director=%s text=%r",
