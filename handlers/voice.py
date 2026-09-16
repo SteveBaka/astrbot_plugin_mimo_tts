@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import re
+import shutil
+from pathlib import Path
+
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
 
 from ..core.constants import (
@@ -73,6 +77,95 @@ async def handle_ttsswitch(plugin, event: AstrMessageEvent):
     yield MessageEventResult().message(
         f"[✓] TTS 输出模式已切换为: {plugin._tts_mode_label(mode)} ({mode})"
     )
+
+
+async def handle_mimo_register_clone_tool(
+    plugin,
+    event: AstrMessageEvent,
+    voice_id: str,
+    audio_path: str,
+    replace_existing: bool = False,
+    style_prompt: str = "",
+    audio_tags: str = "",
+) -> str:
+    """Register a local processed audio file as a named clone voice."""
+    if not isinstance(replace_existing, bool):
+        return "参数错误: replace_existing 必须是 JSON boolean true/false。"
+    voice_id = str(voice_id or "").strip()
+    if not re.fullmatch(r"[a-zA-Z0-9_\-\u4e00-\u9fff]{1,50}", voice_id):
+        return "参数错误: voice_id 只能包含中文、字母、数字、下划线或连字符，长度 1~50。"
+    if any(item["id"] == voice_id for item in MIMO_VOICE_LIST):
+        return "参数错误: voice_id 与内置音色 ID 冲突，请换一个克隆音色 ID。"
+
+    existing = plugin._voice_manager.get_voice(voice_id)
+    if existing and not replace_existing:
+        return "参数错误: voice_id 已存在；需要更新时显式传 replace_existing=true。"
+    if existing and str(existing.get("model", "")).lower() != "voiceclone":
+        return "参数错误: voice_id 已被设计音色占用，请换一个 ID。"
+
+    audio_path = str(audio_path or "").strip().strip('"').strip("'")
+    if not audio_path:
+        return "参数错误: audio_path 必须填写克隆目录中的本地音频路径。"
+    try:
+        source = plugin._resolve_clone_audio_path(audio_path)
+    except Exception as clone_path_exc:
+        try:
+            from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
+
+            candidate = Path(audio_path).expanduser().resolve()
+            temp_root = Path(get_astrbot_temp_path()).resolve()
+            if not candidate.is_relative_to(temp_root):
+                raise PermissionError(str(clone_path_exc))
+            source = candidate
+        except Exception as exc:
+            return f"参数错误: audio_path 只能指向克隆目录或 AstrBot 临时附件目录中的现有文件。{exc}"
+    if not source.is_file():
+        return "参数错误: audio_path 不是有效文件。"
+    if source.suffix.lower() not in AUDIO_VALID_EXTENSIONS:
+        return "参数错误: 只接受 .mp3、.wav、.ogg、.opus、.pcm 音频文件；禁止传视频、压缩包、URL 或 Base64。"
+    try:
+        if source.stat().st_size < AUDIO_MIN_VALID_SIZE:
+            return f"参数错误: 音频文件至少需要 {AUDIO_MIN_VALID_SIZE} 字节。"
+    except OSError as exc:
+        return f"参数错误: 读取音频文件大小失败: {exc}"
+
+    style_prompt = str(style_prompt or "").strip()
+    audio_tags = str(audio_tags or "").strip()
+    if len(style_prompt) > 500 or len(audio_tags) > 500:
+        return "参数错误: style_prompt 和 audio_tags 各最多 500 个字符。"
+
+    clone_dir = plugin._data_dir / "clone"
+    clone_dir.mkdir(parents=True, exist_ok=True)
+    destination = clone_dir / f"{voice_id}{source.suffix.lower()}"
+    try:
+        if source.resolve() != destination.resolve():
+            shutil.copy2(source, destination)
+    except OSError as exc:
+        return f"克隆音频写入失败: {exc}"
+
+    provider = plugin._ensure_provider()
+    if not provider:
+        return "API Key 未配置。"
+    if not await provider.register_voice(voice_id, str(destination)):
+        return f"克隆音色登记失败: {provider.last_error or '参考音频校验失败。'}"
+
+    plugin._voice_manager.register_voice(
+        voice_id,
+        name=voice_id,
+        model="voiceclone",
+        audio_path=str(destination),
+    )
+    if style_prompt or audio_tags:
+        plugin.config.upsert_clone_pool_entry(voice_id, style_prompt, audio_tags)
+    plugin.config.set("clone_enabled", True)
+    plugin.config.set("clone_voice_id", voice_id)
+    uid, _ = plugin._get_event_settings(event)
+    uset = plugin._get_user_settings(uid)
+    uset["voice"] = voice_id
+    uset["tts_mode"] = "clone"
+    plugin._persist_current_state()
+    action = "更新" if existing else "创建"
+    return f"已{action}克隆音色 {voice_id}，参考音频已写入 {destination.name}，后续调用 mimo_clone_speak 时传 voice={voice_id}。"
 
 
 async def handle_voiceclone(plugin, event: AstrMessageEvent):
