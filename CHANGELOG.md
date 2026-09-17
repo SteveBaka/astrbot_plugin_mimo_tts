@@ -1,139 +1,37 @@
 # CHANGELOG
 
-## 2026-09-12 v2.4.1-beta8
+## 2026-09-15 v2.4.1
 
-> **内部测试版**：修复 Voice Studio 保存 JSON 后 Dashboard 变成「一长条」。
-
-### 修复
-
-- 保存 JSON 池时改为 **2 空格缩进**写入配置（此前 `JSON.stringify(parsed)` 紧凑单行，Dashboard 编辑器只剩一行）。
-- 「格式化 JSON」按钮输出与保存格式一致，预览即所存。
-
-### 验证
-
-- 单测 **145/145**；`node --check` 通过。
-
-## 2026-09-12 v2.4.1-beta7
-
-> **内部测试版**：角色库 JSON 编辑体验对齐「克隆音色风格控制池」。
-
-### 变更
-
-- **`_conf_schema` 角色库**：描述改为「角色库（JSON）」；hint 与克隆池同款结构；默认双示例角色（小茵 / 电台主播），便于分段编辑。
-- **Voice Studio 配置页**：JSON 字段改为等宽字体、更高编辑区、「格式化 JSON」按钮；池类字段标签独占一行。
-
-### 验证
-
-- 单测 **145/145**；`node --check` 通过。
-
-## 2026-09-12 v2.4.1-beta6
-
-> **内部测试版**：修复 Voice Studio 配置页 **JSON 编辑器「保存失败」**。
-
-### 修复
-
-- **保存失败根因**：JSON 字段被 `JSON.parse` 成对象后写入 Vue `reactive`，再交给 bridge `apiPost`；**reactive 代理序列化失败** → 接口无响应 → 前端只显示「保存失败」。
-- **处理**：
-  1. payload 深拷贝（`JSON.parse(JSON.stringify(...))`）剥离代理；
-  2. JSON 字段以**字符串**下发（与 schema `type: text` 一致）；
-  3. 池类字段（角色库/风格库/示例池等）单对象 `{}` 自动包成 `[{...}]`；
-  4. 错误提示带上具体原因（不再只有「保存失败」）。
-
-### 验证
-
-- 单测 **145/145**；`node --check` 通过。
-
-## 2026-09-12 v2.4.1-beta5
-
-> **内部测试版**：Voice Studio「插件配置」页补上**导演模式**分组（此前仅 Dashboard 原生 schema 可见）。
-
-### 变更
-
-- **配置页新增「导演模式」**：启用导演模式 / 角色库 / 强制绑音色 / LLM 解析（开关、Provider、提示词、超时、缓存）/ **角色库 JSON**。
-- **顺带补齐「声音设计」**：`style_examples` 风格示例池、`design_style_pool` 设计音色风格控制池（与配置面板同源字段）。
-- 保存走既有 `config/update`，与 Dashboard 插件配置双向一致；角色库 JSON **保存即生效**。
-
-### 验证
-
-- 单测 **145/145**；`node --check` 通过。
-
-## 2026-09-12 v2.4.1-beta4
-
-> **内部测试版**：修复 `guidance_source=character` 被回退为 `manual`；韵律叠层观察项入档。
-
-### 修复
-
-- **`sanitize_package` 白名单**：加入 `character`。此前角色包 `guidance_source` 被判非法并回退 `manual`，日志 `director set source=manual` 无法与角色对账。
-
-### 观察项（不改合成逻辑）
-
-- WebUI clone + pending=`emo 独白`：句间停顿偏长——**场景「慢、停顿偏多」+ 正文 `[停顿]`×2 + clone 叠层**；已并入设计稿 §16.11「韵律叠层观察项」（与起音杂音同类），频繁复现再收窄。
-
-### 验证
-
-- 单测 **146/146**。
-
-## 2026-09-12 v2.4.1-beta3
-
-> **内部测试版**：WebUI 控制台角色下拉 + REST；`guidance_source=character` 便于日志对账。
+> ：导演角色库（P5-M1）+ 会话级导演管理。
 
 ### 新增
 
-- **REST**：`GET director/characters`；`director/scenes` 一并返回 `characters` / `characters_enabled`。
-- **apply**：body 可传 `character_id`（优先于 text）；命令与 WebUI 共用音色绑定逻辑。
-- **WebUI 导演控制台**：
-  - 「角色（优先）」下拉（配置未开角色库时禁用并提示）；
-  - 应用优先级：自定义描述 > 角色 > 内置场景；
-  - 状态行显示 `character_id`。
-- **日志**：`character apply … source=command|webui`；`director set … character_id=xiaoyin source=character`。
-
-### 验证
-
-- 单测 **145/145**。
-- **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta3**；组件 **35**
-
-## 2026-09-12 v2.4.1-beta2
-
-> **内部测试版**：角色库改为**配置 JSON 权威**（与「风格示例池」同构）；去掉 `/char reload`。
+- **角色库 `director_characters`**（配置 JSON 权威，与风格示例池同构）：保存即生效；`plugin_data` 旧文件仅作空配置时迁移。
+- **`/direct <角色名>`**：短名/id 精确匹配后应用角色（内置场景优先）；`/char list|show` 查询，`/char add|set|del`（管理员）写回配置。
+- **绑定策略**（默认 `keep`，与旧行为一致）：
+  - `character_voice_policy`：`keep` / `force`
+  - `character_mode_policy`：`keep` / `bind`（角色可带 `tts_mode`；**design 永不绑定**）
+- **`director_snapshot`**：首次改写会话 voice/tts_mode 时记录进入前状态；**仅 sticky+pending 皆空**时恢复。
+- **分层清除**：`/direct off sticky|pending`；WebUI「只清常驻 / 只清一次」；`director/clear` 支持 `layer`。
+- **Voice Studio**：
+  - 配置页「导演模式」分组 + 角色库 JSON 编辑器（等宽 + 格式化）
+  - 合成页控制台：角色/场景/分层清除/快照展示
+  - 会话管理：列表导演摘要（`常驻：角色 · 一次性：场景`）；编辑内嵌导演迷你区（应用/清除，与命令同源）
+  - 会话保存后原地更新、不折叠表单；WebUI toast 只报层（详情在「当前状态」）
 
 ### 变更
 
-- **权威数据源**：配置项 `director_characters`（Dashboard JSON 编辑器，`editor_mode`）。
-- **保存即生效**：改配置并保存后，下次 `/direct`/`/char`/合成自动刷新（原 reload 语义内建）。
-- **`/char reload` 移除**：命令提示改为「配置面板保存即生效」；`/char` 仍可 list/show。
-- **plugin_data 文件**：`director/characters.json` 仅作 **beta1 兼容/迁移兜底**（配置为空时读取并打迁移日志）；配置有内容则以配置为准，不再写文件。
-- **默认示例**：schema 内置「小茵」JSON 预设（与风格示例池同款）。
+- `/direct` 查看态与帮助文案统一为「会话常驻配置 / 一次性配置」。
+- WebUI 清除/保存点一次即执行（Dashboard WebView 内不用原生 `confirm`）。
+- `index.html` 静态资源带 `?v=` 防止 WebView 缓存旧前端。
+- `sessions/update` 白名单**不含**导演字段（保存只写基础 TTS；手动保存覆盖角色绑定结果）。
 
-### 验证
+### 修复
 
-- 单测 **145/145**。
-- **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta2**；组件 **35**
+- 会话编辑表单被动画 `max-height` 裁切、无法滚到底。
+- Voice Studio JSON 池保存失败（Vue reactive 代理）与保存后 Dashboard 变一行。
+- 会话列表操作后跳回页顶（改为 silent 刷新 + `.main-content` 滚动保持 + 单会话 patch）。
 
-## 2026-09-12 v2.4.1-beta1
-
-> **内部测试版**：导演角色库 P5-M1 首切片（文件存储 + 查询 + `/direct <角色名>` + 合成展开）。
-
-### 新增
-
-- **角色库文件**：`plugin_data/astrbot_plugin_mimo_tts/director/characters.json`（权威资产，可手改；首次自动写入示例角色「小茵」）。
-- **配置**：`director_characters_enabled`（默认关）、`character_require_voice`（默认开）。
-- **命令**：`/char` 列表、`/char show <名>`、`/char reload`（管理员重读 JSON）。
-- **应用**：`/direct 小茵` / `/direct once 小茵`（**不要求** `@角色`；`@小茵` 为可选别名）。
-- **匹配流水线**：内置场景 → 角色短名精确匹配 → 三维稿 → LLM；长文/含三维标签不查角色库。
-- **合成展开**：payload 含 `character_id` 时从库刷新 character/guidance（改库立即生效）。
-- **音色**：应用角色时若会话音色仍为默认 → 自动绑定角色 `voice`；已自定义则不覆盖。
-
-### 边界（beta1）
-
-- 未做 `/char add/set/del` 与 WebUI 管理（手改 JSON + reload）。
-- 未做 `asset_ref` 长文档读取。
-- design 通道仍不注入导演。
-
-### 验证
-
-- 单测 **144/144**；ruff F/E9 通过。
-- **安装（2026-09-12）**：`force_refresh` 成功；failed **空**；**activated**；版本 **v2.4.1-beta1**；组件 **35**（新增 `/char`）
-- **日志闭环**：`characters loaded n=1` + `character apply id=xiaoyin layer=sticky voice=茉莉`（用户实测）
 
 ## 2026-09-12 v2.4.0
 

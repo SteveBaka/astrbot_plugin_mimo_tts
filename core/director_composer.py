@@ -96,9 +96,7 @@ def resolve_effective_director(
     return None, ""
 
 
-def _expand_character(
-    pkg: ScenePackage, characters=None
-) -> ScenePackage:
+def _expand_character(pkg: ScenePackage, characters=None) -> ScenePackage:
     """按 character_id 从角色库刷新 character/guidance；无库或未命中则原样。"""
     if not pkg or not pkg.character_id or characters is None:
         return pkg
@@ -131,6 +129,22 @@ def director_state_label(uset: Optional[dict] = None) -> str:
     if has_sticky:
         return "sticky"
     return ""
+
+
+def format_director_status(uset: Optional[dict] = None) -> str:
+    """/direct 查看态文案：仅显示已设置的层（无 pending 不展示一次性行）。"""
+    uset = uset or {}
+    sticky = loads_package(uset.get("director_sticky"))
+    pending = loads_package(uset.get("director_pending"))
+    if not sticky and not pending:
+        return ""
+    lines: list[str] = []
+    if sticky:
+        lines.append(f"会话常驻配置: {sticky.summary()}")
+    if pending:
+        lines.append(f"一次性配置（优先）: {pending.summary()}")
+    lines.append("清除: /direct off　临时一次: /direct once <场景|角色名>")
+    return "\n".join(lines)
 
 
 def apply_director_to_prompt(

@@ -98,7 +98,9 @@ async def handle_ttsinfo(plugin, event: AstrMessageEvent):
         _meta = Path(__file__).resolve().parent.parent / "metadata.yaml"
         if _meta.exists():
             with open(_meta, "r", encoding="utf-8") as _f:
-                _version = str(yaml.safe_load(_f).get("version", "")).strip() or "unknown"
+                _version = (
+                    str(yaml.safe_load(_f).get("version", "")).strip() or "unknown"
+                )
     except Exception:
         pass
 

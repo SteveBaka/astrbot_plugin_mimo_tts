@@ -1014,16 +1014,114 @@ textarea.json-editor {
 .info-item b { color: var(--text); font-weight: 600; }
 .edit-form {
   padding: 16px 20px;
-  animation: editSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  overflow: visible;
+  animation: editSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes editSlideIn {
-  0%   { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
-  100% { opacity: 1; max-height: 600px; padding-top: 16px; padding-bottom: 16px; overflow: visible; }
+  /* 仅做透明度与位移，禁止 max-height 裁切（表单字段多时会截断保存/取消按钮） */
+  0%   { opacity: 0; transform: translateY(-10px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 .edit-actions {
   display: flex;
   gap: 10px;
   margin-top: 16px;
+  position: sticky;
+  bottom: 0;
+  padding: 10px 0 2px;
+  background: linear-gradient(to top, var(--bg-card, var(--bg)), transparent);
+}
+
+/* 会话编辑 · 导演迷你区 */
+.session-director {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.session-director-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.session-director-title svg { width: 14px; height: 14px; }
+.session-director-hint {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.65;
+}
+.session-director-off {
+  font-size: 12px;
+  opacity: 0.8;
+  padding: 8px 0;
+}
+.session-director-state {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+}
+.session-director-state .dir-layer {
+  display: inline-block;
+  min-width: 32px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(99,102,241,0.25);
+  color: var(--text, #fff);
+}
+.session-director-state .dir-layer-once {
+  background: rgba(245,158,11,0.25);
+}
+.session-director-state .dir-char-id {
+  margin-left: 6px;
+  opacity: 0.65;
+  font-size: 11px;
+}
+.session-director-state .dir-empty {
+  opacity: 0.55;
+}
+.session-director-state .dir-snap {
+  margin-top: 4px;
+  opacity: 0.85;
+}
+.session-director-state .dir-snap-note {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.session-director .form-grid {
+  margin-bottom: 10px;
+}
+.session-director .dir-mini-hint {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.session-director-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.session-director-actions .dir-msg {
+  font-size: 12px;
+  opacity: 0.8;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-director .dir-save-warn {
+  margin-top: 8px;
+  font-size: 11px;
+  opacity: 0.65;
 }
 
 /* ═══════════════════════════════════════

@@ -71,6 +71,10 @@
 | `director_enabled` | 启用导演模式（/direct + WebUI 控制台；注入 default/克隆/唱歌） | `false` |
 | `director_parse_llm` | LLM 自由解析（内置场景/三维稿未命中时） | `false` |
 | `director_parse_llm_provider` | 导演解析专用 LLM Provider（留空回退润色→当前对话） | 空 |
+| `director_characters_enabled` | 启用角色库（`/direct <角色名>`、WebUI 角色下拉） | `false` |
+| `character_voice_policy` | 角色音色策略：`keep` / `force` | `keep` |
+| `character_mode_policy` | 角色输出模式策略：`keep` / `bind`（design 不绑定） | `keep` |
+| `director_characters` | 角色库（JSON 数组；保存即生效） | 内置示例 |
 | `clone_model` | 音色克隆模型 | `mimo-v2.5-tts-voiceclone` |
 | `clone_voice_id` | 克隆音色 ID | - |
 | `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
@@ -171,17 +175,20 @@
 /direct once 哄睡                # 仅下一次（pending，优先于常驻，用尽回落）
 /direct 小茵                     # 应用角色库角色（需开启「启用角色库」）
 /direct                          # 查看当前场景（两层分别显示）
-/direct off                      # 清除常驻 + 一次性
+/direct off                      # 清除常驻 + 一次性（有快照时恢复音色/模式）
+/direct off sticky|pending       # 只清一层；两层都空后才恢复快照
 /char                            # 列出角色库；/char show <名> 查看
+/char add|set|del <名>           # 管理员：维护角色（写回配置 JSON，保存即生效）
 ```
 
 - **双层**：会话常驻与「仅下一次」可同时存在；`once` 用尽后自动回到常驻场景  
-- **角色库**（v2.4.1）：配置「导演模式 → 角色库」JSON 权威，**保存即生效**（与风格示例池同构）；`/direct <角色名>` 应用  
+- **角色库**（v2.4.1）：配置「导演模式 → 角色库」JSON 权威，**保存即生效**；`/direct <角色名>` 应用  
+- **音色/模式策略**：`character_voice_policy`（keep/force）、`character_mode_policy`（keep/bind）；改动前写快照  
 - 内置场景：深夜电台 / 哄睡 / 元气早安 / 古风叙事 / 新闻播报 / emo 独白  
 - 也可粘贴三维稿：`角色：…` / `场景：…` / `指导：…`  
 - 开启 **LLM 自由解析** 后可直接输入自然语言场景描述  
 - 注入 **default / 克隆 / 唱歌** 的 user 控制通道；**design 不注入**  
-- Voice Studio 合成页「导演模式（控制台）」可应用/清除，与命令同一会话状态  
+- **Voice Studio**：合成页「导演模式（控制台）」与会话管理编辑区均可应用/分层清除；列表展示「常驻：… · 一次性：…」与进入前快照，与命令同一会话状态  
 
 ### 唱歌风格组（管理）
 ```
@@ -337,8 +344,8 @@ AstrBot/
 |------|---------|:--------:|
 | `/mimo_say` | 即时合成语音 | 否 |
 | `/sing` | 唱歌模式（-音色/-s 风格组/-p 提示词/括号简写） | 否 |
-| `/direct` | 导演模式场景（会话常驻 sticky / once pending / 角色名 / off；需配置开启） | 否 |
-| `/char` | 导演角色库查询（list/show；管理在配置面板） | 否 |
+| `/direct` | 导演模式场景（会话常驻 sticky / once pending / 角色名 / off [sticky\|pending]；需配置开启） | 否 |
+| `/char` | 导演角色库查询（list/show；add/set/del 仅管理员） | 查询否 / 管理是 |
 | `/singstyle` | 唱歌风格组管理（show/list/set/reset） | ✅ |
 | `/ttsinfo` | 查看插件版本与功能信息 | 否 |
 | `/ttsraw` | 纯文本合成（不带情感） | ✅ |
@@ -452,6 +459,10 @@ AstrBot/
 - 资源释放：插件卸载时自动关闭 HTTP session 等资源，避免连接泄漏。
 
 ## 更新日志
+
+- 2026-09-15，**v2.4.1** 更新：导演角色库（配置 JSON 权威 + `/direct 角色名` + `/char` 管理）、音色/模式绑定策略与 `director_snapshot`、分层清除、Voice Studio 会话编辑导演区与合成页控制台对齐；详见 CHANGELOG.md。
+
+- 2026-09-12，v2.4.0 更新：导演模式双层（sticky/pending）+ 内置场景 + `/direct`；详见 CHANGELOG.md。
 
 - 2026年8月16日，v2.2.9更新：润色输出通道（user 演唱指导 / assistant 标签实验）+ NL 监听器优先级拦截实验；详见 CHANGELOG.md。
 

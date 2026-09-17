@@ -25,10 +25,50 @@ from typing import Optional
 
 # 官方风格标签词表（分类；来源：MiMO usage-guide「风格类型/风格示例」）
 OFFICIAL_STYLE_TAGS: dict[str, tuple[str, ...]] = {
-    "整体语调": ("温柔", "高冷", "活泼", "严肃", "慵懒", "俏皮", "深沉", "干练", "凌厉"),
-    "音色定位": ("磁性", "醇厚", "清亮", "空灵", "稚嫩", "苍老", "甜美", "沙哑", "醇雅"),
-    "基础情绪": ("开心", "悲伤", "愤怒", "恐惧", "惊讶", "兴奋", "委屈", "平静", "冷漠"),
-    "复合情绪": ("怅然", "欣慰", "无奈", "愧疚", "释然", "嫉妒", "厌倦", "忐忑", "动情"),
+    "整体语调": (
+        "温柔",
+        "高冷",
+        "活泼",
+        "严肃",
+        "慵懒",
+        "俏皮",
+        "深沉",
+        "干练",
+        "凌厉",
+    ),
+    "音色定位": (
+        "磁性",
+        "醇厚",
+        "清亮",
+        "空灵",
+        "稚嫩",
+        "苍老",
+        "甜美",
+        "沙哑",
+        "醇雅",
+    ),
+    "基础情绪": (
+        "开心",
+        "悲伤",
+        "愤怒",
+        "恐惧",
+        "惊讶",
+        "兴奋",
+        "委屈",
+        "平静",
+        "冷漠",
+    ),
+    "复合情绪": (
+        "怅然",
+        "欣慰",
+        "无奈",
+        "愧疚",
+        "释然",
+        "嫉妒",
+        "厌倦",
+        "忐忑",
+        "动情",
+    ),
     "人设腔调": ("夹子音", "御姐音", "正太音", "大叔音", "台湾腔"),
     "角色扮演": ("孙悟空", "林黛玉"),
 }
@@ -59,7 +99,7 @@ SING_TAG_PROMPT = (
     "人设腔调：夹子音/御姐音/正太音/大叔音/台湾腔\n"
     "角色扮演：孙悟空/林黛玉\n\n"
     "规则：\n"
-    "1. 只能输出上表中的词，空格分隔，2-4 个；无合适词只输出\"无\"\n"
+    '1. 只能输出上表中的词，空格分隔，2-4 个；无合适词只输出"无"\n'
     "2. 优先选整体语调与音色定位词，各不超过 2 个（最能决定听感）\n"
     "3. 词须与风格描述含义一致，不要强行凑数\n"
     "4. 不要输出任何解释、标点或思考过程，第一行即结果\n\n"
@@ -82,11 +122,7 @@ def collect_sing_tags(
     for src in (bracket_styles, style_tags_explicit):
         for raw in src or []:
             tag = str(raw or "").strip()
-            if (
-                tag
-                and tag not in tags
-                and tag.lower() not in SING_KEYWORDS
-            ):
+            if tag and tag not in tags and tag.lower() not in SING_KEYWORDS:
                 tags.append(tag)
     for tag in FLAT_OFFICIAL_TAGS:
         if tag in str(style_desc or "") and tag not in tags:
@@ -141,9 +177,7 @@ def style_words_to_hint(words: Optional[list]) -> str:
     return "，".join(parts)
 
 
-def match_style_entry_by_name(
-    text: Optional[str], examples: Optional[list] = None
-):
+def match_style_entry_by_name(text: Optional[str], examples: Optional[list] = None):
     """精确匹配示例池条目名 → 返回该条目 dict；否则 None。
 
     方案 A（§14.5）：design_voice_description 可直接填示例池分类名
@@ -155,10 +189,7 @@ def match_style_entry_by_name(
     if not name or not examples:
         return None
     for entry in examples or []:
-        if (
-            isinstance(entry, dict)
-            and str(entry.get("name", "") or "").strip() == name
-        ):
+        if isinstance(entry, dict) and str(entry.get("name", "") or "").strip() == name:
             return entry
     return None
 

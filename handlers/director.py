@@ -10,18 +10,22 @@ from astrbot.api.event import AstrMessageEvent, MessageEventResult
 
 from ..core.director_assets import list_builtin_scene_names
 from ..core.director_characters import (
-    apply_character_voice,
+    apply_character_binding,
     character_to_package,
+    clear_director_layer,
+    format_director_applied,
     looks_like_character_name,
 )
-from ..core.director_package import dumps_package, loads_package
+from ..core.director_composer import format_director_status
+from ..core.director_package import dumps_package
 from ..core.director_parser import match_builtin_scene, parse_director_input
 
 DIRECTOR_USAGE = (
-    "用法: /direct <场景名|角色名|三维稿> — 设置会话常驻场景（sticky，持续生效）\n"
-    "     /direct once <场景名|角色名|三维稿> — 仅下一次合成生效（pending，优先）\n"
-    "     /direct — 查看当前导演场景\n"
-    "     /direct off — 清除常驻与一次性场景\n"
+    "用法: /direct <场景名|角色名|三维稿> — 设置会话常驻配置（sticky，持续生效）\n"
+    "     /direct once <场景名|角色名|三维稿> — 设置一次性配置（pending，优先于常驻，用尽回落）\n"
+    "     /direct — 查看当前导演配置\n"
+    "     /direct off — 清除常驻与一次性配置（有快照时恢复）\n"
+    "     /direct off sticky|pending — 只清一层；两层都空后才恢复快照\n"
     "内置场景: " + "、".join(list_builtin_scene_names()) + "\n"
     "也可粘贴完整稿（角色：… / 场景：… / 指导：…）；"
     "开启「LLM 自由解析」后可直接输入自然语言场景描述"
@@ -52,20 +56,6 @@ def _extract_args(event: AstrMessageEvent) -> str:
     return (m.group("rest") or "").strip() if m else raw
 
 
-def _format_director_status(uset: dict) -> str:
-    sticky = loads_package(uset.get("director_sticky"))
-    pending = loads_package(uset.get("director_pending"))
-    if not sticky and not pending:
-        return ""
-    lines: list[str] = []
-    if sticky:
-        lines.append(f"会话常驻: {sticky.summary()}")
-    if pending:
-        lines.append(f"仅下一次（优先）: {pending.summary()}")
-    lines.append("清除: /direct off　临时一次: /direct once <场景>")
-    return "\n".join(lines)
-
-
 async def handle_direct(plugin, event: AstrMessageEvent):
     """/direct <场景|三维稿> | once | off — 双层管理常驻与一次性场景"""
     arg = _extract_args(event)
@@ -78,23 +68,49 @@ async def handle_direct(plugin, event: AstrMessageEvent):
         return
 
     if not arg:
-        status = _format_director_status(uset)
+        status = format_director_status(uset)
         if status:
-            yield MessageEventResult().message(f"当前导演场景:\n{status}")
+            yield MessageEventResult().message(f"当前导演配置:\n{status}")
         else:
             yield MessageEventResult().message(
-                "当前未设置导演场景。\n" + DIRECTOR_USAGE
+                "当前未设置导演配置。\n" + DIRECTOR_USAGE
             )
         return
 
     low = arg.lower()
-    if low in ("off", "clear", "关闭"):
-        uset["director_sticky"] = ""
-        uset["director_pending"] = ""
-        uset["director_mode"] = ""
-        uset["director_payload"] = ""
+    if (
+        low in ("off", "clear", "关闭")
+        or low.startswith("off ")
+        or low.startswith("clear ")
+    ):
+        layer = "all"
+        if low.startswith("off ") or low.startswith("clear "):
+            tail = low.split(None, 1)[1].strip() if " " in low else ""
+            if tail in ("sticky", "常驻"):
+                layer = "sticky"
+            elif tail in ("pending", "once", "一次性"):
+                layer = "pending"
+            elif tail not in ("", "all", "全部"):
+                yield MessageEventResult().message(
+                    "用法: /direct off [sticky|pending]\n"
+                    "省略层 = 清除常驻 + 一次性；有快照且两层都空时才恢复音色/模式。"
+                )
+                return
+        result = clear_director_layer(uset, layer)
         plugin._persist_current_state()
-        yield MessageEventResult().message("已清除本对话导演场景（常驻 + 一次性）。")
+        if layer == "all":
+            msg = "已清除本对话导演配置（常驻 + 一次性）。"
+        else:
+            label = "常驻" if layer == "sticky" else "一次性"
+            msg = f"已清除本对话导演配置（{label}）。"
+        if result.get("restored"):
+            msg += (
+                f"\n已恢复进入导演前状态：音色 {result.get('voice') or '—'}"
+                f"，输出模式 {result.get('tts_mode') or 'default'}"
+            )
+        elif layer != "all":
+            msg += "\n另一层仍生效；两层都清空后才会恢复快照。"
+        yield MessageEventResult().message(msg)
         return
 
     mode = "session"
@@ -114,13 +130,13 @@ async def handle_direct(plugin, event: AstrMessageEvent):
     matched_char = _match_character(plugin, body)
     if matched_char:
         pkg, entry = matched_char
-        voice_note = apply_character_voice(plugin, uset, entry)
+        voice_note = apply_character_binding(plugin, uset, entry)
         logger.info(
             "MiMO TTS: character apply uid=%s id=%s layer=%s voice=%s source=command",
             uid,
             entry.get("id"),
             "pending" if mode == "once" else "sticky",
-            entry.get("voice") or "",
+            uset.get("voice") or entry.get("voice") or "",
         )
     else:
         pkg = parse_director_input(body)
@@ -135,7 +151,9 @@ async def handle_direct(plugin, event: AstrMessageEvent):
     if not pkg:
         llm_on = bool(plugin.config.get("director_parse_llm", False))
         if llm_on:
-            tail = "（已尝试 LLM 自由解析仍未成功，请精简描述或改用内置场景/角色/三维稿）"
+            tail = (
+                "（已尝试 LLM 自由解析仍未成功，请精简描述或改用内置场景/角色/三维稿）"
+            )
         else:
             tail = "（可开启配置「LLM 自由解析」后用自然语言描述）"
         char_hint = ""
@@ -173,16 +191,11 @@ async def handle_direct(plugin, event: AstrMessageEvent):
         pkg.guidance_source,
         pkg.character_id or "-",
     )
-    if mode == "session":
-        msg = (
-            f"已设置会话常驻场景: {pkg.summary()}\n"
-            "不影响已设置的一次性场景；关闭: /direct off"
-        )
-    else:
-        msg = (
-            f"已设置一次性场景（优先于会话常驻，用尽后回落）: {pkg.summary()}\n"
-            "清除全部: /direct off"
-        )
-    if voice_note:
-        msg += f"\n{voice_note}"
+    msg = format_director_applied(
+        plugin,
+        pkg,
+        mode,
+        voice_id=str(uset.get("voice") or ""),
+        voice_note=voice_note,
+    )
     yield MessageEventResult().message(msg)

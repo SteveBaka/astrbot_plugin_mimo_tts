@@ -104,6 +104,7 @@ class MiMoTTSPlugin(Star):
 
         # ── Plugin logger (WebUI log page) ──
         from .core.plugin_logger import PluginLogger
+
         self.plog = PluginLogger(self._data_dir, config_ref=self.config)
         self.plog.cleanup_old_logs()
 
@@ -253,7 +254,6 @@ class MiMoTTSPlugin(Star):
         """回复消息前拦截 LLM 输出，自动生成语音回复。支持文本分段、LLM 音色润色、概率触发。"""
         await handle_auto_tts(self, event)
 
-
     @filter.event_message_type(filter.EventMessageType.ALL, priority=99)
     async def on_nl_sing(self, event: AstrMessageEvent):
         """自然语言触发唱歌（快路径）：唤醒消息匹配「用X的声线唱<歌词>」等句式时直接演唱。"""
@@ -293,7 +293,7 @@ class MiMoTTSPlugin(Star):
 
     @filter.command("char")
     async def cmd_char(self, event: AstrMessageEvent):
-        """导演角色库 /char [show <名>] — 查询角色；管理在配置面板「角色库」"""
+        """导演角色库 /char [show|add|set|del <名>] — 查询与管理角色；应用用 /direct <角色名>"""
         async for item in handle_char(self, event):
             yield item
 
@@ -528,9 +528,7 @@ class MiMoTTSPlugin(Star):
         """从消息中提取命令参数部分（兼容 @bot 后缀与无斜杠写法）。"""
         raw = str(event.message_str or "").strip()
         base = cmd.lstrip("/")
-        m = re.match(
-            rf"^/?{re.escape(base)}(?:@[^\s]+)?(?:\s+|$)", raw, re.IGNORECASE
-        )
+        m = re.match(rf"^/?{re.escape(base)}(?:@[^\s]+)?(?:\s+|$)", raw, re.IGNORECASE)
         if m:
-            return raw[m.end():].strip()
-        return raw[len(cmd):].strip()
+            return raw[m.end() :].strip()
+        return raw[len(cmd) :].strip()

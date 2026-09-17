@@ -96,8 +96,7 @@ async def parse_director_with_llm(
 
     # Provider 链：导演专用 > 通用润色 > 当前对话（§16.10.3 / P3c-B2）
     provider_id = (
-        plugin.config.director_parse_llm_provider
-        or plugin.config.polish_llm_provider
+        plugin.config.director_parse_llm_provider or plugin.config.polish_llm_provider
     )
     if not provider_id:
         try:
@@ -137,9 +136,7 @@ async def parse_director_with_llm(
         else:
             completion = await _call()
     except asyncio.TimeoutError:
-        logger.warning(
-            "MiMO TTS: director parse timeout after %ss, skip", timeout
-        )
+        logger.warning("MiMO TTS: director parse timeout after %ss, skip", timeout)
         return None
     except Exception as e:
         logger.warning("MiMO TTS: director parse failed: %s", e)

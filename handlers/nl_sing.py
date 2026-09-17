@@ -39,7 +39,9 @@ def match_style(plugin, style_name: str):
     return None, None
 
 
-def build_sing_overrides(plugin, style_name: str, free_as_prompt: bool) -> tuple[dict, str]:
+def build_sing_overrides(
+    plugin, style_name: str, free_as_prompt: bool
+) -> tuple[dict, str]:
     """构造唱歌 overrides。
 
     free_as_prompt=True 时（LLM 工具路径），未命中组/音色的风格词
@@ -119,7 +121,9 @@ async def handle_nl_sing(plugin, event: AstrMessageEvent) -> None:
                     "未找到唱歌风格或音色「%s」。%s"
                     % (
                         style_name,
-                        ("可用风格组：" + names) if names else "风格库为空，可在插件配置「唱歌优化」中添加。",
+                        ("可用风格组：" + names)
+                        if names
+                        else "风格库为空，可在插件配置「唱歌优化」中添加。",
                     )
                 )
             )
@@ -131,7 +135,9 @@ async def handle_nl_sing(plugin, event: AstrMessageEvent) -> None:
     await _sing_and_send(plugin, event, lyrics, uid, overrides)
 
 
-async def handle_nl_sing_tool(plugin, event: AstrMessageEvent, style: str, lyrics: str) -> str:
+async def handle_nl_sing_tool(
+    plugin, event: AstrMessageEvent, style: str, lyrics: str
+) -> str:
     """LLM 工具兜底路径：自由措辞由 LLM 解析为 (style, lyrics) 后调用。
 
     立即返回、后台合成（避免阻塞 agent 循环数十秒）；

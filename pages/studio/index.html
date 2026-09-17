@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Voice Studio - MiMO TTS</title>
-  <link rel="stylesheet" href="./style.css">
+  <!-- ?v= 防 Dashboard WebView 缓存旧 app.js（改前端后必须 bump） -->
+  <link rel="stylesheet" href="./style.css?v=2.4.1">
   <style>
     #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0d13;z-index:9999;transition:opacity .3s}
     #loading .dot{width:8px;height:8px;border-radius:50%;background:#6c8aff;margin:0 4px;animation:pulse 1.2s ease-in-out infinite}
@@ -16,8 +17,8 @@
 <body>
   <div id="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
   <div id="app"></div>
-  <script src="./vue.min.js"></script>
-  <script src="./vue-router.min.js"></script>
-  <script src="./app.js"></script>
+  <script src="./vue.min.js?v=2.4.1"></script>
+  <script src="./vue-router.min.js?v=2.4.1"></script>
+  <script src="./app.js?v=2.4.1"></script>
 </body>
 </html>

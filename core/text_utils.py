@@ -11,11 +11,15 @@ try:
     from astrbot.api.message_components import Plain, Record
 except ImportError:  # 独立导入（纯逻辑单测）时无 AstrBot 运行时，仅保证可导入
     logger = logging.getLogger("astrbot")
-    Plain = type("Plain", (), {"__init__": lambda self, text="": setattr(self, "text", text)})
+    Plain = type(
+        "Plain", (), {"__init__": lambda self, text="": setattr(self, "text", text)}
+    )
     Record = type("Record", (), {})
 
 
-def should_skip(text: str, min_length: int, max_length: int, skip_patterns: list[str]) -> bool:
+def should_skip(
+    text: str, min_length: int, max_length: int, skip_patterns: list[str]
+) -> bool:
     """Check if text should be skipped for TTS."""
     if not text or not text.strip():
         return True
@@ -30,15 +34,17 @@ def should_skip(text: str, min_length: int, max_length: int, skip_patterns: list
     return False
 
 
-def split_text(text: str, pattern: str, patterns: dict[str, str], max_count: int) -> list[str]:
+def split_text(
+    text: str, pattern: str, patterns: dict[str, str], max_count: int
+) -> list[str]:
     """Split text into segments using the configured regex pattern."""
     regex = patterns.get(pattern, patterns["sentence"])
     segments = re.split(regex, text)
     result = [s.strip() for s in segments if s.strip()]
 
     if max_count > 0 and len(result) > max_count:
-        merged = result[:max_count - 1]
-        merged.append("".join(result[max_count - 1:]))
+        merged = result[: max_count - 1]
+        merged.append("".join(result[max_count - 1 :]))
         result = merged
 
     return result
@@ -111,16 +117,18 @@ def extract_leading_styles(text: str) -> tuple[str, list[str]]:
         m = _SINGING_TAG_RE.match(stripped)
         if m:
             extras += _split_styles(m.group(2))
-            stripped = stripped[m.end():].lstrip()
+            stripped = stripped[m.end() :].lstrip()
             continue
         s = _STYLE_BRACKET_RE.match(stripped)
         if s:
             words = _split_styles(s.group(1))
-            if words and not _SENTENCE_BREAK_RE.search(s.group(1)) and all(
-                len(w) <= 8 for w in words
+            if (
+                words
+                and not _SENTENCE_BREAK_RE.search(s.group(1))
+                and all(len(w) <= 8 for w in words)
             ):
                 extras += words
-                stripped = stripped[s.end():].lstrip()
+                stripped = stripped[s.end() :].lstrip()
                 continue
         break
     return stripped, extras

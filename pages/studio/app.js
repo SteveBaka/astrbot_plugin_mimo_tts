@@ -221,6 +221,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         { key: 'director_enabled', label: '启用导演模式', type: 'bool', hint: '总开关：/direct + 合成页控制台；注入 default/克隆/唱歌 的 user 控制通道（design 不注入）。关闭时全链路与未开启一致' },
         { key: 'director_characters_enabled', label: '启用角色库', type: 'bool', hint: '开启后可用 /direct <角色名> 或控制台角色下拉；条目在下方「角色库」JSON 维护' },
         { key: 'character_require_voice', label: '角色强制绑定音色', type: 'bool', hint: '角色条目须含合法 voice（预置或已注册克隆/设计）；应用时若会话音色仍为默认则自动切换' },
+        { key: 'character_voice_policy', label: '角色音色策略', type: 'select', options: ['keep', 'force'], hint: 'keep=已自定义音色不覆盖；force=总是切换。会写入进入前快照，/direct off 恢复' },
+        { key: 'character_mode_policy', label: '角色输出模式策略', type: 'select', options: ['keep', 'bind'], hint: 'bind=角色含 tts_mode（default/clone）时切换；design 不绑定。/direct off 恢复' },
         { key: 'director_parse_llm', label: 'LLM 自由解析', type: 'bool', hint: '内置场景/角色/三维稿未命中时，用 LLM 把自然语言整理成导演场景。失败提示无法识别，不中断其它功能' },
         { key: 'director_parse_llm_provider', label: '导演解析 Provider', type: 'text', hint: '留空回退润色 Provider，再回退当前对话模型；建议 JSON/指令跟随更稳的模型' },
         { key: 'director_parse_prompt', label: '导演解析提示词', type: 'textarea', hint: '{text} 为用户描述占位符；留空用内置模板' },
@@ -332,7 +334,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       const directorScenePick = ref('');
       const directorCustom = ref('');
       const directorApplyMode = ref('session');
-      const directorState = ref({ pending: null, sticky: null, effective: '' });
+      const directorState = ref({ pending: null, sticky: null, effective: '', snapshot: null });
       const directorBusy = ref(false);
       const directorMsg = ref('');
 
@@ -534,7 +536,11 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           directorEnabled.value = !!scenes.enabled;
           directorParseLlm.value = !!scenes.parse_llm;
           directorScenes.value = scenes.scenes || [];
-          directorCharacters.value = scenes.characters || [];
+          directorCharacters.value = (scenes.characters || []).slice().sort(function (a, b) {
+            return String(a.name || a.id || '').localeCompare(
+              String(b.name || b.id || ''), 'zh-Hans-CN'
+            );
+          });
           directorCharactersEnabled.value = !!scenes.characters_enabled;
           if (!directorScenePick.value && directorScenes.value.length) {
             directorScenePick.value = directorScenes.value[0].name;
@@ -550,6 +556,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             pending: st.pending || null,
             sticky: st.sticky || null,
             effective: st.effective || st.mode || '',
+            snapshot: st.snapshot || null,
           };
         }
       }
@@ -580,10 +587,12 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           }
           const res = await apiPost('director/apply', body);
           if (!res || res.error) {
-            showError((res && res.error) || '应用失败');
+            showError((res && res.error) || '应用失败：接口无响应');
           } else {
-            directorMsg.value = res.message || '已应用';
-            showSuccess(res.message || '已应用导演场景');
+            // 详情在「当前状态」展示，toast 只报层
+            const layerLabel = body.mode === 'once' ? '一次性' : '常驻';
+            directorMsg.value = '';
+            showSuccess('已设置本会话' + layerLabel + '配置');
             await refreshDirectorState();
           }
         } catch (e) {
@@ -593,16 +602,30 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         }
       }
 
-      async function clearDirector() {
+      async function clearDirector(layer) {
+        const target = layer || 'all';
         directorBusy.value = true;
         try {
-          const res = await apiPost('director/clear', { uid: directorUid.value });
-          if (res && res.status === 'ok') {
-            directorMsg.value = '';
-            showSuccess('已清除本会话导演场景（常驻 + 一次性）');
-            await refreshDirectorState();
+          const res = await apiPost('director/clear', {
+            uid: directorUid.value,
+            layer: target,
+          });
+          if (!res) {
+            showError('清除失败：接口无响应');
+          } else if (res.error) {
+            showError(res.error);
           } else {
-            showError((res && res.error) || '清除失败');
+            directorMsg.value = '';
+            if (target === 'sticky') {
+              showSuccess('已清除常驻配置');
+            } else if (target === 'pending') {
+              showSuccess('已清除一次性配置');
+            } else if (res.restored) {
+              showSuccess('已清除导演配置，并恢复进入前音色/模式');
+            } else {
+              showSuccess('已清除导演配置（常驻 + 一次性）');
+            }
+            await refreshDirectorState();
           }
         } catch (e) {
           showError('清除失败：' + (e.message || e));
@@ -811,18 +834,23 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           <div style="font-size:13px;padding-top:6px;line-height:1.5;">
             <template v-if="directorState.sticky || directorState.pending">
               <div v-if="directorState.sticky">
-                <strong>会话常驻</strong>
+                <strong>常驻</strong>
                 <span v-if="directorState.sticky.summary"> — {{ directorState.sticky.summary }}</span>
                 <span v-if="directorState.sticky.character_id" style="opacity:.65;font-size:12px;"> [{{ directorState.sticky.character_id }}]</span>
               </div>
               <div v-if="directorState.pending">
-                <strong>仅下一次</strong>（优先）
+                <strong>一次性</strong>（优先）
                 <span v-if="directorState.pending.summary"> — {{ directorState.pending.summary }}</span>
                 <span v-if="directorState.pending.character_id" style="opacity:.65;font-size:12px;"> [{{ directorState.pending.character_id }}]</span>
               </div>
             </template>
             <template v-else>未设置</template>
-            <button class="btn-link" style="margin-left:8px;" @click="refreshDirectorState">刷新</button>
+            <div v-if="directorState.snapshot && (directorState.snapshot.voice || directorState.snapshot.tts_mode)"
+              style="opacity:.8;font-size:12px;margin-top:2px;">
+              进入前快照：{{ directorState.snapshot.voice || '—' }} / {{ directorState.snapshot.tts_mode || '—' }}
+              <span style="opacity:.7">（清除后自动恢复）</span>
+            </div>
+            <button class="btn-link" style="margin-left:8px;" @click="refreshDirectorState" :disabled="directorBusy">刷新状态</button>
           </div>
         </div>
       </div>
@@ -835,8 +863,14 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           <span v-if="directorBusy" class="spinner"></span>
           <span v-html="icon('save')"></span> 应用到会话
         </button>
-        <button class="btn-small" @click="clearDirector" :disabled="directorBusy || !directorEnabled">
-          清除导演场景
+        <button class="btn-small" @click="clearDirector('all')" :disabled="directorBusy || !directorEnabled">
+          清除并恢复
+        </button>
+        <button class="btn-ghost btn-small" @click="clearDirector('sticky')" :disabled="directorBusy || !directorEnabled || !directorState.sticky">
+          只清常驻
+        </button>
+        <button class="btn-ghost btn-small" @click="clearDirector('pending')" :disabled="directorBusy || !directorEnabled || !directorState.pending">
+          只清一次
         </button>
         <span v-if="directorMsg" style="font-size:12px;opacity:.8;margin-left:8px;">{{ directorMsg }}</span>
       </div>
@@ -1407,13 +1441,179 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       // 三态开关原始值（null=跟随全局）：勾选框只表达 开/关，未改动时回写原始值
       let editOrig = {};
 
-      async function loadSessions() {
-        loading.value = true;
-        const res = await apiGet('sessions');
-        if (res && res.sessions) {
-          sessions.value = res.sessions;
+      // 会话编辑内嵌导演迷你区：状态展示 + 应用/清除（走与 /direct 相同的 API）
+      const directorMeta = ref({
+        enabled: false,
+        charactersEnabled: false,
+        scenes: [],
+        characters: [],
+      });
+      const dirForm = reactive({
+        charPick: '',
+        scenePick: '',
+        applyMode: 'session',
+        busy: false,
+        msg: '',
+      });
+      const editDirector = ref({ sticky: null, pending: null, snapVoice: '', snapMode: '' });
+
+      function parseDirectorPkg(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        const text = raw.trim();
+        if (!text || text.length <= 2) return null;
+        try {
+          const d = JSON.parse(text);
+          if (!d || typeof d !== 'object') return null;
+          const sceneName = String(d.scene_name || '');
+          const characterId = String(d.character_id || '');
+          const character = String(d.character || '');
+          const guidance = String(d.guidance || '');
+          const scene = String(d.scene || '');
+          if (!sceneName && !characterId && !character && !guidance && !scene) return null;
+          const tail = (character || guidance || scene).slice(0, 40);
+          let summary = sceneName;
+          if (tail) summary = summary ? summary + ' / ' + tail : tail;
+          return {
+            scene_name: sceneName,
+            character_id: characterId,
+            summary: summary || '（空）',
+          };
+        } catch (e) {
+          return null;
         }
-        loading.value = false;
+      }
+
+      function fillDirectorFromSettings(settings) {
+        const s = settings || {};
+        const snap = s.director_snapshot;
+        editDirector.value = {
+          sticky: parseDirectorPkg(s.director_sticky),
+          pending: parseDirectorPkg(s.director_pending),
+          snapVoice: snap && snap.voice ? snap.voice : '',
+          snapMode: snap && snap.tts_mode ? snap.tts_mode : '',
+        };
+      }
+
+      async function loadDirectorAssets() {
+        const res = await apiGet('director/scenes');
+        if (res) {
+          const chars = (res.characters || []).slice().sort(function (a, b) {
+            return String(a.name || a.id || '').localeCompare(
+              String(b.name || b.id || ''), 'zh-Hans-CN'
+            );
+          });
+          directorMeta.value = {
+            enabled: !!res.enabled,
+            charactersEnabled: !!res.characters_enabled,
+            scenes: res.scenes || [],
+            characters: chars,
+          };
+          if (!dirForm.scenePick && directorMeta.value.scenes.length) {
+            dirForm.scenePick = directorMeta.value.scenes[0].name;
+          }
+        }
+      }
+
+      // silent=true：后台刷新，不切换 loading（避免 v-if 卸载列表导致滚动跳顶）
+      function getScrollEl() {
+        return (
+          document.querySelector('.main-content') ||
+          document.scrollingElement ||
+          document.documentElement
+        );
+      }
+
+      function captureScroll() {
+        const el = getScrollEl();
+        return el ? el.scrollTop : 0;
+      }
+
+      function restoreScroll(y) {
+        nextTick(function () {
+          const el = getScrollEl();
+          if (el) el.scrollTop = y;
+        });
+      }
+
+      // 整表合并时保持本地 key 顺序，避免服务端 dict 顺序导致列表重排“跳顶”
+      function mergeSessionsMap(nextMap) {
+        const next = nextMap || {};
+        const merged = {};
+        Object.keys(sessions.value || {}).forEach(function (k) {
+          if (next[k]) merged[k] = next[k];
+        });
+        Object.keys(next).forEach(function (k) {
+          if (!(k in merged)) merged[k] = next[k];
+        });
+        sessions.value = merged;
+      }
+
+      // 只 patch 单个会话，导演操作时最小化 DOM 变动
+      function patchOneSession(uid, nextData) {
+        if (!nextData) {
+          if (sessions.value[uid]) delete sessions.value[uid];
+          return;
+        }
+        if (sessions.value[uid]) {
+          sessions.value[uid].settings = nextData.settings || {};
+          sessions.value[uid].format = nextData.format || 'wav';
+          sessions.value[uid].umo = nextData.umo || '';
+        } else {
+          sessions.value[uid] = nextData;
+        }
+      }
+
+      async function loadSessions(opts) {
+        const silent = !!(opts && opts.silent);
+        const y = captureScroll();
+        if (!silent) loading.value = true;
+        try {
+          const res = await apiGet('sessions');
+          if (res && res.sessions) {
+            mergeSessionsMap(res.sessions);
+          } else if (!silent && res === null) {
+            showError('会话列表加载失败');
+          }
+        } finally {
+          if (!silent) loading.value = false;
+          if (silent) restoreScroll(y);
+        }
+      }
+
+      async function pullOneSession(uid) {
+        const res = await apiGet('sessions');
+        if (!res || !res.sessions) return false;
+        patchOneSession(uid, res.sessions[uid]);
+        return true;
+      }
+
+      // 应用/清除后同步表单：音色/模式可能被角色绑定改写，导演状态也会变
+      async function refreshEditFromSessions(uid) {
+        const y = captureScroll();
+        await pullOneSession(uid);
+        if (editingUid.value !== uid) {
+          restoreScroll(y);
+          return;
+        }
+        const data = sessions.value[uid];
+        if (data) {
+          const settings = data.settings || {};
+          editForm.voice = settings.voice || '';
+          editForm.tts_mode = settings.tts_mode || '';
+          fillDirectorFromSettings(settings);
+        }
+        restoreScroll(y);
+      }
+
+      async function refreshDirectorSection(uid) {
+        dirForm.busy = true;
+        try {
+          await loadDirectorAssets();
+          await refreshEditFromSessions(uid);
+          showSuccess('导演状态已刷新');
+        } finally {
+          dirForm.busy = false;
+        }
       }
 
       function startEdit(uid) {
@@ -1438,6 +1638,73 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             enable_segmentation: settings.enable_segmentation ?? null,
             enable_voice_polish: settings.enable_voice_polish ?? null
           };
+          fillDirectorFromSettings(settings);
+        }
+        dirForm.msg = '';
+        loadDirectorAssets();
+      }
+
+      async function applySessionDirector(uid) {
+        if (!directorMeta.value.enabled) {
+          showError('导演模式未启用，请先在插件配置中打开');
+          return;
+        }
+        const body = { uid: uid, mode: dirForm.applyMode };
+        if (dirForm.charPick) {
+          body.character_id = dirForm.charPick;
+        } else if (dirForm.scenePick) {
+          body.text = dirForm.scenePick;
+        } else {
+          showError('请选择角色或内置场景');
+          return;
+        }
+        dirForm.busy = true;
+        dirForm.msg = '';
+        try {
+          const res = await apiPost('director/apply', body);
+          if (!res) {
+            showError('应用失败：接口无响应，请查看日志');
+          } else if (res.error) {
+            showError(res.error);
+          } else {
+            const layerLabel = body.mode === 'once' ? '一次性' : '常驻';
+            dirForm.msg = '';
+            showSuccess('已设置本会话' + layerLabel + '配置');
+            await refreshEditFromSessions(uid);
+          }
+        } finally {
+          dirForm.busy = false;
+        }
+      }
+
+      async function clearSessionDirector(uid, layer) {
+        if (!directorMeta.value.enabled) {
+          showError('导演模式未启用，请先在插件配置中打开');
+          return;
+        }
+        dirForm.busy = true;
+        try {
+          const res = await apiPost('director/clear', { uid: uid, layer: layer || 'all' });
+          if (!res) {
+            showError('清除失败：接口无响应，请查看日志');
+          } else if (res.error) {
+            showError(res.error);
+          } else {
+            dirForm.msg = '';
+            const target = layer || 'all';
+            if (target === 'sticky') {
+              showSuccess('已清除常驻配置');
+            } else if (target === 'pending') {
+              showSuccess('已清除一次性配置');
+            } else if (res.restored) {
+              showSuccess('已清除导演配置，并恢复进入前音色/模式');
+            } else {
+              showSuccess('已清除导演配置（常驻 + 一次性）');
+            }
+            await refreshEditFromSessions(uid);
+          }
+        } finally {
+          dirForm.busy = false;
         }
       }
 
@@ -1448,52 +1715,99 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
 
       function cancelEdit() {
         editingUid.value = '';
+        dirForm.msg = '';
       }
 
-      async function saveSession(uid) {
-        const payload = {
-          uid: uid,
-          settings: {
-            voice: editForm.voice,
-            emotion: editForm.emotion,
-            speed: editForm.speed,
-            pitch: editForm.pitch,
-            tts_mode: editForm.tts_mode,
-            tts_enabled: editForm.tts_enabled,
-            text_enabled: triValue('text_enabled', true),
-            text_async: triValue('text_async', false),
-            enable_segmentation: triValue('enable_segmentation', false),
-            enable_voice_polish: triValue('enable_voice_polish', false)
-          }
+      function directorLayerLabel(raw) {
+        const pkg = parseDirectorPkg(raw);
+        if (!pkg) return '';
+        return pkg.scene_name || pkg.character_id || pkg.summary || '已设置';
+      }
+
+      function directorInfo(settings) {
+        const s = settings || {};
+        const snap = s.director_snapshot;
+        const stickyLabel = directorLayerLabel(s.director_sticky);
+        const pendingLabel = directorLayerLabel(s.director_pending);
+        return {
+          sticky: !!stickyLabel,
+          pending: !!pendingLabel,
+          stickyLabel: stickyLabel,
+          pendingLabel: pendingLabel,
+          snapshotVoice: snap && snap.voice ? snap.voice : '',
+          snapshotMode: snap && snap.tts_mode ? snap.tts_mode : '',
         };
-        const res = await apiPost('sessions/update', payload);
-        if (res && res.error) {
-          showError(res.error);
-        } else {
-          showSuccess('会话已更新');
-          editingUid.value = '';
-          loadSessions();
+      }
+
+      // 模板只读一次，避免每字段重复 parse package JSON
+      const directorSummaries = computed(() => {
+        const map = {};
+        const src = sessions.value || {};
+        Object.keys(src).forEach(function (uid) {
+          map[uid] = directorInfo(src[uid] && src[uid].settings);
+        });
+        return map;
+      });
+
+      async function saveSession(uid) {
+        dirForm.busy = true;
+        try {
+          const payload = {
+            uid: uid,
+            settings: {
+              voice: editForm.voice,
+              emotion: editForm.emotion,
+              speed: editForm.speed,
+              pitch: editForm.pitch,
+              tts_mode: editForm.tts_mode,
+              tts_enabled: editForm.tts_enabled,
+              text_enabled: triValue('text_enabled', true),
+              text_async: triValue('text_async', false),
+              enable_segmentation: triValue('enable_segmentation', false),
+              enable_voice_polish: triValue('enable_voice_polish', false)
+            }
+          };
+          const res = await apiPost('sessions/update', payload);
+          if (!res) {
+            showError('保存失败：接口无响应，请查看日志');
+          } else if (res.error) {
+            showError(res.error);
+          } else {
+            showSuccess('会话已更新');
+            // 保持编辑展开，原地刷新该会话，不跳顶
+            const y = captureScroll();
+            await pullOneSession(uid);
+            restoreScroll(y);
+          }
+        } finally {
+          dirForm.busy = false;
         }
       }
 
       async function resetSession(uid) {
-        if (!confirm('确定要重置会话 ' + uid + ' 的配置吗？')) return;
         const res = await apiPost('sessions/reset', { uid });
-        if (res && res.error) {
+        if (!res) {
+          showError('重置失败：接口无响应');
+        } else if (res.error) {
           showError(res.error);
         } else {
           showSuccess('会话已重置');
-          loadSessions();
+          const y = captureScroll();
+          if (editingUid.value === uid) cancelEdit();
+          await pullOneSession(uid);
+          restoreScroll(y);
         }
       }
 
       async function deleteSession(uid) {
-        if (!confirm('确定要删除会话 ' + uid + ' 吗？')) return;
         const res = await apiPost('sessions/delete', { uid });
-        if (res && res.error) {
+        if (!res) {
+          showError('删除失败：接口无响应');
+        } else if (res.error) {
           showError(res.error);
         } else {
           showSuccess('会话已删除');
+          if (editingUid.value === uid) cancelEdit();
           delete sessions.value[uid];
         }
       }
@@ -1545,14 +1859,16 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         if (res && res.all) registeredVoices.value = res.all;
       }
 
-      onMounted(() => { loadSessions(); loadRegisteredVoices(); });
+      onMounted(() => { loadSessions(); loadRegisteredVoices(); loadDirectorAssets(); });
 
       return {
         sessions, loading, editingUid, editForm,
         searchQuery, showSearch, filteredSessions, sessionCount,
         loadSessions, startEdit, cancelEdit, saveSession, resetSession,
         deleteSession, formatMode, toggleSearch, EMOTIONS, FORMATS,
-        BUILTIN_VOICES, filteredEditVoices, icon
+        BUILTIN_VOICES, filteredEditVoices, icon, directorInfo,
+        directorMeta, dirForm, editDirector, directorSummaries,
+        applySessionDirector, clearSessionDirector, refreshDirectorSection
       };
     },
     template: `
@@ -1599,6 +1915,19 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           <span class="info-item">文字: <b>{{ data.settings?.text_enabled === null || data.settings?.text_enabled === undefined ? '跟随' : (data.settings.text_enabled ? '开' : '关') }}</b></span>
           <span class="info-item">异步: <b>{{ data.settings?.text_async === true ? '开' : data.settings?.text_async === false ? '关' : '跟随' }}</b></span>
           <span class="info-item">格式: <b>{{ data.format || 'wav' }}</b></span>
+        </div>
+        <div v-if="editingUid !== uid && (directorSummaries[uid] && (directorSummaries[uid].sticky || directorSummaries[uid].pending || directorSummaries[uid].snapshotVoice))"
+          class="session-info" style="margin-top:6px;">
+          <span v-if="directorSummaries[uid].sticky || directorSummaries[uid].pending" class="info-item">
+            导演模式:
+            <b v-if="directorSummaries[uid].sticky">常驻：{{ directorSummaries[uid].stickyLabel }}</b>
+            <b v-if="directorSummaries[uid].sticky && directorSummaries[uid].pending"> · </b>
+            <b v-if="directorSummaries[uid].pending">一次性（优先）：{{ directorSummaries[uid].pendingLabel }}</b>
+          </span>
+          <span v-if="directorSummaries[uid].snapshotVoice || directorSummaries[uid].snapshotMode" class="info-item">
+            进入前快照: <b>{{ directorSummaries[uid].snapshotVoice || '—' }} / {{ directorSummaries[uid].snapshotMode || '—' }}</b>
+            <span style="opacity:.7">（/direct off 恢复）</span>
+          </span>
         </div>
       </div>
 
@@ -1660,9 +1989,86 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             <label class="toggle"><input type="checkbox" v-model="editForm.enable_voice_polish"><span class="toggle-slider"></span></label>
           </div>
         </div>
+
+        <div class="session-director">
+          <div class="session-director-title">
+            <span v-html="icon('sparkles')"></span> 导演模式
+            <span class="session-director-hint">应用/清除立即生效，与聊天命令 /direct 同步</span>
+            <button class="btn-link" style="margin-left:8px;" @click="refreshDirectorSection(uid)" :disabled="dirForm.busy">刷新状态</button>
+          </div>
+          <div v-if="!directorMeta.enabled" class="session-director-off">
+            导演模式未启用 — 请在插件配置中打开「启用导演模式」。
+          </div>
+          <template v-else>
+            <div class="session-director-state">
+              <div v-if="editDirector.sticky">
+                <span class="dir-layer">常驻</span>
+                <span>{{ editDirector.sticky.summary }}</span>
+                <span v-if="editDirector.sticky.character_id" class="dir-char-id">[{{ editDirector.sticky.character_id }}]</span>
+              </div>
+              <div v-else class="dir-empty">常驻：未设置</div>
+              <div v-if="editDirector.pending">
+                <span class="dir-layer dir-layer-once">一次</span>
+                <span>{{ editDirector.pending.summary }}</span>
+                <span v-if="editDirector.pending.character_id" class="dir-char-id">[{{ editDirector.pending.character_id }}]</span>
+              </div>
+              <div v-else class="dir-empty">一次：未设置</div>
+              <div v-if="editDirector.snapVoice || editDirector.snapMode" class="dir-snap">
+                进入前快照：{{ editDirector.snapVoice || '—' }} / {{ editDirector.snapMode || '—' }}
+                <span class="dir-snap-note">（清除时自动恢复）</span>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="control-group">
+                <label class="control-label">角色（优先）</label>
+                <select v-model="dirForm.charPick" class="select-input" :disabled="!directorMeta.charactersEnabled">
+                  <option value="">— 不用角色，用下方场景 —</option>
+                  <option v-for="c in directorMeta.characters" :key="c.id" :value="c.id">
+                    {{ c.name }}{{ c.voice ? '（' + c.voice + (c.tts_mode ? ' / ' + c.tts_mode : '') + '）' : '' }}
+                  </option>
+                </select>
+                <div v-if="!directorMeta.charactersEnabled" class="dir-mini-hint">配置中未开启「启用角色库」</div>
+              </div>
+              <div class="control-group">
+                <label class="control-label">内置场景</label>
+                <select v-model="dirForm.scenePick" class="select-input" :disabled="!!dirForm.charPick">
+                  <option v-for="s in directorMeta.scenes" :key="s.name" :value="s.name">{{ s.name }}</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label class="control-label">应用方式</label>
+                <select v-model="dirForm.applyMode" class="select-input">
+                  <option value="session">会话常驻（持续生效）</option>
+                  <option value="once">仅下一次（优先，用尽回落）</option>
+                </select>
+              </div>
+            </div>
+            <div class="session-director-actions">
+              <button class="btn-small" @click="applySessionDirector(uid)" :disabled="dirForm.busy">
+                <span v-if="dirForm.busy" class="spinner"></span> 应用导演
+              </button>
+              <button class="btn-small" @click="clearSessionDirector(uid, 'all')" :disabled="dirForm.busy">
+                清除并恢复
+              </button>
+              <button class="btn-ghost btn-small" @click="clearSessionDirector(uid, 'sticky')" :disabled="dirForm.busy || !editDirector.sticky">
+                只清常驻
+              </button>
+              <button class="btn-ghost btn-small" @click="clearSessionDirector(uid, 'pending')" :disabled="dirForm.busy || !editDirector.pending">
+                只清一次
+              </button>
+              <span v-if="dirForm.msg" class="dir-msg">{{ dirForm.msg }}</span>
+            </div>
+            <div class="dir-save-warn">保存会覆盖上方音色/模式；分层清除在两层都空后才恢复快照。</div>
+          </template>
+        </div>
+
         <div class="edit-actions">
-          <button class="btn-primary" @click="saveSession(uid)"><span v-html="icon('save')"></span> 保存</button>
-          <button class="btn-ghost" @click="cancelEdit">取消</button>
+          <button class="btn-primary" @click="saveSession(uid)" :disabled="dirForm.busy">
+            <span v-if="dirForm.busy" class="spinner"></span>
+            <span v-else v-html="icon('save')"></span>
+            保存
+          </button>
+          <button class="btn-ghost" @click="cancelEdit" :disabled="dirForm.busy">取消</button>
         </div>
       </div>
     </div>

@@ -404,6 +404,20 @@
         "hint": "新建/编辑角色时必须提供合法音色 ID（预置或已注册克隆/设计）",
         "default": true
       },
+      "character_voice_policy": {
+        "type": "string",
+        "description": "角色音色策略",
+        "hint": "keep=会话已是自定义音色时不覆盖；force=应用角色时总是切换到角色音色。改动会话音色前会快照，/direct off 可恢复",
+        "options": ["keep", "force"],
+        "default": "keep"
+      },
+      "character_mode_policy": {
+        "type": "string",
+        "description": "角色输出模式策略",
+        "hint": "keep=不改会话输出模式；bind=角色 JSON 含 tts_mode（default/clone）时一并切换。design 不绑定（设计通道不注入导演）。/direct off 恢复进入前模式",
+        "options": ["keep", "bind"],
+        "default": "keep"
+      },
       "director_characters": {
         "type": "text",
         "description": "角色库（JSON）",

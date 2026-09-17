@@ -107,9 +107,7 @@ async def handle_breath(plugin, event: AstrMessageEvent):
     if not arg:
         uset = plugin._get_user_settings(uid)
         state = "开" if uset["breath"] else "关"
-        yield MessageEventResult().message(
-            f"呼吸声: {state}\n用法: /breath <on|off>"
-        )
+        yield MessageEventResult().message(f"呼吸声: {state}\n用法: /breath <on|off>")
         return
 
     val = _toggle_on(arg)
@@ -126,9 +124,7 @@ async def handle_stress(plugin, event: AstrMessageEvent):
     if not arg:
         uset = plugin._get_user_settings(uid)
         state = "开" if uset["stress"] else "关"
-        yield MessageEventResult().message(
-            f"重音模式: {state}\n用法: /stress <on|off>"
-        )
+        yield MessageEventResult().message(f"重音模式: {state}\n用法: /stress <on|off>")
         return
 
     val = _toggle_on(arg)
@@ -193,9 +189,7 @@ async def handle_laughter(plugin, event: AstrMessageEvent):
     if not arg:
         uset = plugin._get_user_settings(uid)
         state = "开" if uset["laughter"] else "关"
-        yield MessageEventResult().message(
-            f"笑声: {state}\n用法: /laughter <on|off>"
-        )
+        yield MessageEventResult().message(f"笑声: {state}\n用法: /laughter <on|off>")
         return
 
     val = _toggle_on(arg)
@@ -212,9 +206,7 @@ async def handle_pause(plugin, event: AstrMessageEvent):
     if not arg:
         uset = plugin._get_user_settings(uid)
         state = "开" if uset["pause"] else "关"
-        yield MessageEventResult().message(
-            f"停顿模式: {state}\n用法: /pause <on|off>"
-        )
+        yield MessageEventResult().message(f"停顿模式: {state}\n用法: /pause <on|off>")
         return
 
     val = _toggle_on(arg)

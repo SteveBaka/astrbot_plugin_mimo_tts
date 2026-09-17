@@ -46,6 +46,8 @@ def sanitize_user_settings(data: dict) -> dict:
         "director_pending": "",
         "director_mode": "",
         "director_payload": "",
+        # 进入导演前的 voice/tts_mode 快照；/direct off 时恢复并清空
+        "director_snapshot": None,
     }
     cleaned = dict(defaults)
     if isinstance(data, dict):
@@ -86,6 +88,15 @@ def sanitize_user_settings(data: dict) -> dict:
             cleaned["director_sticky"] = legacy_payload
     cleaned["director_mode"] = ""
     cleaned["director_payload"] = ""
+    snap = cleaned.get("director_snapshot", None)
+    if isinstance(snap, dict):
+        cleaned["director_snapshot"] = {
+            "voice": str(snap.get("voice") or ""),
+            "tts_mode": str(snap.get("tts_mode") or ""),
+            "saved_at": snap.get("saved_at"),
+        }
+    else:
+        cleaned["director_snapshot"] = None
     return cleaned
 
 
@@ -291,13 +302,16 @@ class UserStateManager:
                 "director_pending": "",
                 "director_mode": "",
                 "director_payload": "",
+                "director_snapshot": None,
             }
         self.touch_user(uid)
         return self._user_settings[uid]
 
     def should_send_text_with_tts(self, uid: str, normalize_tts_mode) -> bool:
         """Check if text should be sent alongside TTS audio."""
-        text_enabled = self.get_settings(uid, normalize_tts_mode).get("text_enabled", None)
+        text_enabled = self.get_settings(uid, normalize_tts_mode).get(
+            "text_enabled", None
+        )
         if text_enabled is None:
             return self._config.send_text_with_tts
         return bool(text_enabled)

@@ -38,6 +38,7 @@ def _emotion_override(plugin, uset: dict, text: str) -> Optional[str]:
     if uset.get("emotion") and uset.get("emotion") != "auto":
         return None
     from ..emotion.emotion_detector import detect_emotion
+
     return detect_emotion(text) or None
 
 
@@ -54,7 +55,9 @@ async def _synthesize(
     """TTS 合成（不含润色），失败返回 None（不抛出）。情感检测基于原文。"""
     try:
         return await plugin._do_tts(
-            tts_text, uid, emotion_override=_emotion_override(plugin, uset, emo_base_text)
+            tts_text,
+            uid,
+            emotion_override=_emotion_override(plugin, uset, emo_base_text),
         )
     except Exception as e:
         logger.warning("MiMO TTS: segment TTS failed: %s", e)
@@ -104,8 +107,12 @@ async def _synthesize_and_send(
 
 
 async def _send_pending_voices(
-    plugin, event: AstrMessageEvent, uid: str, uset: dict,
-    queue: list[tuple[str, bool]], polish_enabled: bool,
+    plugin,
+    event: AstrMessageEvent,
+    uid: str,
+    uset: dict,
+    queue: list[tuple[str, bool]],
+    polish_enabled: bool,
 ) -> None:
     """后台任务：按原顺序串行补发 TEXT_FIRST 段的语音（仅语音）。
 
@@ -183,15 +190,29 @@ async def execute_segmented_reply(
                     pending_voices.append((seg_text, False))
             elif action == BUNDLED:
                 await _synthesize_and_send(
-                    plugin, event, uid, uset, seg_text, polish_enabled,
-                    with_text=True, fallback_enabled=fallback_enabled,
-                    display_polished=display_polished, display_text=seg_display,
+                    plugin,
+                    event,
+                    uid,
+                    uset,
+                    seg_text,
+                    polish_enabled,
+                    with_text=True,
+                    fallback_enabled=fallback_enabled,
+                    display_polished=display_polished,
+                    display_text=seg_display,
                 )
             elif action == VOICE_ONLY:
                 await _synthesize_and_send(
-                    plugin, event, uid, uset, seg_text, polish_enabled,
-                    with_text=False, fallback_enabled=fallback_enabled,
-                    display_polished=display_polished, display_text=seg_display,
+                    plugin,
+                    event,
+                    uid,
+                    uset,
+                    seg_text,
+                    polish_enabled,
+                    with_text=False,
+                    fallback_enabled=fallback_enabled,
+                    display_polished=display_polished,
+                    display_text=seg_display,
                 )
             elif action == TEXT_FALLBACK:
                 await event.send(MessageChain().message(seg_display))
@@ -211,5 +232,7 @@ async def execute_segmented_reply(
 
     if pending_voices:
         asyncio.create_task(
-            _send_pending_voices(plugin, event, uid, uset, pending_voices, polish_enabled)
+            _send_pending_voices(
+                plugin, event, uid, uset, pending_voices, polish_enabled
+            )
         )

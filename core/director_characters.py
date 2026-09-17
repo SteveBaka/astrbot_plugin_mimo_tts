@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -76,6 +77,10 @@ def sanitize_character(data: Any) -> Optional[dict]:
         words = [str(w).strip() for w in words_raw if str(w or "").strip()]
     else:
         words = []
+    enabled = bool(data.get("enabled", True))
+    tts_mode = str(data.get("tts_mode") or "").strip().lower()
+    if tts_mode not in ("", "default", "clone", "design"):
+        tts_mode = ""
     return {
         "id": cid,
         "name": name,
@@ -84,7 +89,8 @@ def sanitize_character(data: Any) -> Optional[dict]:
         "scene": scene,
         "voice": voice,
         "style_words": words[:8],
-        "enabled": bool(data.get("enabled", True)),
+        "enabled": enabled,
+        "tts_mode": tts_mode,
         "note": str(data.get("note") or "").strip()[:80],
     }
 
@@ -144,6 +150,45 @@ def character_to_package(entry: dict) -> Optional[ScenePackage]:
             "guidance_source": "character",
         }
     )
+
+
+_CHAR_FIELD_KEYS = (
+    "id",
+    "name",
+    "voice",
+    "character",
+    "guidance",
+    "baseline_guidance",
+    "scene",
+    "enabled",
+)
+
+
+def parse_char_fields(text: str) -> dict:
+    """解析 /char add|set 的 key=value（值可含空格，以下一个 key= 为界）。"""
+    fields: dict = {}
+    raw = str(text or "").strip()
+    if not raw:
+        return fields
+    pattern = re.compile(
+        r"(" + "|".join(_CHAR_FIELD_KEYS) + r")\s*=\s*",
+        re.IGNORECASE,
+    )
+    matches = list(pattern.finditer(raw))
+    if not matches:
+        return fields
+    for i, m in enumerate(matches):
+        key = m.group(1).lower()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
+        value = raw[start:end].strip().strip('"').strip("「」")
+        if key == "baseline_guidance":
+            key = "guidance"
+        if key == "enabled":
+            fields[key] = value.lower() not in ("false", "0", "off", "no")
+        else:
+            fields[key] = value
+    return fields
 
 
 class CharacterStore:
@@ -280,14 +325,95 @@ class CharacterStore:
         voice = entry.get("voice") or "—"
         return f"{entry.get('name')}（{entry.get('id')}，音色 {voice}）"
 
+    def persist_entries(self) -> bool:
+        """把内存条目写回配置 director_characters（2 空格缩进）。"""
+        if self._config is None:
+            return False
+        try:
+            payload = json.dumps(self._entries, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError):
+            return False
+        try:
+            self._config.set("director_characters", payload)
+        except Exception:
+            logger.exception("MiMO TTS: failed to persist director_characters")
+            return False
+        self._fingerprint = self._config_fingerprint()
+        return True
+
+    def upsert_entry(self, data: dict) -> tuple[Optional[dict], str]:
+        """新增或按 id 更新角色；返回 (entry, err)。"""
+        payload = dict(data or {})
+        if payload.get("guidance") and not payload.get("baseline_guidance"):
+            payload["baseline_guidance"] = payload["guidance"]
+        entry = sanitize_character(payload)
+        if not entry:
+            return None, "条目不合法：需 id/name/character，且 id 为小写字母数字_-"
+        self.refresh_if_changed()
+        existing = self.get(entry["id"])
+        name_hit = self.get(entry["name"])
+        if name_hit and name_hit.get("id") != entry["id"]:
+            return None, f"名称已被占用: {entry['name']}"
+        if existing:
+            self._entries = [
+                entry if e["id"] == entry["id"] else e for e in self._entries
+            ]
+            mode = "updated"
+        else:
+            self._entries.append(entry)
+            mode = "added"
+        self._rebuild(self._entries)
+        if not self.persist_entries():
+            return None, "写入配置失败"
+        return entry, mode
+
+    def delete_entry(self, name_or_id: str) -> tuple[Optional[dict], str]:
+        """删除角色；返回 (entry, err)。"""
+        self.refresh_if_changed()
+        entry = self.get(name_or_id)
+        if not entry:
+            return None, f"未找到角色: {name_or_id}"
+        self._entries = [e for e in self._entries if e["id"] != entry["id"]]
+        self._rebuild(self._entries)
+        if not self.persist_entries():
+            return None, "写入配置失败"
+        return entry, "deleted"
+
+    def update_fields(
+        self, name_or_id: str, fields: dict
+    ) -> tuple[Optional[dict], str]:
+        """按字段更新角色；返回 (entry, err)。"""
+        self.refresh_if_changed()
+        entry = self.get(name_or_id)
+        if not entry:
+            return None, f"未找到角色: {name_or_id}"
+        merged = {**entry, **(fields or {})}
+        if merged.get("guidance") and "guidance" in (fields or {}):
+            merged["baseline_guidance"] = merged["guidance"]
+        merged["id"] = entry["id"]  # 禁止通过 set 改 id
+        updated = sanitize_character(merged)
+        if not updated:
+            return None, "更新后不合法：需保留 name/character"
+        name_hit = self.get(updated["name"])
+        if name_hit and name_hit.get("id") != updated["id"]:
+            return None, f"名称已被占用: {updated['name']}"
+        self._entries = [
+            updated if e["id"] == updated["id"] else e for e in self._entries
+        ]
+        self._rebuild(self._entries)
+        if not self.persist_entries():
+            return None, "写入配置失败"
+        return updated, "updated"
+
     def list_api_items(self) -> list[dict]:
-        """控制台下拉用摘要（含 id/name/voice）。"""
+        """控制台下拉用摘要（含 id/name/voice/tts_mode）。"""
         self.refresh_if_changed()
         return [
             {
                 "id": e.get("id", ""),
                 "name": e.get("name", ""),
                 "voice": e.get("voice", ""),
+                "tts_mode": e.get("tts_mode", ""),
                 "summary": self.summary_line(e),
             }
             for e in self._entries
@@ -295,15 +421,137 @@ class CharacterStore:
         ]
 
 
+def apply_character_binding(plugin, uset: dict, entry: dict) -> str:
+    """按策略绑定角色音色/输出模式；会先写 director_snapshot 以便 /direct off 恢复。
+
+    voice_policy: keep=仅默认音色时切换；force=总是切换
+    mode_policy:  keep=不改 tts_mode；bind=角色带 tts_mode（default/clone）时切换
+    返回拼接提示（可空）；不进入 format_director_applied 主文案。
+    """
+    notes: list[str] = []
+    voice = str(entry.get("voice") or "").strip()
+    mode_want = str(entry.get("tts_mode") or "").strip().lower()
+
+    default_voice = str(
+        plugin.config.get("default_voice", "") or "mimo_default"
+    ).strip()
+    current_voice = str(uset.get("voice") or "").strip()
+    current_mode = str(uset.get("tts_mode") or "default").strip().lower()
+
+    voice_policy = getattr(plugin.config, "character_voice_policy", "keep")
+    mode_policy = getattr(plugin.config, "character_mode_policy", "keep")
+
+    will_voice = False
+    resolved_voice = current_voice
+    if voice:
+        if voice_policy == "force":
+            will_voice = True
+        elif current_voice in ("", default_voice, "mimo_default"):
+            will_voice = True
+        if will_voice:
+            try:
+                resolved_voice = (
+                    plugin.synth.resolve_voice(voice) if plugin.synth else voice
+                )
+            except Exception:
+                resolved_voice = voice
+            will_voice = bool(resolved_voice) and resolved_voice != current_voice
+
+    will_mode = False
+    target_mode = current_mode
+    if mode_policy == "bind" and mode_want in ("default", "clone"):
+        # design 不绑定：设计通道不注入导演稿（§16.2）
+        target_mode = mode_want
+        will_mode = target_mode != current_mode
+
+    if will_voice or will_mode:
+        _ensure_director_snapshot(uset, current_voice, current_mode)
+    if will_voice:
+        uset["voice"] = resolved_voice
+    if will_mode:
+        uset["tts_mode"] = target_mode
+        notes.append(f"输出模式 → {target_mode}")
+    return "；".join(notes)
+
+
+def _ensure_director_snapshot(uset: dict, voice: str, tts_mode: str) -> None:
+    """仅在尚无快照时记录进入导演前的状态（不覆盖）。"""
+    if uset.get("director_snapshot"):
+        return
+    uset["director_snapshot"] = {
+        "voice": voice or "",
+        "tts_mode": tts_mode or "default",
+        "saved_at": int(time.time()),
+    }
+
+
+def restore_director_snapshot(uset: dict, *, clear_layers: bool = True) -> dict:
+    """恢复快照中的 voice/tts_mode；默认同时清除快照与双层。
+
+    ``clear_layers=False`` 时只恢复音色/模式并清空快照，保留 sticky/pending
+    （供分层清除：仅当双层都清空后才恢复）。
+    返回 ``{"restored": bool, "voice": str, "tts_mode": str}``。
+    """
+    snap = uset.get("director_snapshot") or {}
+    if clear_layers:
+        uset["director_sticky"] = ""
+        uset["director_pending"] = ""
+        uset["director_mode"] = ""
+        uset["director_payload"] = ""
+    if not isinstance(snap, dict) or not snap:
+        uset["director_snapshot"] = None
+        return {"restored": False, "voice": "", "tts_mode": ""}
+    voice = str(snap.get("voice") or "")
+    tts_mode = str(snap.get("tts_mode") or "default") or "default"
+    if voice:
+        uset["voice"] = voice
+    uset["tts_mode"] = tts_mode
+    uset["director_snapshot"] = None
+    return {"restored": True, "voice": voice, "tts_mode": tts_mode}
+
+
+def clear_director_layer(uset: dict, layer: str) -> dict:
+    """按层清除导演状态；layer=all|sticky|pending。
+
+    仅当清除后双层皆空时才恢复快照（避免还有层在用时提前回退音色）。
+    返回 ``{"cleared": list[str], "restored": bool, "voice": str, "tts_mode": str}``。
+    """
+    layer = str(layer or "all").strip().lower()
+    if layer not in ("all", "sticky", "pending"):
+        layer = "all"
+    cleared: list[str] = []
+    if layer in ("all", "sticky"):
+        uset["director_sticky"] = ""
+        uset["director_mode"] = ""
+        uset["director_payload"] = ""
+        cleared.append("sticky")
+    if layer in ("all", "pending"):
+        uset["director_pending"] = ""
+        cleared.append("pending")
+
+    has_remaining = bool(
+        str(uset.get("director_sticky") or "").strip()
+        or str(uset.get("director_pending") or "").strip()
+    )
+    restored = {"restored": False, "voice": "", "tts_mode": ""}
+    if not has_remaining:
+        restored = restore_director_snapshot(uset, clear_layers=False)
+    return {
+        "cleared": cleared,
+        "restored": restored.get("restored", False),
+        "voice": restored.get("voice", ""),
+        "tts_mode": restored.get("tts_mode", ""),
+    }
+
+
+# 兼容旧调用点：仅音色（无快照）。新代码用 apply_character_binding。
 def apply_character_voice(plugin, uset: dict, entry: dict) -> str:
     """会话音色仍为默认时绑定角色音色；已自定义则不覆盖。返回提示文案。"""
     voice = str(entry.get("voice") or "").strip()
     if not voice:
         return ""
     current = str(uset.get("voice") or "").strip()
-    default = str(
-        plugin.config.get("default_voice", "") or "mimo_default"
-    ).strip()
+    default = str(plugin.config.get("default_voice", "") or "mimo_default").strip()
     if current and current != default and current != "mimo_default":
         return f"保留当前音色 {current}；角色默认为 {voice}"
     try:
@@ -314,3 +562,75 @@ def apply_character_voice(plugin, uset: dict, entry: dict) -> str:
         uset["voice"] = resolved
         return f"已切换音色 → {resolved}"
     return ""
+
+
+def voice_type_label(plugin, voice_id: str) -> str:
+    """音色类型短标签：预置 / 已注册克隆 / 已注册设计 / 自定义。"""
+    from .constants import MIMO_VOICE_LIST
+
+    vid = str(voice_id or "").strip()
+    if not vid:
+        return ""
+    info = None
+    try:
+        synth = getattr(plugin, "synth", None)
+        vm = getattr(synth, "_voice_manager", None) if synth else None
+        if vm:
+            info = vm.get_voice(vid)
+    except Exception:
+        info = None
+    if info:
+        model = str(info.get("model", "") or "").lower()
+        if model == "voiceclone":
+            return "已注册克隆"
+        if model == "voicedesign":
+            return "已注册设计"
+        return "自定义"
+    if any(v.get("id") == vid for v in MIMO_VOICE_LIST):
+        return "预置"
+    return ""
+
+
+def format_director_applied(
+    plugin,
+    pkg,
+    mode: str,
+    voice_id: str = "",
+    voice_note: str = "",
+) -> str:
+    """命令与 WebUI 共用的「已应用」文案（§18 模板）。
+
+    第一行：层 + 名称 / 音色（类型） / 角色 / 场景 / 指导
+    第二行：另一层说明 + /direct off
+    ``voice_note`` 保留参数兼容调用方，当前不再拼进正文（信息已在音色行）。
+    """
+    session = str(mode or "session").lower() != "once"
+    layer = "会话常驻配置" if session else "一次性配置"
+    other = "不影响已设置的一次性场景" if session else "优先于会话常驻，用尽后回落"
+    name = (pkg.scene_name if pkg else "").strip() or "（自定义）"
+
+    parts = [f"已设置本{layer}：{name}"]
+
+    vid = str(voice_id or "").strip()
+    if vid:
+        vtype = voice_type_label(plugin, vid)
+        voice_part = f"音色：{vid}"
+        if vtype:
+            voice_part += f"（{vtype}）"
+        parts.append(voice_part)
+
+    character = (pkg.character if pkg else "").strip()
+    if character:
+        parts.append(f"角色：{character}")
+
+    scene = (pkg.scene if pkg else "").strip()
+    if scene:
+        parts.append(f"场景：{scene}")
+
+    guidance = (pkg.guidance if pkg else "").strip()
+    if guidance:
+        parts.append(f"指导：{guidance}")
+
+    line1 = " / ".join(parts)
+    line2 = f"{other}；关闭和清除导演模式: /direct off"
+    return f"{line1}\n{line2}"
