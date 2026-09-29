@@ -74,7 +74,7 @@ async def handle_singstyle_list(plugin, event: AstrMessageEvent):
         yield MessageEventResult().message(
             "⚠️ 唱歌风格库 JSON 格式错误（解析失败已回退空库）。\n"
             "请检查：最外层必须是数组 [ ]；引号用英文直引号；多组用逗号分隔。\n"
-            "正确示例：[\"name\": 需为 [ {\"name\": \"小雪\"} ] 形式"
+            '正确示例：["name": 需为 [ {"name": "小雪"} ] 形式'
         )
         return
     current = str(uset.get("sing_style", "") or "")
@@ -95,7 +95,8 @@ async def handle_singstyle_set(plugin, event: AstrMessageEvent):
     group = plugin.config.find_sing_style_by_name(arg)
     if not group:
         yield MessageEventResult().message(
-            f"未找到风格组「{arg}」。\n可用风格组:\n" + _format_styles(plugin.config.sing_styles)
+            f"未找到风格组「{arg}」。\n可用风格组:\n"
+            + _format_styles(plugin.config.sing_styles)
         )
         return
     _, uset = plugin._get_event_settings(event)

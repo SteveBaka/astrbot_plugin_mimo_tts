@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Optional
 from astrbot.api import logger
 
 from ..core.constants import MIMO_VOICE_LIST
+from ..core.director_composer import apply_director_to_prompt, director_state_label
 from ..core.style_lib import (
     EMOTION_TO_TAG,
     extract_style_words,
@@ -130,7 +131,9 @@ class TTSSynthesizer:
         return self._config.get("default_voice", "mimo_default")
 
     def resolve_design_description(
-        self, uid: str, get_user_settings,
+        self,
+        uid: str,
+        get_user_settings,
         design_description: Optional[str] = None,
     ) -> str:
         """Resolve the voice design description for the given uid.
@@ -159,9 +162,7 @@ class TTSSynthesizer:
         # 惰性迁移：注册表旧描述（/voicegen 写入）→ 池
         current_voice_info = self._voice_manager.get_voice(current_voice) or {}
         if str(current_voice_info.get("model", "")).lower() == "voicedesign":
-            legacy = str(
-                current_voice_info.get("description", "") or ""
-            ).strip()
+            legacy = str(current_voice_info.get("description", "") or "").strip()
             if legacy:
                 self._config.upsert_design_pool_entry(current_voice, legacy)
                 return legacy
@@ -286,9 +287,7 @@ class TTSSynthesizer:
             style_hint=style or None,
         )
 
-    def resolve_clone_style_prompt(
-        self, voice_id: str, override: str = ""
-    ) -> str:
+    def resolve_clone_style_prompt(self, voice_id: str, override: str = "") -> str:
         """Resolve the clone style control text for the given voice.
 
         ``override``（非空）优先——WebUI 试听一键保存（v2.2.6）合成页
@@ -315,9 +314,7 @@ class TTSSynthesizer:
             legacy = str(info.get("style_prompt", "") or "").strip()
             legacy_tags = str(info.get("audio_tags", "") or "").strip()
             if legacy or legacy_tags:
-                self._config.upsert_clone_pool_entry(
-                    voice_id, legacy, legacy_tags
-                )
+                self._config.upsert_clone_pool_entry(voice_id, legacy, legacy_tags)
                 return legacy
         return self._config.clone_style_prompt.strip()
 
@@ -372,9 +369,7 @@ class TTSSynthesizer:
         # （全部 words 词表提示 + 例句注入，与 design 同构）
         entry = match_style_entry_by_name(style_prompt, self._config.style_examples)
         if entry:
-            words = [
-                w for w in (entry.get("words") or []) if str(w or "").strip()
-            ]
+            words = [w for w in (entry.get("words") or []) if str(w or "").strip()]
             parts = [style_prompt]
             hint = style_words_to_hint(words)
             if hint:
@@ -408,9 +403,7 @@ class TTSSynthesizer:
                     style_prompt = merge_prompt_parts(
                         style_prompt, "参考示例：" + "；".join(examples)
                     )
-                    logger.info(
-                        "MiMO TTS: clone style examples matched: %s", examples
-                    )
+                    logger.info("MiMO TTS: clone style examples matched: %s", examples)
         if audio_tags is None:
             audio_tags = self._config.clone_audio_tags
         audio_tags = str(audio_tags or "").strip()
@@ -523,7 +516,17 @@ class TTSSynthesizer:
             # 等符号，TTS 会原样读出；保留 (风格) 与 [音频标签]
             final_text = strip_markdown_symbols(text)
 
-        log_tts_text(uid, uset.get("tts_mode", "default"), uset["sing"], final_text)
+        # 说出口的正文 = final_text；director 标注便于对回场景（design 本不注入）
+        director_mode = (
+            director_state_label(uset) if self._config.director_enabled else ""
+        )
+        log_tts_text(
+            uid,
+            uset.get("tts_mode", "default"),
+            uset["sing"],
+            final_text,
+            director=director_mode,
+        )
 
         if uset["sing"]:
             # 唱歌仅 mimo-v2.5-tts（预置音色）支持：强制回退 default 模型，
@@ -571,7 +574,9 @@ class TTSSynthesizer:
                     design_description, self._config.style_examples
                 )
                 if entry:
-                    words = [w for w in (entry.get("words") or []) if str(w or "").strip()]
+                    words = [
+                        w for w in (entry.get("words") or []) if str(w or "").strip()
+                    ]
                     parts = [design_description]
                     hint = style_words_to_hint(words)
                     if hint:
@@ -632,9 +637,7 @@ class TTSSynthesizer:
                 emotion = str(uset.get("emotion") or "").strip().lower()
                 tag = EMOTION_TO_TAG.get(emotion)
                 if tag:
-                    examples = match_style_examples(
-                        tag, self._config.style_examples
-                    )
+                    examples = match_style_examples(tag, self._config.style_examples)
                     if examples:
                         prompt = merge_prompt_parts(
                             prompt, "参考示例：" + "；".join(examples)
@@ -644,6 +647,22 @@ class TTSSynthesizer:
                             examples,
                             emotion,
                         )
+
+        # 导演模式（§16.10 / P3b）：default + clone + 唱歌（唱歌强制 default）；
+        # design 仍排除（user=音色身份，见 §16.2）。开关关闭时零改动。
+        if mode in ("default", "clone") and self._config.director_enabled:
+            before = prompt
+            prompt = apply_director_to_prompt(
+                prompt,
+                uset,
+                characters=getattr(self, "director_characters", None),
+            )
+            if prompt != before:
+                logger.info(
+                    "MiMO TTS: director prompt applied mode=%s sing=%s",
+                    mode,
+                    bool(uset.get("sing")),
+                )
 
         raw = await provider.synthesize(
             text=final_text,

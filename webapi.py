@@ -75,10 +75,26 @@ async def api_tts_synthesize(plugin):
         text = await plugin._polish_text_with_llm(text, uid)
 
     overrides = {}
-    for key in ("emotion", "speed", "pitch", "voice", "breath", "stress",
-                "laughter", "pause", "dialect", "volume", "tts_mode",
-                "sing", "sing_style", "sing_voice_override",
-                "design_description", "clone_style_prompt"):
+    for key in (
+        "emotion",
+        "speed",
+        "pitch",
+        "voice",
+        "breath",
+        "stress",
+        "laughter",
+        "pause",
+        "dialect",
+        "volume",
+        "tts_mode",
+        "sing",
+        "sing_style",
+        "sing_voice_override",
+        "design_description",
+        "clone_style_prompt",
+        "director_sticky",
+        "director_pending",
+    ):
         if key in body and body[key] is not None:
             overrides[key] = body[key]
 
@@ -93,7 +109,9 @@ async def api_tts_synthesize(plugin):
 
     try:
         audio_path = await plugin._do_tts(
-            text, uid, emotion_override=emotion_override,
+            text,
+            uid,
+            emotion_override=emotion_override,
             settings_override=overrides or None,
         )
         if audio_path:
@@ -120,16 +138,20 @@ async def api_list_voices(plugin):
     for v in registered:
         model = v.get("model", "voiceclone")
         vtype = "design" if model == "voicedesign" else "clone"
-        custom.append({
-            "id": v.get("voice_id", ""),
-            "name": v.get("name", ""),
-            "type": vtype,
-        })
-    return jsonify({
-        "builtin": builtin,
-        "registered": custom,
-        "all": builtin + custom,
-    })
+        custom.append(
+            {
+                "id": v.get("voice_id", ""),
+                "name": v.get("name", ""),
+                "type": vtype,
+            }
+        )
+    return jsonify(
+        {
+            "builtin": builtin,
+            "registered": custom,
+            "all": builtin + custom,
+        }
+    )
 
 
 async def api_clone_init(plugin):
@@ -169,7 +191,10 @@ async def api_clone_file(plugin):
     audio_bytes = base64.b64decode(file_b64)
     save_path.write_bytes(audio_bytes)
     plugin._voice_manager.register_voice(
-        voice_id, name=voice_id, model="voiceclone", audio_path=str(save_path),
+        voice_id,
+        name=voice_id,
+        model="voiceclone",
+        audio_path=str(save_path),
     )
     plugin._pending_clone_voice_id = ""
     return jsonify({"status": "ok", "voice_id": voice_id, "path": str(save_path)})
@@ -184,13 +209,20 @@ async def api_design_voice(plugin):
     from quart import jsonify, request
 
     body = await request.json
-    voice_id = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip())
+    voice_id = _re.sub(
+        r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("voice_id", "").strip()
+    )
     description = body.get("description", "").strip()[:500]
-    name = _re.sub(r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("name", voice_id).strip())[:50]
+    name = _re.sub(
+        r"[^a-zA-Z0-9_\-\u4e00-\u9fff]", "", body.get("name", voice_id).strip()
+    )[:50]
     if not voice_id:
         return jsonify({"error": "缺少 voice_id"}), 400
     plugin._voice_manager.register_voice(
-        voice_id, name=name, model="voicedesign", description=description,
+        voice_id,
+        name=name,
+        model="voicedesign",
+        description=description,
     )
     # v2.2.9：写入配置「设计音色风格控制池」（与配置面板联动权威数据源）
     plugin.config.upsert_design_pool_entry(voice_id, description)
@@ -213,20 +245,24 @@ async def api_design_style_pool(plugin):
     voices = []
     for entry in plugin.config.design_style_pool:
         if entry.get("name") in registered:
-            voices.append({
-                "voice_id": entry.get("name", ""),
-                "name": registered[entry.get("name", "")],
-                "description": entry.get("description", ""),
-            })
+            voices.append(
+                {
+                    "voice_id": entry.get("name", ""),
+                    "name": registered[entry.get("name", "")],
+                    "description": entry.get("description", ""),
+                }
+            )
     voices.sort(key=lambda x: x["voice_id"])
-    return jsonify({
-        "global": {
-            "description": str(
-                plugin.config.get("design_voice_description", "") or ""
-            ),
-        },
-        "voices": voices,
-    })
+    return jsonify(
+        {
+            "global": {
+                "description": str(
+                    plugin.config.get("design_voice_description", "") or ""
+                ),
+            },
+            "voices": voices,
+        }
+    )
 
 
 async def api_clone_style(plugin):
@@ -270,24 +306,24 @@ async def api_clone_style_pool(plugin):
     voices = []
     for entry in plugin.config.clone_style_pool:
         if entry.get("name") in registered:
-            voices.append({
-                "voice_id": entry.get("name", ""),
-                "name": registered[entry.get("name", "")],
-                "style_prompt": entry.get("style", ""),
-                "audio_tags": entry.get("audio_tags", ""),
-            })
+            voices.append(
+                {
+                    "voice_id": entry.get("name", ""),
+                    "name": registered[entry.get("name", "")],
+                    "style_prompt": entry.get("style", ""),
+                    "audio_tags": entry.get("audio_tags", ""),
+                }
+            )
     voices.sort(key=lambda x: x["voice_id"])
-    return jsonify({
-        "global": {
-            "style_prompt": str(
-                plugin.config.get("clone_style_prompt", "") or ""
-            ),
-            "audio_tags": str(
-                plugin.config.get("clone_audio_tags", "") or ""
-            ),
-        },
-        "voices": voices,
-    })
+    return jsonify(
+        {
+            "global": {
+                "style_prompt": str(plugin.config.get("clone_style_prompt", "") or ""),
+                "audio_tags": str(plugin.config.get("clone_audio_tags", "") or ""),
+            },
+            "voices": voices,
+        }
+    )
 
 
 async def api_delete_voice(plugin):
@@ -332,9 +368,19 @@ async def api_update_session(plugin):
     settings = body.get("settings", {})
     if not uid:
         return jsonify({"error": "缺少 uid"}), 400
-    allowed = {"voice", "emotion", "speed", "pitch", "tts_mode", "tts_enabled",
-               "text_enabled", "text_async", "enable_segmentation",
-               "enable_voice_polish", "sing_style"}
+    allowed = {
+        "voice",
+        "emotion",
+        "speed",
+        "pitch",
+        "tts_mode",
+        "tts_enabled",
+        "text_enabled",
+        "text_async",
+        "enable_segmentation",
+        "enable_voice_polish",
+        "sing_style",
+    }
     filtered = {k: v for k, v in settings.items() if k in allowed}
     uset = plugin.user_state.get_settings(uid, normalize_tts_mode)
     uset.update(filtered)
@@ -377,13 +423,19 @@ async def api_list_emotions(plugin):
 async def api_get_constants(plugin):
     from quart import jsonify
 
-    from .core.constants import MIMO_VOICE_LIST, SUPPORTED_AUDIO_FORMATS, SUPPORTED_EMOTIONS
+    from .core.constants import (
+        MIMO_VOICE_LIST,
+        SUPPORTED_AUDIO_FORMATS,
+        SUPPORTED_EMOTIONS,
+    )
 
-    return jsonify({
-        "voices": MIMO_VOICE_LIST,
-        "emotions": list(SUPPORTED_EMOTIONS),
-        "formats": list(SUPPORTED_AUDIO_FORMATS),
-    })
+    return jsonify(
+        {
+            "voices": MIMO_VOICE_LIST,
+            "emotions": list(SUPPORTED_EMOTIONS),
+            "formats": list(SUPPORTED_AUDIO_FORMATS),
+        }
+    )
 
 
 async def api_get_logs(plugin):
@@ -402,6 +454,294 @@ async def api_log_stats(plugin):
     return jsonify(plugin.plog.get_stats())
 
 
+def _director_uid(raw) -> str:
+    uid = str(raw or "webui").strip()[:100]
+    return uid or "webui"
+
+
+async def api_director_scenes(plugin):
+    """导演控制台：内置场景 + 角色列表 + 全局开关状态。"""
+    from quart import jsonify
+
+    from .core.director_assets import BUILTIN_SCENES
+
+    scenes = [
+        {
+            "name": item.get("name", ""),
+            "character": item.get("character", ""),
+            "scene": item.get("scene", ""),
+            "guidance": item.get("guidance", ""),
+        }
+        for item in BUILTIN_SCENES.values()
+    ]
+    store = getattr(plugin, "director_characters", None)
+    characters = store.list_api_items() if store else []
+    return jsonify(
+        {
+            "enabled": plugin.config.director_enabled,
+            "parse_llm": plugin.config.director_parse_llm,
+            "characters_enabled": plugin.config.director_characters_enabled,
+            "scenes": scenes,
+            "characters": characters,
+        }
+    )
+
+
+async def api_director_characters(plugin):
+    """角色库列表（控制台下拉；与配置池同源）。"""
+    from quart import jsonify
+
+    store = getattr(plugin, "director_characters", None)
+    items = store.list_api_items() if store else []
+    return jsonify(
+        {
+            "enabled": plugin.config.director_enabled
+            and plugin.config.director_characters_enabled,
+            "source": store.source if store else "empty",
+            "characters": items,
+        }
+    )
+
+
+async def api_director_state(plugin):
+    """读取指定 uid 的导演会话状态（双层：pending / sticky + 快照）。"""
+    from quart import jsonify, request
+
+    from .core.director_composer import resolve_effective_director
+    from .core.director_package import loads_package
+
+    uid = _director_uid(request.args.get("uid"))
+    uset = plugin._get_user_settings(uid)
+    sticky = loads_package(uset.get("director_sticky"))
+    pending = loads_package(uset.get("director_pending"))
+    _pkg, layer = resolve_effective_director(uset)
+    snap = uset.get("director_snapshot") or None
+    snapshot = None
+    if isinstance(snap, dict) and snap:
+        snapshot = {
+            "voice": str(snap.get("voice") or ""),
+            "tts_mode": str(snap.get("tts_mode") or ""),
+        }
+    return jsonify(
+        {
+            "uid": uid,
+            "enabled": plugin.config.director_enabled,
+            "effective": layer,
+            "pending": {
+                "scene_name": pending.scene_name if pending else "",
+                "summary": pending.summary() if pending else "",
+                "guidance_source": pending.guidance_source if pending else "",
+                "character_id": pending.character_id if pending else "",
+            }
+            if pending
+            else None,
+            "sticky": {
+                "scene_name": sticky.scene_name if sticky else "",
+                "summary": sticky.summary() if sticky else "",
+                "guidance_source": sticky.guidance_source if sticky else "",
+                "character_id": sticky.character_id if sticky else "",
+            }
+            if sticky
+            else None,
+            "has_state": bool(pending or sticky),
+            "snapshot": snapshot,
+            # 兼容旧前端字段：effective 层摘要
+            "mode": layer,
+            "scene_name": (_pkg.scene_name if _pkg else ""),
+            "summary": (_pkg.summary() if _pkg else ""),
+            "guidance_source": (_pkg.guidance_source if _pkg else ""),
+            "character_id": (_pkg.character_id if _pkg else ""),
+        }
+    )
+
+
+async def api_director_parse(plugin):
+    """把自由描述解析为 ScenePackage JSON（不写入会话）。"""
+    from quart import jsonify, request
+
+    from .core.director_llm import parse_director_with_llm
+    from .core.director_package import dumps_package
+    from .core.director_parser import parse_director_input
+
+    body = await request.json or {}
+    text = str(body.get("text") or "")[:800].strip()
+    uid = _director_uid(body.get("uid"))
+    if not text:
+        return jsonify({"error": "缺少场景描述"}), 400
+
+    pkg = parse_director_input(text)
+    if not pkg and plugin.config.director_parse_llm:
+        try:
+            pkg = await parse_director_with_llm(plugin, text, uid)
+        except Exception as e:
+            return jsonify({"error": f"LLM 解析失败: {e}"}), 500
+    if not pkg:
+        return jsonify(
+            {
+                "error": "无法识别该场景",
+                "hint": "可用内置场景名、三维稿，或开启 LLM 自由解析后重试",
+            }
+        ), 400
+    payload = dumps_package(pkg)
+    if not payload:
+        return jsonify({"error": "场景过长"}), 400
+    return jsonify(
+        {
+            "payload": payload,
+            "scene_name": pkg.scene_name,
+            "summary": pkg.summary(),
+            "guidance_source": pkg.guidance_source,
+        }
+    )
+
+
+async def api_director_apply(plugin):
+    """把场景/角色应用到指定 uid 会话（session/once）。控制台主路径。"""
+    from quart import jsonify, request
+
+    from astrbot.api import logger
+
+    from .core.director_characters import (
+        apply_character_binding,
+        character_to_package,
+        format_director_applied,
+    )
+    from .core.director_llm import parse_director_with_llm
+    from .core.director_package import dumps_package, loads_package
+    from .core.director_parser import parse_director_input
+
+    if not plugin.config.director_enabled:
+        return jsonify({"error": "导演模式未启用，请先在插件配置中打开"}), 400
+
+    body = await request.json or {}
+    uid = _director_uid(body.get("uid"))
+    mode = str(body.get("mode") or "session").strip().lower()
+    if mode not in ("once", "session"):
+        return jsonify({"error": "mode 须为 session 或 once"}), 400
+
+    payload = str(body.get("payload") or "").strip()
+    text = str(body.get("text") or "")[:800].strip()
+    character_id = str(body.get("character_id") or "").strip()
+
+    pkg = loads_package(payload) if payload else None
+    voice_note = ""
+    if not pkg and character_id:
+        if not plugin.config.director_characters_enabled:
+            return jsonify({"error": "角色库未启用，请在配置中打开"}), 400
+        store = getattr(plugin, "director_characters", None)
+        entry = store.get(character_id) if store else None
+        if not entry:
+            return jsonify({"error": f"未找到角色: {character_id}"}), 400
+        pkg = character_to_package(entry)
+        uset = plugin._get_user_settings(uid)
+        voice_note = apply_character_binding(plugin, uset, entry)
+        logger.info(
+            "MiMO TTS: character apply uid=%s id=%s layer=%s voice=%s source=webui",
+            uid,
+            entry.get("id"),
+            "pending" if mode == "once" else "sticky",
+            uset.get("voice") or entry.get("voice") or "",
+        )
+    if not pkg:
+        if not text:
+            return jsonify({"error": "缺少 character_id / payload / text"}), 400
+        pkg = parse_director_input(text)
+        if not pkg and plugin.config.director_parse_llm:
+            try:
+                pkg = await parse_director_with_llm(plugin, text, uid)
+            except Exception as e:
+                return jsonify({"error": f"LLM 解析失败: {e}"}), 500
+        if not pkg:
+            return jsonify({"error": "无法识别该场景"}), 400
+
+    final_payload = dumps_package(pkg)
+    if not final_payload:
+        return jsonify({"error": "场景过长"}), 400
+
+    uset = plugin._get_user_settings(uid)
+    # 双层：session→sticky，once→pending；互不覆盖
+    if mode == "session":
+        uset["director_sticky"] = final_payload
+    else:
+        uset["director_pending"] = final_payload
+    plugin._persist_current_state()
+    logger.info(
+        "MiMO TTS: director set uid=%s layer=%s scene=%s source=%s character_id=%s origin=webui",
+        uid,
+        "sticky" if mode == "session" else "pending",
+        pkg.scene_name or "(custom)",
+        pkg.guidance_source,
+        pkg.character_id or "-",
+    )
+    message = format_director_applied(
+        plugin,
+        pkg,
+        mode,
+        voice_id=str(uset.get("voice") or ""),
+        voice_note=voice_note,
+    )
+    return jsonify(
+        {
+            "status": "ok",
+            "uid": uid,
+            "mode": mode,
+            "layer": "sticky" if mode == "session" else "pending",
+            "summary": pkg.summary(),
+            "character_id": pkg.character_id,
+            "guidance_source": pkg.guidance_source,
+            "message": message,
+        }
+    )
+
+
+async def api_director_clear(plugin):
+    """清除指定 uid 的导演会话状态；有快照且双层清空则恢复进入前音色/模式。
+
+    body 可选 ``layer``：``all``（默认）/ ``sticky`` / ``pending``。
+    """
+    from quart import jsonify, request
+
+    from .core.director_characters import clear_director_layer
+
+    uid_raw = None
+    layer = "all"
+    if request.method == "GET":
+        uid_raw = request.args.get("uid")
+        layer = request.args.get("layer") or "all"
+    else:
+        body = await request.json or {}
+        uid_raw = body.get("uid")
+        layer = body.get("layer") or "all"
+    uid = _director_uid(uid_raw)
+    layer = str(layer or "all").strip().lower()
+    if layer not in ("all", "sticky", "pending"):
+        return jsonify({"error": "layer 须为 all / sticky / pending"}), 400
+
+    uset = plugin._get_user_settings(uid)
+    result = clear_director_layer(uset, layer)
+    plugin._persist_current_state()
+    if layer == "all":
+        message = "已清除导演场景（常驻 + 一次性）"
+    else:
+        label = "常驻" if layer == "sticky" else "一次性"
+        message = f"已清除导演场景（{label}）"
+    if result.get("restored"):
+        message += (
+            f"；已恢复音色 {result.get('voice') or '—'}"
+            f" / 模式 {result.get('tts_mode') or 'default'}"
+        )
+    return jsonify(
+        {
+            "status": "ok",
+            "uid": uid,
+            "layer": layer,
+            "cleared": result.get("cleared", []),
+            "message": message,
+            "restored": result.get("restored", False),
+        }
+    )
+
+
 def register_web_apis(context, plugin) -> None:
     """注册 Voice Studio 插件页全部 REST 端点。"""
     p = "astrbot_plugin_mimo_tts"
@@ -414,8 +754,18 @@ def register_web_apis(context, plugin) -> None:
         ("voices/clone-file", api_clone_file, ["POST"], "上传克隆音频"),
         ("voices/design", api_design_voice, ["POST"], "注册设计音色"),
         ("voices/clone-style", api_clone_style, ["POST"], "保存克隆音色风格"),
-        ("voices/clone-style-pool", api_clone_style_pool, ["GET"], "克隆音色风格控制池"),
-        ("voices/design-style-pool", api_design_style_pool, ["GET"], "设计音色风格控制池"),
+        (
+            "voices/clone-style-pool",
+            api_clone_style_pool,
+            ["GET"],
+            "克隆音色风格控制池",
+        ),
+        (
+            "voices/design-style-pool",
+            api_design_style_pool,
+            ["GET"],
+            "设计音色风格控制池",
+        ),
         ("voices/delete", api_delete_voice, ["POST"], "删除音色"),
         ("sessions", api_list_sessions, ["GET"], "获取会话配置列表"),
         ("sessions/update", api_update_session, ["POST"], "更新会话配置"),
@@ -426,6 +776,12 @@ def register_web_apis(context, plugin) -> None:
         ("health", api_health, ["GET"], "健康检查"),
         ("logs", api_get_logs, ["GET"], "获取插件日志"),
         ("logs/stats", api_log_stats, ["GET"], "日志统计"),
+        ("director/scenes", api_director_scenes, ["GET"], "导演内置场景与角色"),
+        ("director/characters", api_director_characters, ["GET"], "导演角色库列表"),
+        ("director/state", api_director_state, ["GET"], "导演会话状态"),
+        ("director/parse", api_director_parse, ["POST"], "解析导演场景描述"),
+        ("director/apply", api_director_apply, ["POST"], "应用导演场景到会话"),
+        ("director/clear", api_director_clear, ["POST", "GET"], "清除导演场景"),
     ]
     for path, fn, methods, desc in routes:
         context.register_web_api(f"/{p}/{path}", partial(fn, plugin), methods, desc)

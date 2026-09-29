@@ -52,7 +52,9 @@ class PluginLogger:
         today = datetime.now().strftime("%Y-%m-%d")
         return self._log_dir / f"mimo_tts_{today}.log"
 
-    def write(self, level: str, category: str, message: str, detail: Optional[str] = None) -> None:
+    def write(
+        self, level: str, category: str, message: str, detail: Optional[str] = None
+    ) -> None:
         """Write a log entry if logging is enabled."""
         if not self.enabled:
             return

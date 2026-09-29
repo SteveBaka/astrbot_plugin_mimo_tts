@@ -47,12 +47,12 @@ SING_DIRECT_PROMPT_DEFAULT = (
     "你是一个专业的演唱指导。请根据【歌词】与【风格】，用一句 60 字以内的演唱描述，"
     "指导如何唱出理想效果。\n"
     "要求：\n"
-    "1. 用\"像……一样\"的画面比喻点明整体气质（如\"像晨露一样清透\"），"
-    "再给出明快/轻柔/活泼等语调基调，结尾带节奏或音高走向（如\"语速略快，句尾上扬\"）\n"
+    '1. 用"像……一样"的画面比喻点明整体气质（如"像晨露一样清透"），'
+    '再给出明快/轻柔/活泼等语调基调，结尾带节奏或音高走向（如"语速略快，句尾上扬"）\n'
     "2. 与已配置的音色、语速、音高协调，顺势突出其长处，绝不给出冲突的节奏或音高指令\n"
     "3. 贴合人设与语境（撒娇/叙事/俏皮等），让描述具体可感\n"
-    "4. 禁止出现\"收束/收紧/压低/减弱/收小\"等收窄类词汇（会导致声音压窄）\n"
-    "5. 禁止时间轴分句（\"开头/中段/结尾\"）、禁止 [] 或 () 标签、不要出现歌词原文\n"
+    '4. 禁止出现"收束/收紧/压低/减弱/收小"等收窄类词汇（会导致声音压窄）\n'
+    '5. 禁止时间轴分句（"开头/中段/结尾"）、禁止 [] 或 () 标签、不要出现歌词原文\n'
     "6. 不要思考、不要分析过程，第一句就是最终描述\n\n"
     "当前风格：{style}\n歌词：{text}"
 )
@@ -75,13 +75,19 @@ def _polish_cache_key(
 
 
 def _polish_cache_get(
-    provider_id: str, purpose: str, tpl_hash: str, examples_hash: str,
-    lyrics: str, style_desc: str,
+    provider_id: str,
+    purpose: str,
+    tpl_hash: str,
+    examples_hash: str,
+    lyrics: str,
+    style_desc: str,
 ):
     key = (
         provider_id,
         purpose,
-        _polish_cache_key(provider_id, purpose, tpl_hash, examples_hash, lyrics, style_desc),
+        _polish_cache_key(
+            provider_id, purpose, tpl_hash, examples_hash, lyrics, style_desc
+        ),
     )
     entry = _POLISH_CACHE.get(key)
     if not entry:
@@ -94,15 +100,23 @@ def _polish_cache_get(
 
 
 def _polish_cache_put(
-    provider_id: str, purpose: str, tpl_hash: str, examples_hash: str,
-    lyrics: str, style_desc: str, text: str, ttl: int,
+    provider_id: str,
+    purpose: str,
+    tpl_hash: str,
+    examples_hash: str,
+    lyrics: str,
+    style_desc: str,
+    text: str,
+    ttl: int,
 ) -> None:
     if ttl <= 0:
         return
     key = (
         provider_id,
         purpose,
-        _polish_cache_key(provider_id, purpose, tpl_hash, examples_hash, lyrics, style_desc),
+        _polish_cache_key(
+            provider_id, purpose, tpl_hash, examples_hash, lyrics, style_desc
+        ),
     )
     if len(_POLISH_CACHE) >= _POLISH_CACHE_MAX:
         now = time.monotonic()
@@ -192,9 +206,7 @@ async def prepare_sing(
                 extra = await synth.lyrics_polisher(
                     lyrics, uid, str(style_text or ""), purpose="tag"
                 )
-                for w in filter_official_tags(
-                    str(extra or "").split()
-                ):
+                for w in filter_official_tags(str(extra or "").split()):
                     if w not in style_tags:
                         style_tags.append(w)
                     if len(style_tags) >= SING_TAGS_MAX:
@@ -268,13 +280,15 @@ def resolve_style_with_tags(style_text: str, static_tags: list[str]) -> str:
     """演绎词并入风格文本（"演唱中自然融入轻笑、气声"）。"""
     from .synthesis import merge_prompt_parts
 
-    return merge_prompt_parts(
-        style_text, f"演唱中自然融入{'、'.join(static_tags)}"
-    )
+    return merge_prompt_parts(style_text, f"演唱中自然融入{'、'.join(static_tags)}")
 
 
 async def polish_lyrics_with_llm(
-    plugin, lyrics: str, uid: str, style_desc: str, purpose: str = "direct",
+    plugin,
+    lyrics: str,
+    uid: str,
+    style_desc: str,
+    purpose: str = "direct",
     examples: Optional[list] = None,
 ) -> str:
     """唱歌 LLM 辅助（v2.2.14 双用途，purpose 决定模板与输出清洗）。
@@ -304,8 +318,7 @@ async def polish_lyrics_with_llm(
     """
     # Provider 链：唱歌专用 > 通用润色 > 当前对话模型
     provider_id = (
-        plugin.config.sing_polish_llm_provider
-        or plugin.config.polish_llm_provider
+        plugin.config.sing_polish_llm_provider or plugin.config.polish_llm_provider
     )
     if not provider_id:
         try:
@@ -348,11 +361,11 @@ async def polish_lyrics_with_llm(
     # 风格示例池 few-shot（§14.9 P2，仅 direct）：例句 ≤2 条、每条 ≤30 字，
     # 作为质感参考喂 LLM 融合进画面感描述，不直拼 user 文本（防描述冲突）
     if purpose == "direct" and examples:
-        refs = [
-            e[:30] for e in (examples or []) if str(e or "").strip()
-        ][:2]
+        refs = [e[:30] for e in (examples or []) if str(e or "").strip()][:2]
         if refs:
-            prompt += "\n\n参考演唱示例（仅作质感参考，勿照抄文字）：\n- " + "\n- ".join(refs)
+            prompt += (
+                "\n\n参考演唱示例（仅作质感参考，勿照抄文字）：\n- " + "\n- ".join(refs)
+            )
 
     async def _call() -> str:
         resp = await plugin.context.llm_generate(
@@ -373,8 +386,14 @@ async def polish_lyrics_with_llm(
                 logger.info("MiMO TTS: style tag select empty, keep local tags")
                 return ""
             _polish_cache_put(
-                provider_id, purpose, tpl_hash, examples_hash, lyrics, style_desc,
-                " ".join(words), ttl,
+                provider_id,
+                purpose,
+                tpl_hash,
+                examples_hash,
+                lyrics,
+                style_desc,
+                " ".join(words),
+                ttl,
             )
             plugin.plog.info(
                 "Polish", "风格标签筛选 uid=%s -> %s" % (uid, " ".join(words))
@@ -384,8 +403,14 @@ async def polish_lyrics_with_llm(
         direction = strip_audio_tags(completion.strip())[:200].strip()
         if direction:
             _polish_cache_put(
-                provider_id, purpose, tpl_hash, examples_hash, lyrics, style_desc,
-                direction, ttl,
+                provider_id,
+                purpose,
+                tpl_hash,
+                examples_hash,
+                lyrics,
+                style_desc,
+                direction,
+                ttl,
             )
             plugin.plog.info(
                 "Polish", "演唱描述 uid=%s %d 字（user 通道）" % (uid, len(direction))

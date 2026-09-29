@@ -22,9 +22,7 @@ async def handle_voice(plugin, event: AstrMessageEvent):
         uset = plugin._get_user_settings(uid)
         lines = [f"当前音色: {uset['voice']}", "", "内置音色:"]
         for v in MIMO_VOICE_LIST:
-            lines.append(
-                f"  {v['id']:10s} {v['name']}  ({v['gender']}声 {v['style']})"
-            )
+            lines.append(f"  {v['id']:10s} {v['name']}  ({v['gender']}声 {v['style']})")
         lines.append("")
         lines.append("用法: /voice <音色ID>")
         yield MessageEventResult().message("\n".join(lines))
@@ -40,9 +38,7 @@ async def handle_voices(plugin, event: AstrMessageEvent):
     """List all built-in voices."""
     lines = ["MiMO 内置音色:", ""]
     for v in MIMO_VOICE_LIST:
-        lines.append(
-            f"  {v['id']:10s} {v['name']}  ({v['gender']}声 · {v['style']})"
-        )
+        lines.append(f"  {v['id']:10s} {v['name']}  ({v['gender']}声 · {v['style']})")
     lines.append(f"\n共 {len(MIMO_VOICE_LIST)} 种  |  用法: /voice <音色ID>")
     yield MessageEventResult().message("\n".join(lines))
 

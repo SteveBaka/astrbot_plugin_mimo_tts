@@ -12,7 +12,7 @@ SING_USAGE = (
     "用法: /sing <歌词>\n"
     "     /sing -音色名 <歌词> — 指定音色唱歌，如 /sing -冰糖 小星星\n"
     "     /sing -s 风格组 <歌词> — 用风格组唱歌，如 /sing -s 小雪 晚风轻拂\n"
-    "     /sing -p \"提示词\" <歌词> — 本次按提示词唱（含空格请加引号）\n"
+    '     /sing -p "提示词" <歌词> — 本次按提示词唱（含空格请加引号）\n'
     "     /sing (风格) <歌词> — 括号风格简写，如 /sing (温柔) 晚风轻拂\n"
     "参数可组合: /sing -s 小雪 -p 欢快地 <歌词>（提示词覆盖组内风格描述）"
 )
@@ -20,7 +20,7 @@ SING_USAGE = (
 
 async def handle_mimo_say(plugin, event: AstrMessageEvent):
     """/mimo_say <文本> [-emotion 情感] [-speed 速度] [-pitch 音高] [-voice 音色]
-                    [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
+    [-breath on/off] [-stress on/off] [-dialect 方言] [-volume 音量]
     """
     import re
 

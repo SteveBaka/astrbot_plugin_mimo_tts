@@ -1,5 +1,98 @@
 # CHANGELOG
 
+## 2026-09-15 v2.4.1
+
+> ：导演角色库（P5-M1）+ 会话级导演管理。
+
+### 新增
+
+- **角色库 `director_characters`**（配置 JSON 权威，与风格示例池同构）：保存即生效；`plugin_data` 旧文件仅作空配置时迁移。
+- **`/direct <角色名>`**：短名/id 精确匹配后应用角色（内置场景优先）；`/char list|show` 查询，`/char add|set|del`（管理员）写回配置。
+- **绑定策略**（默认 `keep`，与旧行为一致）：
+  - `character_voice_policy`：`keep` / `force`
+  - `character_mode_policy`：`keep` / `bind`（角色可带 `tts_mode`；**design 永不绑定**）
+- **`director_snapshot`**：首次改写会话 voice/tts_mode 时记录进入前状态；**仅 sticky+pending 皆空**时恢复。
+- **分层清除**：`/direct off sticky|pending`；WebUI「只清常驻 / 只清一次」；`director/clear` 支持 `layer`。
+- **Voice Studio**：
+  - 配置页「导演模式」分组 + 角色库 JSON 编辑器（等宽 + 格式化）
+  - 合成页控制台：角色/场景/分层清除/快照展示
+  - 会话管理：列表导演摘要（`常驻：角色 · 一次性：场景`）；编辑内嵌导演迷你区（应用/清除，与命令同源）
+  - 会话保存后原地更新、不折叠表单；WebUI toast 只报层（详情在「当前状态」）
+
+### 变更
+
+- `/direct` 查看态与帮助文案统一为「会话常驻配置 / 一次性配置」。
+- WebUI 清除/保存点一次即执行（Dashboard WebView 内不用原生 `confirm`）。
+- `index.html` 静态资源带 `?v=` 防止 WebView 缓存旧前端。
+- `sessions/update` 白名单**不含**导演字段（保存只写基础 TTS；手动保存覆盖角色绑定结果）。
+
+### 修复
+
+- 会话编辑表单被动画 `max-height` 裁切、无法滚到底。
+- Voice Studio JSON 池保存失败（Vue reactive 代理）与保存后 Dashboard 变一行。
+- 会话列表操作后跳回页顶（改为 silent 刷新 + `.main-content` 滚动保持 + 单会话 patch）。
+
+
+## 2026-09-12 v2.4.0
+
+> **导演模式 P3 正式版**（内部 test1–test7 收口）。默认关闭；关闭时全链路与 v2.3.2 等价。
+
+### 新增：导演模式
+
+- **`/direct` 命令（公开）**
+  - `/direct <内置场景名|三维稿|自然语言>` → 会话常驻（sticky）
+  - `/direct once <…>` → 仅下一次合成（pending，优先于常驻，用尽自动回落）
+  - `/direct` 查看两层状态；`/direct off` 双层全清
+  - 三维稿：中文「角色/场景/指导」或英文 Role/Scene/Guidance
+- **双层状态（P3 增强）**
+  - `director_sticky` + `director_pending`；once **不**再覆盖会话常驻
+  - 旧单槽 `director_mode`/`director_payload` 自动迁移（已有新字段不覆盖）
+  - pending 成功消费后只清 pending，回落 sticky
+- **内置场景 ×6**：深夜电台 / 哄睡 / 元气早安 / 古风叙事 / 新闻播报 / emo 独白
+- **可选 LLM 自由解析**：`director_parse_llm` + `director_parse_prompt` + 超时/缓存 + 专用 Provider（回退：专用 → 润色 → 当前对话）；失败不中断其它功能
+- **注入范围**：default / 克隆 / 唱歌；**design 不注入**（user=音色身份）
+- **配置分组「导演模式」**：`director_enabled` 等，默认全关
+- **模块**：`core/director_*` + `handlers/director.py`；`main.py` 仅注册
+
+### 新增：Voice Studio 导演控制台
+
+- REST：`director/scenes|state|parse|apply|clear`；`/tts` 临时覆盖 `director_sticky`/`director_pending`
+- 合成页控制台卡片：UID / 内置场景 / 自定义描述 / 应用（session|once）/ 清除 / 分层状态
+- 与 `/direct` 同一 `user_state` 状态源；合成默认吃已应用状态
+
+### 日志与可观测
+
+- `synthesize text … director=pending|sticky|pending+sticky|-`（`text=` = 实际朗读正文）
+- `director set … layer=sticky|pending`；`director prompt applied mode=default|clone|…`
+- 不做 ASR 回环：正文以 API assistant 字段为准
+
+### 使用示例
+
+```
+/direct 哄睡
+/direct once 元气早安
+/mimo_say …          # director=pending+sticky，元气
+/mimo_say …          # director=sticky，回落哄睡
+/direct off          # 双层全清
+```
+
+### 边界
+
+1. 场景包级双层；**不做**逐维粘性（P5）
+2. 自动 TTS 会消费 pending
+3. design 不注入；`mimo_direct` / `director_for_design` 未实现
+4. clone + 哄睡等慢速场景叠层过重时，起音可能有轻微杂音（观察项，频繁再收窄）
+
+### 验证（2026-09-12）
+
+| 项 | 结果 |
+|----|------|
+| 单测 | **136/136** |
+| review | **0 error** |
+| 安装 | force_refresh → activated，failed 空，组件 34 |
+| 双层闭环日志 | set sticky → set pending → `pending+sticky` → `sticky` 回落 → off 双清 |
+| 听感 | 用户确认闭环；clone 起音杂音见边界 4 |
+
 ## 2026-09-04 v2.3.2
 
 ### 修复（缓存清理机制加固，补齐跨进程生命周期缺口）

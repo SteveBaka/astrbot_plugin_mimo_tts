@@ -22,11 +22,11 @@ from typing import Callable
 _BLANK_SEG_RE = re.compile(r"^(?:[-=*_~—·.>\s]|#)+$")
 
 # ── 投递动作 ──
-BUNDLED = "bundled"              # 文字+语音捆绑一条消息
-TEXT_FIRST = "text_first"        # 文字立即发，语音后台串行补发
-VOICE_ONLY = "voice_only"        # 仅语音
+BUNDLED = "bundled"  # 文字+语音捆绑一条消息
+TEXT_FIRST = "text_first"  # 文字立即发，语音后台串行补发
+VOICE_ONLY = "voice_only"  # 仅语音
 TEXT_FALLBACK = "text_fallback"  # 无语音段：纯文字兜底
-DROP = "drop"                    # 无语音段且兜底关闭：丢弃（仅记录日志）
+DROP = "drop"  # 无语音段且兜底关闭：丢弃（仅记录日志）
 
 
 @dataclass
@@ -34,8 +34,8 @@ class SegmentPlan:
     """单个分段的掷骰结果。"""
 
     text: str
-    short: bool        # 过短段：策略性纯文字（不值得单独合成），不掷骰
-    want_voice: bool   # 掷骰命中；实际能否出语音由执行层合成结果决定
+    short: bool  # 过短段：策略性纯文字（不值得单独合成），不掷骰
+    want_voice: bool  # 掷骰命中；实际能否出语音由执行层合成结果决定
     blank: bool = False  # 纯分隔线/空段：整段丢弃（不受兜底开关约束）
 
 
@@ -53,11 +53,15 @@ def plan_segments(
     plans: list[SegmentPlan] = []
     for seg in segments:
         if not seg or _BLANK_SEG_RE.match(seg):
-            plans.append(SegmentPlan(text=seg, short=False, want_voice=False, blank=True))
+            plans.append(
+                SegmentPlan(text=seg, short=False, want_voice=False, blank=True)
+            )
         elif len(seg) < min_length:
             plans.append(SegmentPlan(text=seg, short=True, want_voice=False))
         else:
-            plans.append(SegmentPlan(text=seg, short=False, want_voice=rng() < probability))
+            plans.append(
+                SegmentPlan(text=seg, short=False, want_voice=rng() < probability)
+            )
     return plans
 
 

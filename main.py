@@ -15,6 +15,7 @@ from astrbot.api.star import Context, Star, StarTools
 
 from .core.config import ConfigManager, migrate_sing_styles
 from .core.constants import SEGMENT_PATTERNS, SKIP_PATTERNS
+from .core.director_characters import CharacterStore
 from .core.polish import polish_text_with_llm
 from .core.text_utils import should_skip, split_text
 from .core.user_state import UserStateManager
@@ -46,6 +47,8 @@ from .handlers.singstyle import (
     handle_singstyle_show,
 )
 from .handlers.nl_sing import handle_nl_sing, handle_nl_sing_tool
+from .handlers.director import handle_direct
+from .handlers.characters import handle_char
 from .handlers.settings import handle_ttsconfig, handle_ttsformat, handle_ttsinfo
 from .handlers.tts import handle_mimo_say, handle_sing, handle_ttsraw
 from .handlers.voice import (
@@ -93,14 +96,21 @@ class MiMoTTSPlugin(Star):
         self.synth = TTSSynthesizer(self.config, self._voice_manager, self._data_dir)
         # 歌词润色回调注入：所有唱歌入口（命令/WebUI/NL）共用同一润色链路
         self.synth.lyrics_polisher = partial(polish_lyrics_with_llm, self)
+        # 角色库：配置 director_characters 权威（保存即生效）；file 仅迁移兜底
+        self.director_characters = CharacterStore(
+            config=self.config, data_dir=self._data_dir
+        )
+        self.synth.director_characters = self.director_characters
 
         # ── Plugin logger (WebUI log page) ──
         from .core.plugin_logger import PluginLogger
+
         self.plog = PluginLogger(self._data_dir, config_ref=self.config)
         self.plog.cleanup_old_logs()
 
         self.user_state.load()
         self.user_state.cleanup_temp_dir()
+        self.director_characters.load()
 
         register_web_apis(context, self)
 
@@ -227,6 +237,11 @@ class MiMoTTSPlugin(Star):
             self.plog.info("TTS", f"合成完成 {size_kb}KB → {audio_path.name}")
             self.user_state.recent_files.append((time.time(), audio_path))
             self.user_state.cleanup_recent_files()
+            # 导演 once：只消费 pending；sticky 常驻层保留（失败保留便于重试）
+            uset = self._get_user_settings(uid)
+            if str(uset.get("director_pending") or "").strip():
+                uset["director_pending"] = ""
+                self._persist_current_state()
         return audio_path
 
     async def terminate(self) -> None:
@@ -238,7 +253,6 @@ class MiMoTTSPlugin(Star):
     async def on_decorating_result(self, event: AstrMessageEvent):
         """回复消息前拦截 LLM 输出，自动生成语音回复。支持文本分段、LLM 音色润色、概率触发。"""
         await handle_auto_tts(self, event)
-
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=99)
     async def on_nl_sing(self, event: AstrMessageEvent):
@@ -269,6 +283,18 @@ class MiMoTTSPlugin(Star):
     async def cmd_sing(self, event: AstrMessageEvent):
         """唱歌模式 /sing [-音色名] [-s 风格组] [-p 提示词] <歌词>，支持 (风格) 括号简写"""
         async for item in handle_sing(self, event):
+            yield item
+
+    @filter.command("direct")
+    async def cmd_direct(self, event: AstrMessageEvent):
+        """导演模式 /direct <场景|角色名|三维稿> | once | off — 设置本对话朗读场景"""
+        async for item in handle_direct(self, event):
+            yield item
+
+    @filter.command("char")
+    async def cmd_char(self, event: AstrMessageEvent):
+        """导演角色库 /char [show|add|set|del <名>] — 查询与管理角色；应用用 /direct <角色名>"""
+        async for item in handle_char(self, event):
             yield item
 
     @filter.command_group("singstyle")
@@ -502,9 +528,7 @@ class MiMoTTSPlugin(Star):
         """从消息中提取命令参数部分（兼容 @bot 后缀与无斜杠写法）。"""
         raw = str(event.message_str or "").strip()
         base = cmd.lstrip("/")
-        m = re.match(
-            rf"^/?{re.escape(base)}(?:@[^\s]+)?(?:\s+|$)", raw, re.IGNORECASE
-        )
+        m = re.match(rf"^/?{re.escape(base)}(?:@[^\s]+)?(?:\s+|$)", raw, re.IGNORECASE)
         if m:
-            return raw[m.end():].strip()
-        return raw[len(cmd):].strip()
+            return raw[m.end() :].strip()
+        return raw[len(cmd) :].strip()

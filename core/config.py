@@ -41,7 +41,7 @@ def normalize_sing_style_tags(raw: Any) -> list[str]:
 # 内置风格示例池（§14 导演模式先导，v2.2.0）：官方风格词 → 画面感中文例句。
 # words 须为官方风格词（match 时只认词表）；例句禁用收窄词、每条 ≤40 字。
 STYLE_EXAMPLES_PRESET = (
-    '[\n'
+    "[\n"
     '  {\n    "name": "温柔甜美",\n    "words": "温柔 甜美",\n    "examples": ['
     '"像融化的棉花糖一样温柔，声音软糯清甜，尾音轻轻上扬，语速放缓",'
     '"像午后阳光里的一杯热牛奶，温柔绵密，每一句都带着甜甜的笑意"\n    ]\n  },\n'
@@ -105,11 +105,13 @@ def normalize_style_examples(raw: Any) -> list[dict]:
                 return [e.strip() for e in re.split(r"[\n;；]+", value) if e.strip()]
             return []
 
-        items.append({
-            "name": name[:_SING_NAME_MAX],
-            "words": _words(entry.get("words"))[:_EXAMPLE_WORDS_MAX],
-            "examples": _examples(entry.get("examples"))[:_EXAMPLE_TEXT_MAX],
-        })
+        items.append(
+            {
+                "name": name[:_SING_NAME_MAX],
+                "words": _words(entry.get("words"))[:_EXAMPLE_WORDS_MAX],
+                "examples": _examples(entry.get("examples"))[:_EXAMPLE_TEXT_MAX],
+            }
+        )
     return items[:STYLE_EXAMPLES_MAX]
 
 
@@ -155,8 +157,13 @@ _SING_STYLES_PRESET_V2 = (
 
 
 def _normalize_style_entry(
-    name: str, style: Any, tags: Any, voice: Any,
-    speed: Any = None, pitch: Any = None, style_tags: Any = None,
+    name: str,
+    style: Any,
+    tags: Any,
+    voice: Any,
+    speed: Any = None,
+    pitch: Any = None,
+    style_tags: Any = None,
 ) -> dict:
     try:
         speed_val = (
@@ -165,9 +172,7 @@ def _normalize_style_entry(
     except (TypeError, ValueError):
         speed_val = None
     try:
-        pitch_val = (
-            max(-12, min(12, int(pitch))) if pitch not in (None, "") else None
-        )
+        pitch_val = max(-12, min(12, int(pitch))) if pitch not in (None, "") else None
     except (TypeError, ValueError):
         pitch_val = None
     return {
@@ -194,8 +199,10 @@ def _loads_lenient(text: str):
     except ValueError:
         pass
     repaired = (
-        text.replace(chr(8220), chr(34)).replace(chr(8221), chr(34))
-        .replace(chr(8216), chr(39)).replace(chr(8217), chr(39))
+        text.replace(chr(8220), chr(34))
+        .replace(chr(8221), chr(34))
+        .replace(chr(8216), chr(39))
+        .replace(chr(8217), chr(39))
     )
     for candidate in (repaired, "[" + repaired + "]", "[" + text + "]"):
         try:
@@ -237,15 +244,17 @@ def normalize_sing_styles(raw: Any) -> list[dict]:
             continue
         if not str(entry.get("name", "")).strip():
             continue
-        items.append(_normalize_style_entry(
-            entry.get("name", ""),
-            entry.get("style", ""),
-            entry.get("tags", ""),
-            entry.get("voice", ""),
-            entry.get("speed"),
-            entry.get("pitch"),
-            entry.get("style_tags"),
-        ))
+        items.append(
+            _normalize_style_entry(
+                entry.get("name", ""),
+                entry.get("style", ""),
+                entry.get("tags", ""),
+                entry.get("voice", ""),
+                entry.get("speed"),
+                entry.get("pitch"),
+                entry.get("style_tags"),
+            )
+        )
     return items[:SING_STYLES_MAX]
 
 
@@ -296,11 +305,13 @@ def normalize_clone_style_pool(raw: Any) -> list[dict]:
         name = str(entry.get("name", "")).strip()
         if not name:
             continue
-        items.append({
-            "name": name,
-            "style": str(entry.get("style", "") or "").strip(),
-            "audio_tags": str(entry.get("audio_tags", "") or "").strip(),
-        })
+        items.append(
+            {
+                "name": name,
+                "style": str(entry.get("style", "") or "").strip(),
+                "audio_tags": str(entry.get("audio_tags", "") or "").strip(),
+            }
+        )
     return items
 
 
@@ -349,10 +360,12 @@ def normalize_design_style_pool(raw: Any) -> list[dict]:
         name = str(entry.get("name", "")).strip()
         if not name:
             continue
-        items.append({
-            "name": name,
-            "description": str(entry.get("description", "") or "").strip(),
-        })
+        items.append(
+            {
+                "name": name,
+                "description": str(entry.get("description", "") or "").strip(),
+            }
+        )
     return items
 
 
@@ -431,6 +444,18 @@ class ConfigManager:
         "nl_sing_tool": False,
         "tts_output_mode": "default",
         "tts_example_inject": False,
+        "director_enabled": False,
+        "director_parse_llm": False,
+        "director_parse_llm_provider": "",
+        "director_parse_prompt": "",
+        "director_timeout": 8,
+        "director_cache_ttl": 300,
+        "director_characters_enabled": False,
+        "character_require_voice": True,
+        "director_characters": "",
+        # keep=保留会话音色/模式；force=覆盖音色；bind=同时按角色 tts_mode 切换（design 排除）
+        "character_voice_policy": "keep",
+        "character_mode_policy": "keep",
         # TTS parameters
         "emotion_override": "",
         "default_speed": 1.0,
@@ -681,6 +706,69 @@ class ConfigManager:
         return str(self._flat.get("style_hint", ""))
 
     @property
+    def director_enabled(self) -> bool:
+        return bool(self._flat.get("director_enabled", False))
+
+    @property
+    def director_characters_enabled(self) -> bool:
+        return bool(self._flat.get("director_characters_enabled", False))
+
+    @property
+    def character_require_voice(self) -> bool:
+        return bool(self._flat.get("character_require_voice", True))
+
+    @property
+    def character_voice_policy(self) -> str:
+        value = (
+            str(self._flat.get("character_voice_policy", "keep") or "keep")
+            .strip()
+            .lower()
+        )
+        return value if value in ("keep", "force") else "keep"
+
+    @property
+    def character_mode_policy(self) -> str:
+        value = (
+            str(self._flat.get("character_mode_policy", "keep") or "keep")
+            .strip()
+            .lower()
+        )
+        return value if value in ("keep", "bind") else "keep"
+
+    @property
+    def director_characters(self) -> Any:
+        """角色库原始配置（JSON 字符串或列表）；解析见 CharacterStore。"""
+        return self._flat.get("director_characters", "")
+
+    @property
+    def director_parse_llm(self) -> bool:
+        return bool(self._flat.get("director_parse_llm", False))
+
+    @property
+    def director_parse_llm_provider(self) -> str:
+        return str(self._flat.get("director_parse_llm_provider", "") or "")
+
+    @property
+    def director_parse_prompt(self) -> str:
+        return str(self._flat.get("director_parse_prompt", "") or "")
+
+    @property
+    def director_timeout(self) -> int:
+        try:
+            value = int(self._flat.get("director_timeout", 8) or 0)
+        except (TypeError, ValueError):
+            value = 8
+        return max(0, value)
+
+    @property
+    def director_cache_ttl(self) -> int:
+        try:
+            value = int(self._flat.get("director_cache_ttl", 300) or 0)
+        except (TypeError, ValueError):
+            value = 300
+        return max(0, value)
+
+    @property
     def breath_enabled(self) -> bool:
         return bool(self._flat.get("breath_enabled", False))
 
@@ -743,11 +831,13 @@ class ConfigManager:
         pool = self.clone_style_pool
         entry = find_clone_pool_entry(pool, voice_id)
         if entry is None:
-            pool.append({
-                "name": voice_id,
-                "style": str(style or "").strip(),
-                "audio_tags": str(audio_tags or "").strip(),
-            })
+            pool.append(
+                {
+                    "name": voice_id,
+                    "style": str(style or "").strip(),
+                    "audio_tags": str(audio_tags or "").strip(),
+                }
+            )
         else:
             entry["style"] = str(style or "").strip()
             entry["audio_tags"] = str(audio_tags or "").strip()
@@ -777,17 +867,13 @@ class ConfigManager:
         与合成链路联动（resolve_design_description）。描述可填
         style_examples 分类名（方案 A 精确引用），供导演模式素材复用。
         """
-        return normalize_design_style_pool(
-            self._flat.get("design_style_pool", "[]")
-        )
+        return normalize_design_style_pool(self._flat.get("design_style_pool", "[]"))
 
     def get_design_pool_entry(self, voice_id: str) -> Optional[dict]:
         """按设计音色 voice_id 查风格控制池条目（未配置返回 None）。"""
         return find_design_pool_entry(self.design_style_pool, voice_id)
 
-    def upsert_design_pool_entry(
-        self, voice_id: str, description: str = ""
-    ) -> None:
+    def upsert_design_pool_entry(self, voice_id: str, description: str = "") -> None:
         """新增或更新设计音色风格控制池条目（写回配置，与面板联动）。
 
         条目存在则更新 description；不存在则追加。空值同样落库
@@ -799,10 +885,12 @@ class ConfigManager:
         pool = self.design_style_pool
         entry = find_design_pool_entry(pool, voice_id)
         if entry is None:
-            pool.append({
-                "name": voice_id,
-                "description": str(description or "").strip(),
-            })
+            pool.append(
+                {
+                    "name": voice_id,
+                    "description": str(description or "").strip(),
+                }
+            )
         else:
             entry["description"] = str(description or "").strip()
         self.set(

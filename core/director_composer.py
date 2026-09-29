@@ -1,0 +1,170 @@
+# -*- coding: utf-8 -*-
+"""导演模式组合层：覆盖合并 + 固定中文骨架渲染。
+
+只填空档：显式速度等会过滤 guidance 中对应提示，不改用户设置本身。
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Optional
+
+from .director_assets import (
+    SKELETON_CHARACTER,
+    SKELETON_GUIDANCE,
+    SKELETON_SCENE,
+)
+from .director_package import ScenePackage, loads_package
+
+_SPEED_CUES = re.compile(
+    r"(极慢|缓慢|稍慢|稍快|急促|语速偏慢|语速稍快|语速很慢|很慢)",
+)
+
+
+def filter_conflicts(pkg: ScenePackage, uset: Optional[dict] = None) -> ScenePackage:
+    """按会话显式设置过滤 guidance 冲突提示（只读 uset，不修改 uset）。"""
+    uset = uset or {}
+    guidance = pkg.guidance
+    if not guidance:
+        return pkg
+
+    try:
+        speed = float(uset.get("speed", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        speed = 1.0
+    if abs(speed - 1.0) > 1e-6:
+        guidance = _SPEED_CUES.sub("", guidance)
+        guidance = re.sub(r"\n{3,}", "\n\n", guidance).strip()
+
+    return ScenePackage(
+        scene_name=pkg.scene_name,
+        character_id=pkg.character_id,
+        character=pkg.character,
+        scene=pkg.scene,
+        guidance=guidance,
+        style_words=list(pkg.style_words),
+        guidance_source=pkg.guidance_source,
+    )
+
+
+def render_user_text(pkg: ScenePackage) -> str:
+    """渲染固定中文三维骨架；空段整段省略。"""
+    if pkg is None or pkg.is_empty():
+        return ""
+    parts: list[str] = []
+    if pkg.character:
+        parts.append(SKELETON_CHARACTER.format(character=pkg.character.strip()))
+    if pkg.scene:
+        parts.append(SKELETON_SCENE.format(scene=pkg.scene.strip()))
+    guidance = (pkg.guidance or "").strip()
+    if not guidance and pkg.style_words:
+        guidance = "整体偏" + "、".join(pkg.style_words) + "，语气自然。"
+    if guidance:
+        parts.append(SKELETON_GUIDANCE.format(guidance=guidance))
+    return "\n".join(parts)
+
+
+def merge_director_into_prompt(base_prompt: str, director_text: str) -> str:
+    """base 控制短句与导演骨架拼接；骨架含换行时独立成块。"""
+    head = str(base_prompt or "").strip()
+    body = str(director_text or "").strip()
+    if not head:
+        return body
+    if not body:
+        return head
+    if "\n" in body:
+        return f"{head}\n{body}"
+    return f"{head}，{body}"
+
+
+def resolve_effective_director(
+    uset: Optional[dict] = None,
+    characters=None,
+) -> tuple[Optional[ScenePackage], str]:
+    """双层取包：pending 优先，其次 sticky。返回 ``(pkg, layer)``。
+
+    ``layer`` ∈ ``{"", "pending", "sticky"}``；无有效包时 ``pkg`` 为 None。
+    ``characters`` 为可选 CharacterStore；命中 ``character_id`` 时用库内容展开。
+    """
+    uset = uset or {}
+    pending = loads_package(uset.get("director_pending"))
+    if pending:
+        return _expand_character(pending, characters), "pending"
+    sticky = loads_package(uset.get("director_sticky"))
+    if sticky:
+        return _expand_character(sticky, characters), "sticky"
+    return None, ""
+
+
+def _expand_character(pkg: ScenePackage, characters=None) -> ScenePackage:
+    """按 character_id 从角色库刷新 character/guidance；无库或未命中则原样。"""
+    if not pkg or not pkg.character_id or characters is None:
+        return pkg
+    entry = characters.get(pkg.character_id)
+    if not entry:
+        return pkg
+    character = str(entry.get("character") or pkg.character or "")
+    guidance = str(entry.get("baseline_guidance") or pkg.guidance or "")
+    scene = pkg.scene or str(entry.get("scene") or "")
+    return ScenePackage(
+        scene_name=pkg.scene_name or str(entry.get("name") or ""),
+        character_id=pkg.character_id,
+        character=character,
+        scene=scene,
+        guidance=guidance,
+        style_words=list(pkg.style_words or entry.get("style_words") or []),
+        guidance_source=pkg.guidance_source,
+    )
+
+
+def director_state_label(uset: Optional[dict] = None) -> str:
+    """合成日志标注：pending / sticky / pending+sticky / 空。"""
+    uset = uset or {}
+    has_pending = bool(str(uset.get("director_pending") or "").strip())
+    has_sticky = bool(str(uset.get("director_sticky") or "").strip())
+    if has_pending and has_sticky:
+        return "pending+sticky"
+    if has_pending:
+        return "pending"
+    if has_sticky:
+        return "sticky"
+    return ""
+
+
+def format_director_status(uset: Optional[dict] = None) -> str:
+    """/direct 查看态文案：仅显示已设置的层（无 pending 不展示一次性行）。"""
+    uset = uset or {}
+    sticky = loads_package(uset.get("director_sticky"))
+    pending = loads_package(uset.get("director_pending"))
+    if not sticky and not pending:
+        return ""
+    lines: list[str] = []
+    if sticky:
+        lines.append(f"会话常驻配置: {sticky.summary()}")
+    if pending:
+        lines.append(f"一次性配置（优先）: {pending.summary()}")
+    lines.append("清除: /direct off　临时一次: /direct once <场景|角色名>")
+    return "\n".join(lines)
+
+
+def apply_director_to_prompt(
+    base_prompt: str,
+    uset: Optional[dict] = None,
+    characters=None,
+) -> str:
+    """从 uset 双层导演状态合成最终 user 控制稿；无包时原样返回。
+
+    ``base_prompt`` 已含 emotion/style_hint 等（build_control_prompt），
+    此处只把导演骨架拼接在后，避免重复注入 style_hint。
+    pending 优先于 sticky；不合并两层。
+    ``characters``：可选 CharacterStore，按 character_id 展开库内容。
+    """
+    uset = uset or {}
+    pkg, _layer = resolve_effective_director(uset, characters=characters)
+    if not pkg:
+        return base_prompt
+    pkg = filter_conflicts(pkg, uset)
+    director_text = render_user_text(pkg)
+    if not director_text:
+        return base_prompt
+    return merge_director_into_prompt(base_prompt, director_text)

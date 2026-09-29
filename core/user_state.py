@@ -40,6 +40,14 @@ def sanitize_user_settings(data: dict) -> dict:
         # None = 跟随插件全局配置；True/False = WebUI 会话级显式覆盖
         "enable_segmentation": None,
         "enable_voice_polish": None,
+        # 导演双层（P3 增强）：sticky=会话常驻；pending=仅下一次（优先）
+        # 旧单槽 director_mode/director_payload 仅作迁移输入，迁移后清空
+        "director_sticky": "",
+        "director_pending": "",
+        "director_mode": "",
+        "director_payload": "",
+        # 进入导演前的 voice/tts_mode 快照；/direct off 时恢复并清空
+        "director_snapshot": None,
     }
     cleaned = dict(defaults)
     if isinstance(data, dict):
@@ -68,6 +76,27 @@ def sanitize_user_settings(data: dict) -> dict:
     for key in ("enable_segmentation", "enable_voice_polish"):
         value = cleaned.get(key, None)
         cleaned[key] = None if value is None else bool(value)
+    cleaned["director_sticky"] = str(cleaned.get("director_sticky", "") or "")[:2000]
+    cleaned["director_pending"] = str(cleaned.get("director_pending", "") or "")[:2000]
+    # 旧单槽迁移：once→pending、session→sticky；已有新字段时不覆盖
+    legacy_mode = str(cleaned.get("director_mode", "") or "").strip().lower()
+    legacy_payload = str(cleaned.get("director_payload", "") or "")[:2000]
+    if legacy_payload and legacy_mode in ("once", "session"):
+        if legacy_mode == "once" and not cleaned["director_pending"]:
+            cleaned["director_pending"] = legacy_payload
+        elif legacy_mode == "session" and not cleaned["director_sticky"]:
+            cleaned["director_sticky"] = legacy_payload
+    cleaned["director_mode"] = ""
+    cleaned["director_payload"] = ""
+    snap = cleaned.get("director_snapshot", None)
+    if isinstance(snap, dict):
+        cleaned["director_snapshot"] = {
+            "voice": str(snap.get("voice") or ""),
+            "tts_mode": str(snap.get("tts_mode") or ""),
+            "saved_at": snap.get("saved_at"),
+        }
+    else:
+        cleaned["director_snapshot"] = None
     return cleaned
 
 
@@ -269,13 +298,20 @@ class UserStateManager:
                 # None = 跟随全局（每次实时读 config，改全局配置立即生效）
                 "enable_segmentation": None,
                 "enable_voice_polish": None,
+                "director_sticky": "",
+                "director_pending": "",
+                "director_mode": "",
+                "director_payload": "",
+                "director_snapshot": None,
             }
         self.touch_user(uid)
         return self._user_settings[uid]
 
     def should_send_text_with_tts(self, uid: str, normalize_tts_mode) -> bool:
         """Check if text should be sent alongside TTS audio."""
-        text_enabled = self.get_settings(uid, normalize_tts_mode).get("text_enabled", None)
+        text_enabled = self.get_settings(uid, normalize_tts_mode).get(
+            "text_enabled", None
+        )
         if text_enabled is None:
             return self._config.send_text_with_tts
         return bool(text_enabled)

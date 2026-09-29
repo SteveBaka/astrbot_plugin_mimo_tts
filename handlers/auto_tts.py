@@ -24,6 +24,7 @@ def _detect_emotion(uset: dict, text: str) -> Optional[str]:
     if uset.get("emotion") and uset.get("emotion") != "auto":
         return None
     from ..emotion.emotion_detector import detect_emotion
+
     return detect_emotion(text) or None
 
 
@@ -132,7 +133,9 @@ async def handle_auto_tts(plugin, event: AstrMessageEvent) -> None:
                 await event.send(MessageChain().message(strip_tts_tags(tts_text)))
                 result.chain = []
                 asyncio.create_task(
-                    send_tts_audio_background(plugin, event, plain, uid, tts_text=tts_text)
+                    send_tts_audio_background(
+                        plugin, event, plain, uid, tts_text=tts_text
+                    )
                 )
             else:
                 await event.send(MessageChain().message(strip_tts_tags(plain)))
