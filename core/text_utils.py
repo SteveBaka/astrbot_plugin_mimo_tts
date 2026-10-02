@@ -3,18 +3,10 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
-try:
-    from astrbot.api import logger
-    from astrbot.api.message_components import Plain, Record
-except ImportError:  # 独立导入（纯逻辑单测）时无 AstrBot 运行时，仅保证可导入
-    logger = logging.getLogger("astrbot")
-    Plain = type(
-        "Plain", (), {"__init__": lambda self, text="": setattr(self, "text", text)}
-    )
-    Record = type("Record", (), {})
+from astrbot.api import logger
+from astrbot.api.message_components import Plain, Record
 
 
 def should_skip(
