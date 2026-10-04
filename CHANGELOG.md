@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-10-04 v2.4.2
+
+> **日志器规范合规修复**（移除内置 `logging` 回退分支）。
+
+### 修复
+
+- **日志器规范违规**：`core/text_utils.py` 原以 `import logging` + `logging.getLogger("astrbot")` 作为 `ImportError` 回退，违反插件规范「日志器必须且只能 `from astrbot.api import logger`」，导致上架自动审查判定不予上架。现改为直接导入 `astrbot.api` 的 `logger` 与 `message_components`；独立单测所需的 `Plain` / `Record` 桩改由 `tests/conftest.py` 提供（`tests/` 不随插件分发）。
+- 运行时 `logger` 恒为 `astrbot.api.logger`，**全部日志语句逐字未变**；仅 `log_tts_text()` 的来源行号因删减 8 行 import 块由 `text_utils:220` 移至 `text_utils:212`。日志检索请以讯息内文 `[MiMO TTS] synthesize text` 为准，勿写死行号。
+
+### 验证
+
+- `ruff format --check` / `ruff check` 通过；全套单测 151 passed。
+- 本地安装至 AstrBot 4.28.1 实测：插件干净载入、failed=0、无 `ImportError`，分段与合成流程正常。
+
+
 ## 2026-09-15 v2.4.1
 
 > ：导演角色库（P5-M1）+ 会话级导演管理。
