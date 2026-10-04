@@ -2,61 +2,28 @@
 
 ## 2026-10-01 v2.4.5
 
-> **以 main 为基準**：非流式自动 TTS 回归 main 语义；流式仅 `on_llm_response` 补音。
-
-### 变更
-
-- **非流式 decorate（auto_tts）**：恢复 main 流程（`_is_tts_active` + 分段/全文），**移除** claim / dedup / resolve_tts_active 等可能改变 main 行为的逻辑。
-- **background TTS**：恢复 main（无 claim）。
-- **流式**：`on_llm_response` 仅在 `STREAMING_*` 时出声；非流式立即 return 交给 decorate。
-- 分段 `text_already_sent` 仅流式调用使用；非流式保持 main 先字后音。
-
----
-
-## 2026-10-01 v2.4.4
-
-> **分段语音顺序修复**：非流式回到 decorate「先字后音」；流式仍由 `on_llm_response` 只补音。
-
-### 修复
-
-- **非流式 `on_llm_response` 早退**：result 非 `STREAMING_*` 时不出声、不 claim，避免 `text_already_sent=True` 误用导致音群前置、整段文字押后（WebChat/非流式日誌 00:07 天气案例）。
-- **decorate 恢复非流式出声**：不再因 `stream_llm_tts_compat=true` 无条件跳过；仅在 streaming 结果或已 claim 时 skip。
-- 流式路径行为不变：`on_llm_response` + `text_already_sent=True`，只补语音。
-- 双音保护保留：claim + 共享去重。
-
----
-
-## 2026-09-30 v2.4.3
-
-> **双音修复**：同文只出一次语音；流式兼容开启时语音唯一出口为 `on_llm_response`。
-
-### 修复
-
-- `VoiceDedupStore` 改为插件实例/进程级共享（修复每次新建空表导致去重失效）。
-- 事件级 `claim_voice_send` / `_mimo_tts_voice_sent`：一条回复只允许一次自动语音。
-- `stream_llm_tts_compat=true` 时 decorate **不再出声**（避免 chain 塞 Record 造成先音后字与双音）。
-- `stream_llm_tts_compat=false` 保持 v2.4.1 decorate 路径。
-- background TTS 发送前抢占，防止与 `on_llm_response` 双发。
-
----
-
-## 2026-09-30 v2.4.2
-
-> **流式输出自动 TTS 兼容（方案 A）**：AstrBot 开启「流式输出」后，MiMO 自动语音仍可出声。
+> **流式输出自动 TTS 兼容**（原开发迭代 v2.4.2–v2.4.4 已并入本条）：AstrBot 开启「流式输出」后 MiMO 自动语音仍可出声；非流式行为回归 main 语义。
 
 ### 新增
 
-- **`on_llm_response` 自动 TTS**：LLM 流式结束/响应完成后取全文合成语音；语音用 `event.send(Record)` 发送。
+- **`on_llm_response` 自动 TTS**（`handlers/llm_response_tts.py`）：LLM 流式结束/响应完成后取全文合成语音，语音用 `event.send(Record)` 发送；result 非 `STREAMING_*` 时立即 return 交给 decorate。
 - **`core/stream_compat.py`**：结果类型判定 + 文本提取 + 短窗去重（decorate 与 llm_response 双路防双发）。
 - **配置 `stream_llm_tts_compat`**（默认 `true`）：流式下仍自动 TTS 的总开关。
 - 预留 P3：`tts_stream_synthesis`（默认 `false`）、`stream_tts_timeout`（默认 `60`）；本版本 MiMO API 仍恒 `stream=false`。
 
+### 修复
+
+- **双音**：`VoiceDedupStore` 改为插件实例/进程级共享（修复每次新建空表导致去重失效）；事件级 `claim_voice_send` / `_mimo_tts_voice_sent` 保证一条回复只出一次自动语音；background TTS 发送前抢占，防止与 `on_llm_response` 双发。
+- **分段语音顺序**：非流式 `on_llm_response` 在 result 非 `STREAMING_*` 时早退，不再误用 `text_already_sent=True`（避免音群前置、整段文字押后）；decorate 恢复非流式出声，仅在 streaming 结果或已 claim 时 skip。
+- `stream_llm_tts_compat=true` 时语音唯一出口为 `on_llm_response`；`=false` 时保持 v2.4.1 decorate 路径。
+
 ### 变更
 
-- `on_decorating_result` 增加流式结果守卫（非流式行为与 v2.4.1 一致）。
+- **非流式 decorate（auto_tts）**：恢复 main 流程（`_is_tts_active` + 分段/全文），移除 claim / dedup / resolve_tts_active 等可能改变 main 行为的逻辑；background TTS 同样恢复 main（无 claim）。
+- **流式守卫**：`on_decorating_result` 增加流式结果守卫；非流式行为与 v2.4.1 一致。
+- 分段 `execute_segmented_reply` 新增 `text_already_sent`，仅流式调用使用；非流式保持 main 先字后音。
 - 流式路径文字语义：字已由 AstrBot 直播，插件**不重复发全文**；`send_text_async` / `segment_text_fallback` / `display_polished_text` 在流式下不再发展示文字。
-- 流式 + `enable_voice_polish`：仍可为语音润色；`display_polished_text` 自动降级 false（不回写聊天文字）。
-- 流式 + 分段：只补语音，不重发段落文字。
+- 流式 + `enable_voice_polish`：仍可为语音润色，`display_polished_text` 自动降级 false（不回写聊天文字）；流式 + 分段只补语音，不重发段落文字。
 
 ### 兼容
 
@@ -65,6 +32,20 @@
 - clone / design 流式下仍出声；MiMO API 恒非流式请求。
 
 ---
+
+## 2026-10-04 v2.4.2
+
+> **日志器规范合规修复**（移除内置 `logging` 回退分支）。
+
+### 修复
+
+- **日志器规范违规**：`core/text_utils.py` 原以 `import logging` + `logging.getLogger("astrbot")` 作为 `ImportError` 回退，违反插件规范「日志器必须且只能 `from astrbot.api import logger`」，导致上架自动审查判定不予上架。现改为直接导入 `astrbot.api` 的 `logger` 与 `message_components`；独立单测所需的 `Plain` / `Record` 桩改由 `tests/conftest.py` 提供（`tests/` 不随插件分发）。
+- 运行时 `logger` 恒为 `astrbot.api.logger`，**全部日志语句逐字未变**；仅 `log_tts_text()` 的来源行号因删减 8 行 import 块由 `text_utils:220` 移至 `text_utils:212`。日志检索请以讯息内文 `[MiMO TTS] synthesize text` 为准，勿写死行号。
+
+### 验证
+
+- `ruff format --check` / `ruff check` 通过；全套单测 151 passed。
+- 本地安装至 AstrBot 4.28.1 实测：插件干净载入、failed=0、无 `ImportError`，分段与合成流程正常。
 
 ## 2026-09-15 v2.4.1
 
