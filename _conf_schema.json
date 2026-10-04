@@ -157,8 +157,26 @@
       "send_text_async": {
         "type": "bool",
         "description": "文字异步发送（先发文字后补语音）",
-        "hint": "开启时文字立即发送，语音后台合成后追加；关闭时等待语音合成完成后一起发送",
+        "hint": "开启时文字立即发送，语音后台合成后追加；关闭时等待语音合成完成后一起发送。AstrBot 流式输出开启时文字由平台直播，本开关不再重复发文字",
         "default": false
+      },
+      "stream_llm_tts_compat": {
+        "type": "bool",
+        "description": "流式输出自动 TTS 兼容",
+        "hint": "AstrBot 开启「流式输出」时，LLM 回复仍自动合成语音；语音在流式结束后通过 on_llm_response 发送，不重复发全文文字",
+        "default": true
+      },
+      "tts_stream_synthesis": {
+        "type": "bool",
+        "description": "MiMO TTS API 流式合成（实验）",
+        "hint": "仅 default 模型可选；clone/design 恒非流式。失败自动降级为非流式",
+        "default": false
+      },
+      "stream_tts_timeout": {
+        "type": "int",
+        "description": "流式合成超时（秒）",
+        "hint": "P3 流式合成总超时；默认 60",
+        "default": 60
       },
       "audio_format": {
         "type": "string",

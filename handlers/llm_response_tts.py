@@ -1,0 +1,153 @@
+# -*- coding: utf-8 -*-
+"""流式 LLM 完成后的自动 TTS：on_llm_response 入口（仅流式）。
+
+v2.4.5 路由：
+- **仅当** result 为 STREAMING_*（流式）时本钩子出声。
+- **非流式**：立即 return，交回 main 的 on_decorating_result 分段/全文路径。
+- 流式：claim + 短窗去重；分段 text_already_sent=True（只补音，不重发文字）。
+"""
+
+from __future__ import annotations
+
+from astrbot.api import logger
+from astrbot.api.event import AstrMessageEvent, MessageChain
+from astrbot.api.message_components import Record
+
+from ..core.stream_compat import (
+    claim_voice_send,
+    extract_text_from_llm_response,
+    has_voice_sent,
+    is_streaming_result,
+    resolve_tts_active,
+    text_hash,
+    voice_dedup,
+)
+from ..core.text_utils import looks_like_hidden_prompt_or_reasoning
+from .auto_tts import _detect_emotion
+from .segmenting import execute_segmented_reply
+
+
+async def _send_voice(
+    plugin,
+    event: AstrMessageEvent,
+    uid: str,
+    tts_text: str,
+    uset: dict,
+    polished: bool,
+) -> None:
+    emo_override = _detect_emotion(uset, tts_text)
+    audio_path = await plugin._do_tts(tts_text, uid, emotion_override=emo_override)
+    if not audio_path:
+        return
+    chain = MessageChain()
+    chain.chain.append(Record.fromFileSystem(str(audio_path)))
+    await event.send(chain)
+    logger.info(
+        "MiMO TTS: voice sent via=event.send llm_stream=on "
+        "uid=%s chars=%d path=%s polish=%s",
+        uid,
+        len(tts_text or ""),
+        getattr(audio_path, "name", audio_path),
+        polished,
+    )
+
+
+async def handle_llm_response_tts(plugin, event: AstrMessageEvent, resp) -> None:
+    """AstrBot on_llm_response：仅流式路径自动 TTS；非流式交给 main decorate。"""
+    if not getattr(plugin.config, "stream_llm_tts_compat", True):
+        return
+
+    plain = extract_text_from_llm_response(resp)
+    if not plain or plain.startswith("/"):
+        return
+
+    uid, uset = plugin._get_event_settings(event)
+    result = event.get_result()
+
+    # 非流式 / 尚未形成流式结果：保持 main 的 decorate 语义，本钩子不出声
+    if result is None or not is_streaming_result(result):
+        logger.info(
+            "MiMO TTS: skip llm_response TTS (non-stream; decorate owns voice) uid=%s",
+            uid,
+        )
+        return
+
+    if not resolve_tts_active(plugin, event, uid):
+        logger.info(
+            "MiMO TTS: auto TTS inactive on llm_response, skip. "
+            "(auto_tts=%s tts_enabled=%s hook=llm_response)",
+            plugin.config.get("auto_tts", True),
+            uset.get("tts_enabled", True),
+        )
+        return
+
+    dedup = voice_dedup(plugin)
+    if has_voice_sent(event):
+        logger.info("MiMO TTS: skip llm_response TTS (voice already sent) uid=%s", uid)
+        return
+    if dedup.seen(uid, plain):
+        logger.info(
+            "MiMO TTS: skip llm_response TTS (dedup) uid=%s hash=%s",
+            uid,
+            text_hash(plain)[:12],
+        )
+        return
+
+    chain = list(getattr(result, "chain", None) or [])
+    if any(isinstance(c, Record) for c in chain):
+        dedup.mark(uid, plain)
+        logger.info(
+            "MiMO TTS: skip llm_response TTS (chain already has Record) uid=%s",
+            uid,
+        )
+        return
+
+    if plugin._should_skip(plain):
+        logger.info(
+            "MiMO TTS: skip llm_response TTS (len/skip) chars=%d",
+            len(plain),
+        )
+        return
+    if looks_like_hidden_prompt_or_reasoning(plain):
+        logger.warning("MiMO TTS: skip llm_response TTS (hidden prompt/reasoning)")
+        return
+
+    polish_enabled = plugin._voice_polish_enabled(uid)
+    if plugin.config.display_polished_text and polish_enabled:
+        logger.warning(
+            "MiMO TTS: display_polished_text degraded under streaming; "
+            "chat text stays stream original"
+        )
+
+    if not claim_voice_send(event):
+        logger.info("MiMO TTS: skip llm_response TTS (claim failed) uid=%s", uid)
+        return
+
+    try:
+        if plugin._segmentation_enabled(uid):
+            segments = plugin._split_text(plain)
+            if segments:
+                await execute_segmented_reply(
+                    plugin,
+                    event,
+                    uid,
+                    uset,
+                    segments,
+                    text_already_sent=True,
+                )
+                dedup.mark(uid, plain)
+                return
+
+        tts_text = plain
+        if polish_enabled:
+            logger.info("MiMO TTS: voice polish in llm_response, calling LLM...")
+            plugin.plog.info("Polish", f"LLM 润色触发 uid={uid} (stream)")
+            tts_text = await plugin._polish_text_with_llm(plain, uid)
+
+        await _send_voice(plugin, event, uid, tts_text, uset, polished=polish_enabled)
+        dedup.mark(uid, plain)
+        if tts_text != plain:
+            dedup.mark(uid, tts_text)
+    except Exception as e:
+        logger.warning("MiMO TTS: llm_response TTS failed: %s", e)
+        plugin.plog.error("TTS", f"流式自动合成失败: {e}")

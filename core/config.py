@@ -473,6 +473,10 @@ class ConfigManager:
         "audio_format": "wav",
         "min_text_length": 5,
         "max_text_length": 500,
+        # Streaming compatibility (Plan A)
+        "stream_llm_tts_compat": True,
+        "tts_stream_synthesis": False,
+        "stream_tts_timeout": 60,
         # Segmentation
         "enable_segmentation": False,
         "segment_pattern": "sentence",
@@ -1023,6 +1027,24 @@ class ConfigManager:
     def display_polished_text(self) -> bool:
         """展示文字使用润色后文本，与语音内容一致（兜底小模型改写原文）。"""
         return bool(self._flat.get("display_polished_text", False))
+
+    @property
+    def stream_llm_tts_compat(self) -> bool:
+        """AstrBot LLM 流式输出开启时，是否仍自动出语音（P1）。"""
+        return bool(self._flat.get("stream_llm_tts_compat", True))
+
+    @property
+    def tts_stream_synthesis(self) -> bool:
+        """P3：default 模型是否尝试 MiMO API 流式合成（默认关）。"""
+        return bool(self._flat.get("tts_stream_synthesis", False))
+
+    @property
+    def stream_tts_timeout(self) -> int:
+        try:
+            value = int(self._flat.get("stream_tts_timeout", 60))
+        except (ValueError, TypeError):
+            value = 60
+        return max(5, value)
 
     @property
     def polish_llm_provider(self) -> str:
