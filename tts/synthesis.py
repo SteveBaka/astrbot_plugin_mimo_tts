@@ -135,6 +135,7 @@ class TTSSynthesizer:
         uid: str,
         get_user_settings,
         design_description: Optional[str] = None,
+        voice_override: Optional[str] = None,
     ) -> str:
         """Resolve the voice design description for the given uid.
 
@@ -150,7 +151,7 @@ class TTSSynthesizer:
         if str(design_description or "").strip():
             return str(design_description).strip()
         uset = get_user_settings(uid)
-        current_voice = self.resolve_voice(uset["voice"])
+        current_voice = self.resolve_voice(voice_override or uset["voice"])
         # 配置池权威（联动 conf_schema）
         entry = self._config.get_design_pool_entry(current_voice)
         if entry is not None:
@@ -210,7 +211,10 @@ class TTSSynthesizer:
 
         if mode == "design":
             description = self.resolve_design_description(
-                uid, get_user_settings, uset.get("design_description")
+                uid,
+                get_user_settings,
+                uset.get("design_description"),
+                uset.get("voice"),
             )
             if description:
                 return "", self._config.design_model, mode, None
@@ -270,7 +274,7 @@ class TTSSynthesizer:
         """
         if uset is None:
             uset = get_user_settings(uid)
-        style = self._config.style_hint
+        style = uset.get("style_hint") or self._config.style_hint
         return build_control_prompt(
             emotion=emotion_override
             if emotion_override is not None
@@ -566,7 +570,10 @@ class TTSSynthesizer:
                 )
             elif mode == "design":
                 design_description = self.resolve_design_description(
-                    uid, get_user_settings, uset.get("design_description")
+                    uid,
+                    get_user_settings,
+                    uset.get("design_description"),
+                    uset.get("voice"),
                 )
                 # 方案 A（§14.5）：设计描述精确等于示例池分类名 → 条目直取，
                 # 用该条目全部 words 生成词表提示 + 全部例句注入（快速切换 name）
