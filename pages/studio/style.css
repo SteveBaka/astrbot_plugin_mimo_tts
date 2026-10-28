@@ -363,6 +363,10 @@ body {
 .alert .icon { font-size: 16px; flex-shrink: 0; }
 .alert-error { background: var(--danger-bg); color: var(--danger); border-color: rgba(255, 92, 106, 0.15); }
 .alert-success { background: var(--success-bg); color: var(--success); border-color: rgba(74, 222, 128, 0.15); }
+.alert-warn { background: var(--warn-bg); color: var(--warn); border-color: rgba(217, 119, 6, 0.2); }
+.stream-seg-compat { align-items: flex-start; line-height: 1.5; }
+.stream-seg-compat .icon { margin-top: 2px; }
+.stream-seg-compat strong { font-weight: 600; }
 
 /* ── Loading / Empty ── */
 .loading {
@@ -875,6 +879,95 @@ select.select-input { cursor: pointer; appearance: auto; }
 .config-field .text-input,
 .config-field .select-input { flex: 1; }
 .config-field .toggle { flex-shrink: 0; }
+/* multi chips 多选（Dashboard list 原生样式） */
+.multi-select-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+.multi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 28px 4px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  cursor: pointer;
+}
+.multi-chips:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+}
+.multi-placeholder {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.multi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-dim);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.multi-chip-x {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+.multi-chip-x:hover { color: var(--danger); }
+.multi-caret {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  font-size: 12px;
+}
+.multi-caret.open { transform: translateY(-50%) rotate(180deg); }
+.multi-dropdown {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px;
+}
+.multi-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.multi-option:hover { background: var(--bg-hover); color: var(--text); }
+.multi-option input {
+  accent-color: var(--accent);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
 /* JSON 池编辑器：等宽、可分段阅读（与 Dashboard 代码编辑器观感对齐） */
 .config-field:has(.json-editor-wrap) {
   flex-wrap: wrap;

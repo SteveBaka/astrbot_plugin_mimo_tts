@@ -94,6 +94,7 @@ async def api_tts_synthesize(plugin):
         "clone_style_prompt",
         "director_sticky",
         "director_pending",
+        "tts_stream_synthesis",
     ):
         if key in body and body[key] is not None:
             overrides[key] = body[key]

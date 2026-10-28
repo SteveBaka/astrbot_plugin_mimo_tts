@@ -23,6 +23,7 @@
 - [x]声音克隆 & 设计：支持自定义音色生成与调用
 - [x]输出模式切换：支持 默认 / 设计 / 克隆 三种 TTS 输出来源
 - [x]文字同步开关：可控制自动 TTS 时是否同时保留文字消息
+- [x]智能自适应模式：语音输入强制出音 / 纯文字不出（不掷骰）；自然语言「用语音说/朗读…」直接合成
 - [x]文本分段 TTS：长文本自动切分，每段独立掷骰出语音，命中段=文字+语音、未命中段=纯文字兜底（可配置丢弃），配合文字异步发送实现「先文字后语音」
 - [x]LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力
 - [x]Voice Studio WebUI：内置可视化管理界面，支持语音合成、音色管理、插件配置、会话管理
@@ -59,6 +60,11 @@
 | `default_voice` | 默认音色 | `mimo_default` |
 | `audio_format` | 输出格式(mp3/wav/ogg) | `wav` |
 | `auto_tts` | 自动拦截 LLM 输出 | `true` |
+| `smart_auto_tts_mode` | 智能自适应模式（开启后自动回复不按概率掷骰，按「语音输入」触发） | `false` |
+| `adaptive_triggers` | 智能触发条件（多选勾选；`voice_input`=语音强制出音需智能模式；`nl_voice`=自然语言朗读「用语音说/朗读…」勾选即生效） | `["voice_input"]` |
+| `stream_llm_tts_compat` | AstrBot 流式输出下仍自动补音（文字平台直播，全文一条音；与分段二选一） | `true` |
+| `tts_stream_synthesis` | MiMO TTS API 流式合成（实验；仅 default 非唱歌路径，失败降级非流式） | `false` |
+| `stream_tts_timeout` | 流式合成总超时（秒，最小 5） | `60` |
 | `send_text_with_tts` | 自动 TTS 时是否同步发送文字 | `true` |
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
@@ -91,7 +97,7 @@
 | `nl_sing_enabled` | 自然语言触发唱歌（正则快路径） | `false` |
 | `nl_sing_cooldown` | 自然语言唱歌冷却（秒，0=不限） | `30` |
 | `nl_sing_tool` | NL 唱歌 LLM 工具兜底（与 nl_sing_enabled 同开） | `false` |
-| `enable_segmentation` | 启用文本分段 TTS | `false` |
+| `enable_segmentation` | 启用文本分段 TTS（**仅非流式**；与流式自动 TTS 为二选一，流式下降级全文单音） | `false` |
 | `segment_pattern` | 分段规则（sentence/paragraph/comma/mixed） | `sentence` |
 | `segment_max_count` | 分段数量上限 | `10` |
 | `segment_voice_probability` | 分段语音输出概率（0.0~1.0，每段独立掷骰） | `1.0` |

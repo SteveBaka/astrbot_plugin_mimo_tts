@@ -104,8 +104,10 @@ async def handle_ttsinfo(plugin, event: AstrMessageEvent):
     except Exception:
         pass
 
+    # metadata 版本可能已带 v 前缀，避免出现 vv2.x
+    _display = _version if _version.lower().startswith("v") else f"v{_version}"
     lines = [
-        f"astrbot_plugin_mimo_tts v{_version}",
+        f"astrbot_plugin_mimo_tts {_display}",
         "",
         "基于 MiMO-V2.5-TTS 的精细化语音合成插件",
         "",

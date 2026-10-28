@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json
 import wave
 from mimetypes import guess_type
 from pathlib import Path
@@ -189,6 +190,160 @@ class MiMOProvider:
             raise ValueError("参考音频 Base64 编码后超过 10MB，无法用于 VoiceClone")
         return f"data:{mime_type};base64,{audio_b64}"
 
+    @staticmethod
+    def _extract_stream_audio_b64(obj: dict) -> Optional[str]:
+        """从流式 chunk 中提取 base64 音频（兼容多种 delta 形态）。"""
+        if not isinstance(obj, dict):
+            return None
+        try:
+            choice0 = (obj.get("choices") or [{}])[0]
+            delta = choice0.get("delta") or choice0.get("message") or {}
+            audio = delta.get("audio") if isinstance(delta, dict) else None
+            if isinstance(audio, dict):
+                data = audio.get("data") or audio.get("b64")
+                if data:
+                    return str(data)
+            if isinstance(audio, str) and audio:
+                return audio
+        except (IndexError, TypeError, AttributeError):
+            pass
+        audio_root = obj.get("audio")
+        if isinstance(audio_root, dict):
+            data = audio_root.get("data") or audio_root.get("b64")
+            if data:
+                return str(data)
+        if isinstance(audio_root, str) and audio_root:
+            return audio_root
+        return None
+
+    @staticmethod
+    def _wav_pcm_payload(wav_bytes: bytes) -> Optional[bytes]:
+        """从完整 WAV 中剥离 RIFF 头，只取 PCM data；失败返回 None。"""
+        if not wav_bytes.startswith(b"RIFF") or len(wav_bytes) < 44:
+            return None
+        try:
+            # RIFF: 0-3 RIFF, 4-7 size, 8-11 WAVE, then chunks
+            offset = 12
+            while offset + 8 <= len(wav_bytes):
+                cid = wav_bytes[offset : offset + 4]
+                size = int.from_bytes(wav_bytes[offset + 4 : offset + 8], "little")
+                data_off = offset + 8
+                if cid == b"data":
+                    end = min(len(wav_bytes), data_off + max(size, 0))
+                    payload = wav_bytes[data_off:end]
+                    if payload:
+                        return payload
+                    return None
+                # odd-sized chunk padding
+                offset = data_off + size + (size & 1)
+            return None
+        except Exception:
+            return None
+
+    def _join_stream_chunks(
+        self, decoded: list[bytes], requested_format: str
+    ) -> tuple[bytes, str]:
+        """拼接流式分片。
+
+        实测部分兼容网关会把「完整 WAV/容器」逐分片下发；直接 b"".join 会得到
+        多 RIFF 头的坏文件（ffmpeg 时长可只有几十毫秒）。策略：
+        - 全是 RIFF → 各取 PCM data 再统一包一层 WAV
+        - 单个完整容器（mp3/ogg/wav）→ 直接用
+        - 多个完整容器 → 优先最后一片（通常是最新的完整帧），失败再试拼 PCM
+        - 否则当 raw PCM 拼接后 normalize
+        """
+        decoded = [c for c in decoded if c]
+        if not decoded:
+            raise RuntimeError("stream 音频拼接后为空")
+
+        if all(c.startswith(b"RIFF") for c in decoded):
+            pcm = b""
+            for c in decoded:
+                part = self._wav_pcm_payload(c)
+                pcm += part if part is not None else b""
+            if pcm:
+                return self._wrap_pcm_as_wav(pcm), "wav"
+            # 退化：只用最后一片完整 WAV
+            last = decoded[-1]
+            return self._normalize_audio_bytes(last, requested_format)
+
+        if len(decoded) > 1:
+            complete = [
+                c
+                for c in decoded
+                if c.startswith(b"RIFF")
+                or c.startswith(b"OggS")
+                or self._looks_like_mp3(c)
+            ]
+            if len(complete) == len(decoded):
+                # 多份完整容器：取最大者（通常信息量最全）
+                best = max(complete, key=len)
+                logger.warning(
+                    "MiMO TTS: stream returned %d complete containers; using largest (%d bytes)",
+                    len(complete),
+                    len(best),
+                )
+                return self._normalize_audio_bytes(best, requested_format)
+
+        joined = b"".join(decoded)
+        return self._normalize_audio_bytes(joined, requested_format)
+
+    async def _post_stream_once(
+        self,
+        url: str,
+        headers: dict,
+        payload: dict,
+        requested_format: str,
+        stream_timeout: int,
+    ) -> Optional[tuple[bytes, str]]:
+        """SSE 流式拉取音频片段并拼接；失败抛异常由上层降级非流式。"""
+        timeout = aiohttp.ClientTimeout(total=max(5, int(stream_timeout or 60)))
+        session = aiohttp.ClientSession(timeout=timeout)
+        chunks_b64: list[str] = []
+        try:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                if not (200 <= resp.status < 300):
+                    body = await resp.text()
+                    raise RuntimeError(f"stream HTTP {resp.status}: {body[:200]}")
+                content_type = (resp.headers.get("Content-Type") or "").lower()
+                if "text/event-stream" not in content_type and "json" in content_type:
+                    data = await resp.json()
+                    b64 = self._extract_stream_audio_b64(data)
+                    if not b64:
+                        raise RuntimeError("stream JSON 无音频字段")
+                    chunks_b64.append(b64)
+                else:
+                    async for raw_line in resp.content:
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        if line.startswith(b"data:"):
+                            line = line[5:].strip()
+                        if not line or line == b"[DONE]":
+                            if line == b"[DONE]":
+                                break
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        b64 = self._extract_stream_audio_b64(obj)
+                        if b64:
+                            chunks_b64.append(b64)
+        finally:
+            await session.close()
+
+        if not chunks_b64:
+            raise RuntimeError("stream 未收到任何音频分片")
+        decoded = [base64.b64decode(c) for c in chunks_b64]
+        logger.info(
+            "MiMO TTS: stream received %d audio chunks total_decoded=%d first_head=%s",
+            len(decoded),
+            sum(len(c) for c in decoded),
+            decoded[0][:4] if decoded else b"",
+        )
+        return self._join_stream_chunks(decoded, requested_format)
+
     async def synthesize(
         self,
         text: str,
@@ -200,6 +355,8 @@ class MiMOProvider:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         optimize_text_preview: bool = False,
+        use_stream: bool = False,
+        stream_timeout: int = 60,
     ) -> Optional[bytes]:
         """Synthesize text to audio bytes.
 
@@ -215,6 +372,8 @@ class MiMOProvider:
             audio_format: Override audio format (mp3/wav/ogg/pcm).
             model: Override synthesis model.
             optimize_text_preview: 官方 voicedesign 智能润色参数（仅设计模型生效）。
+            use_stream: 仅 default 模型可请求 API stream=true；clone/design 忽略。
+            stream_timeout: 流式合成总超时（秒）；失败自动降级非流式。
 
         Returns:
             Audio bytes, or None on failure.
@@ -247,8 +406,10 @@ class MiMOProvider:
         messages.append({"role": "assistant", "content": text})
 
         model_name = model or self._model
+        is_clone = self._is_voice_clone_model(model_name)
+        is_design = self._is_voice_design_model(model_name)
         audio: dict = {"format": fmt}
-        if self._is_voice_clone_model(model_name):
+        if is_clone:
             try:
                 audio["voice"] = self._build_voice_clone_data_url(
                     clone_audio_path or ""
@@ -257,16 +418,19 @@ class MiMOProvider:
                 self._set_last_error(str(e))
                 logger.error("MiMO TTS voiceclone payload build failed: %s", e)
                 return None
-        elif not self._is_voice_design_model(model_name):
+        elif not is_design:
             audio["voice"] = voice_id
         elif optimize_text_preview:
             # 官方参数：仅 voicedesign 支持，控制服务端对播报文本智能润色
             audio["optimize_text_preview"] = True
-        payload = {
+
+        # P3 流式合成：仅 default 模型；clone/design 恒 stream=false
+        allow_stream = bool(use_stream) and not is_clone and not is_design
+        payload: dict = {
             "model": model_name,
             "messages": messages,
             "audio": audio,
-            "stream": False,
+            "stream": allow_stream,
         }
 
         # Model hyperparameters (temperature/top_p)
@@ -278,17 +442,48 @@ class MiMOProvider:
         backoff = 1.0
         self._set_last_error("")
         logger.info(
-            "MiMO TTS request prepared: url=%s model=%s clone=%s design=%s format=%s voice=%s has_user_prompt=%s",
+            "MiMO TTS request prepared: url=%s model=%s clone=%s design=%s "
+            "format=%s voice=%s has_user_prompt=%s tts_api_stream=%s",
             url,
             model_name,
-            self._is_voice_clone_model(model_name),
-            self._is_voice_design_model(model_name),
+            is_clone,
+            is_design,
             fmt,
-            "<data-url>"
-            if self._is_voice_clone_model(model_name)
-            else (voice_id or ""),
+            "<data-url>" if is_clone else (voice_id or ""),
             bool(control_prompt),
+            allow_stream,
         )
+
+        if allow_stream:
+            try:
+                logger.info(
+                    "MiMO TTS: streaming synthesis start chars=%d timeout=%ss",
+                    len(text),
+                    stream_timeout,
+                )
+                result = await self._post_stream_once(
+                    url, headers, payload, fmt, stream_timeout
+                )
+                if result:
+                    normalized_bytes, actual_format = result
+                    self._last_output_format = actual_format
+                    logger.info(
+                        "MiMO TTS: streaming synthesized %d chars -> %d bytes "
+                        "(requested=%s, actual=%s, tts_api_stream=true)",
+                        len(text),
+                        len(normalized_bytes),
+                        fmt,
+                        actual_format,
+                    )
+                    return normalized_bytes
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    "MiMO TTS: stream synthesis failed (%s); fallback to non-stream",
+                    e,
+                )
+                payload["stream"] = False
 
         total_attempts = self.max_retries + 1
         for attempt in range(1, total_attempts + 1):
@@ -322,7 +517,8 @@ class MiMOProvider:
                         )
                         self._last_output_format = actual_format
                         logger.info(
-                            "MiMO TTS: synthesized %d chars -> %d bytes (requested=%s, actual=%s)",
+                            "MiMO TTS: synthesized %d chars -> %d bytes "
+                            "(requested=%s, actual=%s, tts_api_stream=false)",
                             len(text),
                             len(normalized_bytes),
                             fmt,

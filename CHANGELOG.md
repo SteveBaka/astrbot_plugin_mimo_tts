@@ -1,5 +1,78 @@
 # CHANGELOG
 
+## 2026-10-28 v2.4.6
+
+> **API 流式合成 + 拼接修复 + Issue #11 自适应自动 TTS 控制面**（自 v2.4.5 收口后的合并发布）。
+
+### 新增
+
+- **`tts_stream_synthesis` 接线**（`tts/mimo_provider.py`）：default 模型、非唱歌路径可请求 MiMO `stream=true`；**clone/design 恒 `stream=false`**；失败自动降级非流式。`stream_tts_timeout`（默认 60，最小 5）。
+- **Studio 合成页**：流式+分段二选一相容提示；「API流式合成」本次开关；`/tts` 支持 `tts_stream_synthesis` 覆盖。
+- **分段成功可观测**：`segment voice sent` / `bg segment voice sent`；收尾 `segmentation done ... immediate_voices=... pending_bg=...`。
+- **Issue #11 · 智能自适应控制面**：
+  - **`smart_auto_tts_mode`**（默认 `false`）：`false`=经典 `probability` 掷骰；`true`=智能模式，不掷骰。
+  - **`adaptive_triggers`**（默认 `["voice_input"]`，Dashboard/Studio chips 多选）：
+    - `voice_input`：用户消息含顶层 Record → 强制自动出音，纯文字不出（**需**智能模式）；
+    - `nl_voice`：「用语音说/朗读/念…」白名单 → 等同 `/mimo_say`，`stop_event` 不进 LLM/自动钩子（**勾选即生效**，不必开智能模式）。
+  - 统一决策入口 `plugin._should_auto_tts(event, uid)`（`core/adaptive_tts.py`）：decorate 与 llm_response 共用，事件级缓存一次。
+  - 智能 `voice_input` 强制出音时**跳过分段掷骰**，走全文一条音，避免「进了分段却 0 段出音」。
+  - 导演模式在 `do_tts` 层对上述路径一并注入（与 `/mimo_say` 同源；design 不注入）。
+  - 旧 `nl_voice_command=true` 自动迁移为 `adaptive_triggers` 含 `nl_voice`。
+- **Studio 输出设置**：智能自适应模式、智能触发条件（chips 多选）；`probability` hint 注明仅经典模式生效。
+- **`/ttsinfo` 版本显示**：metadata 已带 `v` 前缀时不再打出 `vv`。
+
+### 修复
+
+- **流式分片拼接损坏音频**（原 v2.4.7 内容）：网关按完整 WAV 分片时直接 `b"".join` 得到多 RIFF 头坏文件（Lark 时长 ~166ms）。全 RIFF → 剥 PCM 再统一包 WAV；多容器取最大片；`stream received N chunks` 日志。
+
+### 优先级
+
+`/sing` → NL 唱歌 → NL 语音朗读 → adaptive `voice_input` →（`smart_auto_tts_mode=false`）概率掷骰。
+
+### 变更 / 兼容
+
+- 默认 `smart_auto_tts_mode=false`、`adaptive_triggers=["voice_input"]`：升级后自动回复仍走经典概率，行为与 v2.4.5 对齐。
+- 默认关闭 `tts_stream_synthesis`；唱歌路径不走 API 流式。
+- 会话级 `tts_enabled` / 全局 `auto_tts` 总闸门不变；`/mimo_say` `/sing` `/direct` 不受影响。
+
+---
+
+## 2026-10-28 v2.4.5
+
+> **流式输出自动 TTS 兼容**：AstrBot 开启「流式输出」后 MiMO 自动语音仍可出声；非流式行为回归 main 语义；流式下分段降级为全文单音，避免文声割裂。
+
+### 新增
+
+- **`on_llm_response` 自动 TTS**（`handlers/llm_response_tts.py`）：LLM 流式结束/响应完成后取全文合成语音，语音用 `event.send(Record)` 发送；result 非 `STREAMING_*` 时立即 return 交给 decorate。
+- **`core/stream_compat.py`**：结果类型判定 + 文本提取 + 短窗去重（decorate 与 llm_response 双路防双发）。
+- **配置 `stream_llm_tts_compat`**（默认 `true`）：流式下仍自动 TTS 的总开关。
+- 预留 P3：`tts_stream_synthesis`（默认 `false`）、`stream_tts_timeout`（默认 `60`）；本版本 MiMO API 仍恒 `stream=false`（**未接线**，勾选无效果）。
+- **Voice Studio**：同时开启「流式兼容 + 文本分段」时，配置页顶部显示相容性提示（二选一）。
+
+### 修复
+
+- **双音**：`VoiceDedupStore` 改为插件实例/进程级共享（修复每次新建空表导致去重失效）；事件级 `claim_voice_send` / `_mimo_tts_voice_sent` 保证一条回复只出一次自动语音；background TTS 发送前抢占，防止与 `on_llm_response` 双发。
+- **分段语音顺序**：非流式 `on_llm_response` 在 result 非 `STREAMING_*` 时早退，不再误用 `text_already_sent=True`（避免音群前置、整段文字押后）；decorate 恢复非流式出声，仅在 streaming 结果或已 claim 时 skip。
+- `stream_llm_tts_compat=true` 时语音唯一出口为 `on_llm_response`；`=false` 时保持 v2.4.1 decorate 路径。
+- **流式 + 分段文声割裂**：平台已直播全文时插件若仍按段抽样补音，会出现「全字 + 零星音」；现强制降级为**全文一条音**（可润色），打 WARN 与 `mode=full_text`。段字+段音仅非流式 decorate 生效。
+
+### 变更
+
+- **非流式 decorate（auto_tts）**：恢复 main 流程（`_is_tts_active` + 分段/全文），移除 claim / dedup / resolve_tts_active 等可能改变 main 行为的逻辑；background TTS 同样恢复 main（无 claim）。
+- **流式守卫**：`on_decorating_result` 增加流式结果守卫；非流式行为与 v2.4.1 一致。
+- 分段 `execute_segmented_reply` 新增 `text_already_sent`，非流式调用不使用；流式路径**不再调用**该函数。
+- 流式路径文字语义：字已由 AstrBot 直播，插件**不重复发全文**；`send_text_async` / `segment_text_fallback` / `display_polished_text` 在流式下不再发展示文字。
+- 流式 + `enable_voice_polish`：仍可为语音润色，`display_polished_text` 自动降级 false（不回写聊天文字）。
+- **流式 × 分段为二选一**：配置 / Studio hint 写明；`tts_stream_synthesis` 标注 P3 预留未接线。
+
+### 兼容
+
+- 命令 `/mimo_say` `/sing` `/direct`、Voice Studio、导演/唱歌/参数设置不受影响。
+- 非流式自动 TTS（含分段、润色、async 文字）保持 v2.4.1 语义。
+- clone / design 流式下仍出声；MiMO API 恒非流式请求。
+
+---
+
 ## 2026-10-04 v2.4.2
 
 > **日志器规范合规修复**（移除内置 `logging` 回退分支）。
@@ -13,7 +86,6 @@
 
 - `ruff format --check` / `ruff check` 通过；全套单测 151 passed。
 - 本地安装至 AstrBot 4.28.1 实测：插件干净载入、failed=0、无 `ImportError`，分段与合成流程正常。
-
 
 ## 2026-09-15 v2.4.1
 
@@ -43,6 +115,11 @@
 
 ### 修复
 
+- **同文双语音**：`VoiceDedupStore` 改为插件实例/进程级共享存储（此前每次 `VoiceDedupStore()` 新建空表，去重失效）。
+- **事件级只发一次音**：`claim_voice_send` / `_mimo_tts_voice_sent`，decorate、`on_llm_response`、background 互斥。
+- **流式兼容开启时语音唯一出口**：`stream_llm_tts_compat=true` 时自动语音只走 `on_llm_response`；decorator 不再塞 Record（避免 Respond 先音后字与双音）。
+- **兼容关闭回归**：`stream_llm_tts_compat=false` 时保持 v2.4.1 decorate 自动 TTS 路径。
+- **后台 TTS 抢占**：`send_tts_audio_background` 发送前检查/抢占，防止与 llm_response 双发。
 - 会话编辑表单被动画 `max-height` 裁切、无法滚到底。
 - Voice Studio JSON 池保存失败（Vue reactive 代理）与保存后 Dashboard 变一行。
 - 会话列表操作后跳回页顶（改为 silent 刷新 + `.main-content` 滚动保持 + 单会话 patch）。

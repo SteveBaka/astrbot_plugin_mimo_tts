@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""自动 TTS 拦截器：LLM 回复 → 语音回复（分段投递 / 全文单次合成两条路径）。"""
+"""自动 TTS 拦截器：LLM 回复 → 语音回复（分段投递 / 全文单次合成两条路径）。
+
+v2.4.5 起以 main 为基準：
+- **非流式**：行为与 main 一致（概率 / 分段 / 润色 / chain Record / text_async）。
+- **流式**（result 为 STREAMING_*）：本钩子不出声；语音由 on_llm_response 负责。
+- 本文件不引入 claim / dedup，避免破坏 main 非流式语义。
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain, Record
 
+from ..core.stream_compat import is_streaming_result
 from ..core.text_utils import (
     build_audio_only_chain,
     extract_auto_tts_text,
@@ -64,18 +71,26 @@ async def handle_auto_tts(plugin, event: AstrMessageEvent) -> None:
     """拦截 LLM 输出并自动生成语音回复（分段投递或全文单次合成）。"""
     uid, uset = plugin._get_event_settings(event)
 
-    # Step 1: 概率与前置过滤（静默出口均记录原因，便于平台侧排障）
-    if not plugin._is_tts_active(uid):
+    # 流式结果：4.28.1 decorate 在 STREAMING_* 不出声；语音走 on_llm_response
+    result = event.get_result()
+    if result is not None and is_streaming_result(result):
+        logger.info(
+            "MiMO TTS: skip auto TTS (streaming result) hook=decorate llm_stream=on"
+        )
+        return
+
+    # Step 1: 自适应决策（智能模式 / 概率）+ 前置过滤
+    if not plugin._should_auto_tts(event, uid):
         logger.info(
             "MiMO TTS: auto TTS inactive, skip. (auto_tts=%s tts_enabled=%s "
-            "probability=%s — may be dice miss)",
+            "smart=%s probability=%s hook=decorate)",
             plugin.config.get("auto_tts", True),
             plugin._get_user_settings(uid).get("tts_enabled", True),
+            getattr(plugin.config, "smart_auto_tts_mode", False),
             plugin.config.probability,
         )
         return
 
-    result = event.get_result()
     chain = result.chain if result and result.chain else None
     if not chain:
         logger.info("MiMO TTS: empty result chain, skip auto TTS")
@@ -102,24 +117,32 @@ async def handle_auto_tts(plugin, event: AstrMessageEvent) -> None:
         )
         return
     if looks_like_hidden_prompt_or_reasoning(plain):
-        logger.warning(
-            "MiMO TTS: skip auto TTS because result looks like leaked persona/skill prompt"
-        )
+        logger.warning("MiMO TTS: skip auto TTS (hidden prompt/reasoning)")
         return
 
     if plain.startswith("/"):
         return
 
-    # Step 2: 分段模式（决策表见 core/segmentation.py，投递见 handlers/segmenting.py）
-    if plugin._segmentation_enabled(uid):
+    # Step 2: 分段模式（main 原语义：BUNDLED/TEXT_FIRST 先字后音）
+    # 智能 voice_input 强制出音时跳过分段掷骰，走全文一条音（保证必出声）
+    from ..core.adaptive_tts import is_adaptive_voice_force
+
+    force_voice = is_adaptive_voice_force(plugin, event)
+    if plugin._segmentation_enabled(uid) and not force_voice:
         segments = plugin._split_text(plain)
         if not segments:
             return
         await execute_segmented_reply(plugin, event, uid, uset, segments)
         result.chain = []
         return
+    if force_voice and plugin._segmentation_enabled(uid):
+        logger.info(
+            "MiMO TTS: adaptive voice_input forces full-text single voice "
+            "(skip segmentation dice) uid=%s",
+            uid,
+        )
 
-    # Step 3: 全文单次合成
+    # Step 3: 全文单次合成（与 main 一致）
     polish_enabled = plugin._voice_polish_enabled(uid)
     # 展示文字用润色后文本：文字与语音内容一致（兜底小模型改写原文）
     display_polished = polish_enabled and plugin.config.display_polished_text

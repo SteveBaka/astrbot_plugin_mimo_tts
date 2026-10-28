@@ -155,12 +155,26 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       title: '输出设置', ic: 'adjustments',
       fields: [
         { key: 'auto_tts', label: '自动 TTS', type: 'bool', hint: '拦截 LLM 回复生成语音' },
+        { key: 'smart_auto_tts_mode', label: '智能自适应模式', type: 'bool', hint: '开启后自动回复不按「触发概率」掷骰，改按「语音输入」触发；自然语言朗读勾选后不必开本开关' },
+        {
+          key: 'adaptive_triggers',
+          label: '智能触发条件',
+          type: 'multi',
+          options: [
+            { value: 'voice_input', label: '语音输入（需开智能模式；用户发语音→强制出音，纯文字不出）' },
+            { value: 'nl_voice', label: '自然语言朗读（「用语音说/朗读/念…」→ 直接合成，不进 LLM）' }
+          ],
+          hint: '可多选；自然语言朗读选中即生效，不必先开智能模式'
+        },
+        { key: 'stream_llm_tts_compat', label: '流式输出自动 TTS 兼容', type: 'bool', hint: 'AstrBot 开启流式输出时仍自动补音；文字由平台直播，插件只发全文一条音。与「文本分段」二选一' },
+        { key: 'tts_stream_synthesis', label: 'MiMO TTS API 流式合成（实验）', type: 'bool', hint: '仅 default 模型、非唱歌路径请求 stream=true；clone/design 恒非流式。失败自动降级非流式' },
+        { key: 'stream_tts_timeout', label: '流式合成超时（秒）', type: 'number', hint: 'API 流式合成总超时；超时降级非流式。最小 5' },
         { key: 'send_text_with_tts', label: 'TTS 同步发送文字', type: 'bool' },
-        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启且保留文字输出时，文字先行、语音后台合成后追加（分段模式与全文模式均生效）' },
+        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启且保留文字输出时，文字先行、语音后台合成后追加（仅非流式；流式文字由平台直播）' },
         { key: 'audio_format', label: '音频格式', type: 'select', options: ['wav', 'mp3', 'ogg'] },
         { key: 'emotion_override', label: '默认情感覆盖', type: 'text', hint: '留空=自动检测' },
         { key: 'tts_example_inject', label: 'TTS 风格示例注入', type: 'bool', hint: '开启后按当前情感（emotion）匹配风格示例池，将画面感示例并入 user 控制通道。默认关闭：避免未经实测改变播报风格' },
-        { key: 'probability', label: '自动 TTS 触发概率', type: 'slider', min: 0, max: 1, step: 0.1 }
+        { key: 'probability', label: '自动 TTS 触发概率', type: 'slider', min: 0, max: 1, step: 0.1, hint: '经典模式（智能自适应关闭）时生效；开启智能模式后本项不参与判定' }
       ]
     },
     {
@@ -178,7 +192,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
     {
       title: '文本分段', ic: 'scissors',
       fields: [
-        { key: 'enable_segmentation', label: '启用文本分段', type: 'bool', hint: '长文本按规则切分多段输出，每段独立掷骰出语音' },
+        { key: 'enable_segmentation', label: '启用文本分段', type: 'bool', hint: '段字+段音逐段投递。仅非流式生效；与「流式输出自动 TTS」二选一（流式下自动降级全文单音）' },
         { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'], hint: 'sentence=句末标点，paragraph=空行，comma=逗号分号，mixed=混合' },
         { key: 'segment_max_count', label: '分段数量上限', type: 'number', hint: '超过此数量的分段将被合并。0=不限制' },
         { key: 'segment_voice_probability', label: '分段语音概率', type: 'slider', min: 0, max: 1, step: 0.1, hint: '全局触发通过后，每段独立掷骰。1.0=全部语音，0.0=全部文字' },
@@ -337,6 +351,12 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       const directorState = ref({ pending: null, sticky: null, effective: '', snapshot: null });
       const directorBusy = ref(false);
       const directorMsg = ref('');
+      // 与合成相关的全局配置只读快照（用于相容提示 + API 流式默认值）
+      const cfgStreamLlm = ref(false);
+      const cfgSegmentation = ref(false);
+      const cfgStreamSynthesis = ref(false);
+      // 本次合成是否走 MiMO API 流式（仅 default；不回写全局配置）
+      const apiStreamSynthesis = ref(false);
 
       const modes = [
         { value: 'default', label: '默认' },
@@ -365,6 +385,10 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           registeredVoices.value = res.registered || [];
         }
       }
+
+      const streamSegConflict = computed(() =>
+        !!(cfgStreamLlm.value && cfgSegmentation.value)
+      );
 
       function applyPreset(preset) {
         activePreset.value = preset.name;
@@ -407,7 +431,9 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           laughter: laughterEnabled.value,
           pause: pauseEnabled.value,
           format: audioFormat.value,
-          voice_polish: voicePolishEnabled.value
+          voice_polish: voicePolishEnabled.value,
+          // 仅 default 实际生效；clone/design 后端会忽略 stream
+          tts_stream_synthesis: voiceMode.value === 'default' && apiStreamSynthesis.value
         };
 
         if (voiceMode.value === 'design') {
@@ -527,6 +553,10 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
           voicePolishEnabled.value = !!res.config.enable_voice_polish;
           directorEnabled.value = !!res.config.director_enabled;
           directorParseLlm.value = !!res.config.director_parse_llm;
+          cfgStreamLlm.value = !!res.config.stream_llm_tts_compat;
+          cfgSegmentation.value = !!res.config.enable_segmentation;
+          cfgStreamSynthesis.value = !!res.config.tts_stream_synthesis;
+          apiStreamSynthesis.value = !!res.config.tts_stream_synthesis;
         }
       }
 
@@ -656,12 +686,22 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         modes, filteredVoices, EMOTIONS, FORMATS, PRESETS,
         applyPreset, runDetectEmotion, synthesize, saveDesignVoice,
         saveCloneStyle, applyDirector, clearDirector, refreshDirectorState,
+        apiStreamSynthesis, streamSegConflict, cfgStreamSynthesis,
         icon
       };
     },
     template: `
 <div class="page synthesis-page">
   <div class="page-header"><h2><span v-html="icon('microphone')"></span> 语音合成</h2></div>
+
+  <div v-if="streamSegConflict" class="alert alert-warn stream-seg-compat" role="status">
+    <span class="icon" v-html="icon('alert-circle')"></span>
+    <span>
+      <strong>自动回复「流式 + 分段」为二选一：</strong>全局已同时开启流式兼容与文本分段。
+      聊天自动回复会降级为全文一条音；<strong>本页手动合成不受影响</strong>。
+      段字+段音仅非流式自动回复生效。可在「插件配置」调整。
+    </span>
+  </div>
 
   <div class="card">
     <div class="section-title"><span v-html="icon('microphone')"></span> 输入文本</div>
@@ -757,6 +797,20 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         <span>LLM润色</span>
         <label class="toggle"><input type="checkbox" v-model="voicePolishEnabled"><span class="toggle-slider"></span></label>
       </div>
+      <div class="toggle-item" title="MiMO API stream=true；仅默认模式、非唱歌；失败自动降级非流式">
+        <span>API流式合成</span>
+        <label class="toggle">
+          <input type="checkbox" v-model="apiStreamSynthesis"
+            :disabled="voiceMode !== 'default'">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div v-if="voiceMode !== 'default'" style="font-size:12px;opacity:.75;margin-top:6px;">
+      API 流式仅支持「默认」模式；当前为 {{ voiceMode === 'design' ? '设计' : '克隆' }}，将恒走非流式。
+    </div>
+    <div v-else style="font-size:12px;opacity:.75;margin-top:6px;">
+      仅本次合成生效，不回写全局「tts_stream_synthesis」。全局默认可在插件配置调整。
     </div>
   </div>
 
@@ -1250,6 +1304,45 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         'design_style_pool', 'clone_style_pool'
       ]);
 
+      // multi 字段 ⇄ 数组（schema type=list 存储，Dashboard chips 多选同款）
+      function multiToArr(v) {
+        if (Array.isArray(v)) {
+          return v.map(String).map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+        if (v === undefined || v === null || v === '') return [];
+        const s = String(v);
+        return s.split(/[\s,，、]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+      }
+      const multiOpenKey = ref('');
+      function multiLabel(field, val) {
+        const hit = (field.options || []).find(function (o) { return o.value === val; });
+        return hit ? (hit.label || hit.value) : val;
+      }
+      function toggleMultiOpen(key) {
+        multiOpenKey.value = multiOpenKey.value === key ? '' : key;
+      }
+      function toggleMultiVal(field, val) {
+        const arr = multiToArr(config[field.key]);
+        const i = arr.indexOf(val);
+        if (i >= 0) arr.splice(i, 1);
+        else arr.push(val);
+        config[field.key] = arr;
+      }
+      function removeMultiVal(field, val) {
+        const arr = multiToArr(config[field.key]).filter(function (x) { return x !== val; });
+        config[field.key] = arr;
+      }
+      // 初始化 multi 字段为数组
+      function initMultiFields() {
+        CONFIG_SECTIONS.forEach(function (s) {
+          s.fields.forEach(function (f) {
+            if (f.type === 'multi') {
+              config[f.key] = multiToArr(config[f.key]);
+            }
+          });
+        });
+      }
+
       function normalizeJsonPayload(key, rawText) {
         let parsed;
         try {
@@ -1307,6 +1400,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
               }
             }
           }));
+          initMultiFields();
         }
         loading.value = false;
       }
@@ -1319,6 +1413,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             if (config[f.key] === undefined) continue;
             if (f.type === 'json') {
               payload[f.key] = normalizeJsonPayload(f.key, jsonText[f.key]);
+            } else if (f.type === 'multi') {
+              payload[f.key] = multiToArr(config[f.key]);
             } else {
               payload[f.key] = plainValue(config[f.key]);
             }
@@ -1353,7 +1449,15 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
 
       onMounted(() => { loadConfig(); });
 
-      return { config, jsonText, loading, saving, sections, saveSection, formatJsonField, icon };
+      const streamSegmentConflict = computed(() =>
+        !!(config.stream_llm_tts_compat && config.enable_segmentation)
+      );
+
+      return {
+        config, jsonText, loading, saving, sections, saveSection,
+        formatJsonField, icon, streamSegmentConflict,
+        multiToArr, multiOpenKey, multiLabel, toggleMultiOpen, toggleMultiVal, removeMultiVal
+      };
     },
     template: `
 <div class="page config-page">
@@ -1362,6 +1466,16 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
   <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
 
   <template v-if="!loading">
+    <div v-if="streamSegmentConflict" class="alert alert-warn stream-seg-compat" role="status">
+      <span class="icon" v-html="icon('alert-circle')"></span>
+      <span>
+        <strong>自动回复「流式 + 分段」为二选一：</strong>已同时开启「流式输出自动 TTS 兼容」与「文本分段」。
+        流式下文字由平台直播全文，插件自动补音降级为<strong>全文一条音</strong>；
+        段字+段音仅非流式自动回复生效。
+        <strong>Voice Studio 合成页</strong>的「API流式合成」是另一回事（本次合成的 MiMO API stream），不受此降级影响。
+      </span>
+    </div>
+
     <div v-for="section in sections" :key="section.title" class="card config-section">
       <div class="section-title"><span v-html="icon(section.ic)"></span> {{ section.title }}</div>
       <div class="config-fields">
@@ -1389,6 +1503,29 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             <select v-model="config[field.key]" class="select-input">
               <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt || '(空)' }}</option>
             </select>
+          </template>
+
+          <template v-else-if="field.type === 'multi'">
+            <div class="multi-select-wrap">
+              <div class="multi-chips" role="button" tabindex="0"
+                   @click="toggleMultiOpen(field.key)"
+                   @keydown.enter.prevent="toggleMultiOpen(field.key)">
+                <span v-if="!multiToArr(config[field.key]).length" class="multi-placeholder">点击选择…</span>
+                <span v-for="val in multiToArr(config[field.key])" :key="val" class="multi-chip">
+                  {{ multiLabel(field, val) }}
+                  <button type="button" class="multi-chip-x" @click.stop="removeMultiVal(field, val)" aria-label="移除">×</button>
+                </span>
+                <span class="multi-caret" :class="{ open: multiOpenKey === field.key }">▾</span>
+              </div>
+              <div v-if="multiOpenKey === field.key" class="multi-dropdown">
+                <label v-for="opt in field.options" :key="opt.value" class="multi-option">
+                  <input type="checkbox" :value="opt.value"
+                         :checked="multiToArr(config[field.key]).indexOf(opt.value) >= 0"
+                         @change="toggleMultiVal(field, opt.value)">
+                  <span>{{ opt.label || opt.value }}</span>
+                </label>
+              </div>
+            </div>
           </template>
 
           <template v-else-if="field.type === 'slider'">
