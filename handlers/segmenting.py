@@ -105,6 +105,13 @@ async def _synthesize_and_send(
         chain = MessageChain()
         chain.chain.append(Record.fromFileSystem(str(audio)))
         await event.send(chain)
+        logger.info(
+            "MiMO TTS: segment voice sent via=event.send chars=%d polished=%s "
+            "with_text=%s",
+            len(tts_text or ""),
+            polish_enabled,
+            with_text,
+        )
     elif not with_text and fallback_enabled:
         # VOICE_ONLY 合成失败：文字未发过，按兜底开关补发（与语音内容一致）
         fallback = strip_tts_tags(tts_text) if display_polished else display_text
@@ -135,6 +142,12 @@ async def _send_pending_voices(
                 chain = MessageChain()
                 chain.chain.append(Record.fromFileSystem(str(audio)))
                 await event.send(chain)
+                logger.info(
+                    "MiMO TTS: bg segment voice sent via=event.send "
+                    "index=%d chars=%d",
+                    i,
+                    len(tts_text or ""),
+                )
             # 失败不再兜底：文字已在 TEXT_FIRST 阶段发出，无内容丢失
         except Exception as e:
             logger.warning("MiMO TTS: background segment voice %d failed: %s", i, e)
@@ -186,6 +199,7 @@ async def execute_segmented_reply(
     )
 
     pending_voices: list[tuple[str, bool]] = []
+    immediate_voices = 0
     for i, plan in enumerate(plans):
         # 合成文本清洗 Markdown 符号（qq_official 等平台不支持 markdown
         # 渲染）；展示文本再剥离 TTS 标签（只应到服务端与日志，见 strip_tts_tags）
@@ -239,6 +253,7 @@ async def execute_segmented_reply(
                     display_text=seg_display,
                     text_already_sent=text_already_sent,
                 )
+                immediate_voices += 1
             elif action == VOICE_ONLY:
                 await _synthesize_and_send(
                     plugin,
@@ -253,6 +268,7 @@ async def execute_segmented_reply(
                     display_text=seg_display,
                     text_already_sent=text_already_sent,
                 )
+                immediate_voices += 1
             elif action == TEXT_FALLBACK:
                 if text_already_sent:
                     logger.debug("MiMO TTS: stream skip TEXT_FALLBACK segment %d", i)
@@ -274,8 +290,22 @@ async def execute_segmented_reply(
                     pass
 
     if pending_voices:
+        logger.info(
+            "MiMO TTS: segmentation queue pending_bg_voices=%d uid=%s",
+            len(pending_voices),
+            uid,
+        )
         asyncio.create_task(
             _send_pending_voices(
                 plugin, event, uid, uset, pending_voices, polish_enabled
             )
         )
+    logger.info(
+        "MiMO TTS: segmentation done uid=%s segments=%d immediate_voices=%d "
+        "pending_bg=%d text_already_sent=%s",
+        uid,
+        len(plans),
+        immediate_voices,
+        len(pending_voices),
+        text_already_sent,
+    )

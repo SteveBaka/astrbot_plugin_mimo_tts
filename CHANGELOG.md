@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## 2026-10-28 v2.4.6
+
+> **API 流式合成 + 拼接修复 + Issue #11 自适应自动 TTS 控制面**（自 v2.4.5 收口后的合并发布）。
+
+### 新增
+
+- **`tts_stream_synthesis` 接线**（`tts/mimo_provider.py`）：default 模型、非唱歌路径可请求 MiMO `stream=true`；**clone/design 恒 `stream=false`**；失败自动降级非流式。`stream_tts_timeout`（默认 60，最小 5）。
+- **Studio 合成页**：流式+分段二选一相容提示；「API流式合成」本次开关；`/tts` 支持 `tts_stream_synthesis` 覆盖。
+- **分段成功可观测**：`segment voice sent` / `bg segment voice sent`；收尾 `segmentation done ... immediate_voices=... pending_bg=...`。
+- **Issue #11 · 智能自适应控制面**：
+  - **`smart_auto_tts_mode`**（默认 `false`）：`false`=经典 `probability` 掷骰；`true`=智能模式，不掷骰。
+  - **`adaptive_triggers`**（默认 `["voice_input"]`，Dashboard/Studio chips 多选）：
+    - `voice_input`：用户消息含顶层 Record → 强制自动出音，纯文字不出（**需**智能模式）；
+    - `nl_voice`：「用语音说/朗读/念…」白名单 → 等同 `/mimo_say`，`stop_event` 不进 LLM/自动钩子（**勾选即生效**，不必开智能模式）。
+  - 统一决策入口 `plugin._should_auto_tts(event, uid)`（`core/adaptive_tts.py`）：decorate 与 llm_response 共用，事件级缓存一次。
+  - 智能 `voice_input` 强制出音时**跳过分段掷骰**，走全文一条音，避免「进了分段却 0 段出音」。
+  - 导演模式在 `do_tts` 层对上述路径一并注入（与 `/mimo_say` 同源；design 不注入）。
+  - 旧 `nl_voice_command=true` 自动迁移为 `adaptive_triggers` 含 `nl_voice`。
+- **Studio 输出设置**：智能自适应模式、智能触发条件（chips 多选）；`probability` hint 注明仅经典模式生效。
+- **`/ttsinfo` 版本显示**：metadata 已带 `v` 前缀时不再打出 `vv`。
+
+### 修复
+
+- **流式分片拼接损坏音频**（原 v2.4.7 内容）：网关按完整 WAV 分片时直接 `b"".join` 得到多 RIFF 头坏文件（Lark 时长 ~166ms）。全 RIFF → 剥 PCM 再统一包 WAV；多容器取最大片；`stream received N chunks` 日志。
+
+### 优先级
+
+`/sing` → NL 唱歌 → NL 语音朗读 → adaptive `voice_input` →（`smart_auto_tts_mode=false`）概率掷骰。
+
+### 变更 / 兼容
+
+- 默认 `smart_auto_tts_mode=false`、`adaptive_triggers=["voice_input"]`：升级后自动回复仍走经典概率，行为与 v2.4.5 对齐。
+- 默认关闭 `tts_stream_synthesis`；唱歌路径不走 API 流式。
+- 会话级 `tts_enabled` / 全局 `auto_tts` 总闸门不变；`/mimo_say` `/sing` `/direct` 不受影响。
+
+---
+
 ## 2026-10-28 v2.4.5
 
 > **流式输出自动 TTS 兼容**：AstrBot 开启「流式输出」后 MiMO 自动语音仍可出声；非流式行为回归 main 语义；流式下分段降级为全文单音，避免文声割裂。

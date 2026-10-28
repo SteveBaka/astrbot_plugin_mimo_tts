@@ -664,6 +664,11 @@ class TTSSynthesizer:
                     bool(uset.get("sing")),
                 )
 
+        # P3：仅 default 朗读路径尝试 API 流式；唱歌短句走原非流式更稳。
+        # WebUI/命令可用 settings_override.tts_stream_synthesis 覆盖全局。
+        stream_flag = uset.get("tts_stream_synthesis")
+        if stream_flag is None:
+            stream_flag = self._config.tts_stream_synthesis
         raw = await provider.synthesize(
             text=final_text,
             voice=voice_id or None,
@@ -676,6 +681,8 @@ class TTSSynthesizer:
             optimize_text_preview=(
                 self._config.optimize_text_preview and mode == "design"
             ),
+            use_stream=bool(stream_flag and mode == "default" and not uset.get("sing")),
+            stream_timeout=self._config.stream_tts_timeout,
         )
         if not raw:
             raise RuntimeError(provider.last_error or "MiMO TTS 合成失败，请查看日志。")

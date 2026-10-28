@@ -32,6 +32,7 @@ from .handlers.control import (
 from .handlers.director import handle_direct
 from .handlers.llm_response_tts import handle_llm_response_tts
 from .handlers.nl_sing import handle_nl_sing, handle_nl_sing_tool
+from .handlers.nl_voice import handle_nl_voice
 from .handlers.params import (
     handle_breath,
     handle_dialect,
@@ -157,6 +158,7 @@ class MiMoTTSPlugin(Star):
         return self.user_state.get_effective_audio_format(uid)
 
     def _is_tts_active(self, uid: str) -> bool:
+        """仅概率路径（兼容旧调用）；自动钩子请用 _should_auto_tts。"""
         if not self.config.get("auto_tts", True):
             return False
         if not self._get_user_settings(uid).get("tts_enabled", True):
@@ -167,6 +169,12 @@ class MiMoTTSPlugin(Star):
         if probability >= 1:
             return True
         return random.random() < probability
+
+    def _should_auto_tts(self, event: AstrMessageEvent, uid: str) -> bool:
+        """统一自动 TTS 决策（Issue #11：智能 adaptive / 经典概率）。"""
+        from .core.adaptive_tts import should_auto_tts
+
+        return should_auto_tts(self, event, uid)
 
     def _resolve_voice(self, voice_id: str) -> str:
         return self.synth.resolve_voice(voice_id)
@@ -269,6 +277,11 @@ class MiMoTTSPlugin(Star):
     async def on_nl_sing(self, event: AstrMessageEvent):
         """自然语言触发唱歌（快路径）：唤醒消息匹配「用X的声线唱<歌词>」等句式时直接演唱。"""
         await handle_nl_sing(self, event)
+
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=98)
+    async def on_nl_voice(self, event: AstrMessageEvent):
+        """自然语言语音朗读（Issue #11）：「用语音说/朗读/念…」→ 等同 /mimo_say。"""
+        await handle_nl_voice(self, event)
 
     @filter.llm_tool(name="mimo_sing_song")
     async def mimo_sing_song(self, event: AstrMessageEvent, style: str, lyrics: str):

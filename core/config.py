@@ -468,6 +468,10 @@ class ConfigManager:
         # Output settings
         "probability": 0.8,
         "auto_tts": True,
+        # Issue #11 智能控制面：off=概率；on=按 adaptive_triggers（不掷骰）
+        "smart_auto_tts_mode": False,
+        # voice_input=语音强制出音（需智能模式）；nl_voice=自然语言朗读（勾选即生效）
+        "adaptive_triggers": ["voice_input"],
         "send_text_with_tts": True,
         "send_text_async": False,
         "audio_format": "wav",
@@ -541,6 +545,24 @@ class ConfigManager:
         for key, default_val in self._SCHEMA_DEFAULTS.items():
             if key not in self._flat:
                 self._flat[key] = default_val
+
+        # 旧 nl_voice_command=true → 并入 adaptive_triggers（统一控制面）
+        if self._flat.get("nl_voice_command"):
+            raw = self._flat.get("adaptive_triggers", ["voice_input"])
+            if isinstance(raw, (list, tuple)):
+                items = [str(x) for x in raw]
+                if "nl_voice" not in items:
+                    items.append("nl_voice")
+                    self._flat["adaptive_triggers"] = items
+            else:
+                text = str(raw or "")
+                if "nl_voice" not in text:
+                    self._flat["adaptive_triggers"] = (
+                        f"{text}, nl_voice" if text.strip() else "nl_voice"
+                    )
+        self._flat.pop("nl_voice_command", None)
+        if isinstance(self._cfg.get("output_settings"), dict):
+            self._cfg["output_settings"].pop("nl_voice_command", None)
 
     # ── Flatten / unflatten helpers ──
 
@@ -676,6 +698,19 @@ class ConfigManager:
         except (ValueError, TypeError):
             value = 0.8
         return max(0.0, min(1.0, value))
+
+    @property
+    def smart_auto_tts_mode(self) -> bool:
+        """Issue #11：智能自适应自动 TTS（on=不掷骰，按 triggers）。"""
+        return bool(self._flat.get("smart_auto_tts_mode", False))
+
+    @property
+    def adaptive_triggers(self) -> list:
+        """智能触发条件（list+checkbox；兼容旧字符串）。"""
+        raw = self._flat.get("adaptive_triggers", ["voice_input"])
+        if isinstance(raw, (list, tuple)):
+            return [str(x) for x in raw]
+        return [p.strip() for p in re.split(r"[\s,，、]+", str(raw or "")) if p.strip()]
 
     @property
     def default_speed(self) -> float:

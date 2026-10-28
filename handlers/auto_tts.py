@@ -79,13 +79,14 @@ async def handle_auto_tts(plugin, event: AstrMessageEvent) -> None:
         )
         return
 
-    # Step 1: 概率与前置过滤（与 main 一致）
-    if not plugin._is_tts_active(uid):
+    # Step 1: 自适应决策（智能模式 / 概率）+ 前置过滤
+    if not plugin._should_auto_tts(event, uid):
         logger.info(
             "MiMO TTS: auto TTS inactive, skip. (auto_tts=%s tts_enabled=%s "
-            "probability=%s — may be dice miss)",
+            "smart=%s probability=%s hook=decorate)",
             plugin.config.get("auto_tts", True),
             plugin._get_user_settings(uid).get("tts_enabled", True),
+            getattr(plugin.config, "smart_auto_tts_mode", False),
             plugin.config.probability,
         )
         return
@@ -123,13 +124,23 @@ async def handle_auto_tts(plugin, event: AstrMessageEvent) -> None:
         return
 
     # Step 2: 分段模式（main 原语义：BUNDLED/TEXT_FIRST 先字后音）
-    if plugin._segmentation_enabled(uid):
+    # 智能 voice_input 强制出音时跳过分段掷骰，走全文一条音（保证必出声）
+    from ..core.adaptive_tts import is_adaptive_voice_force
+
+    force_voice = is_adaptive_voice_force(plugin, event)
+    if plugin._segmentation_enabled(uid) and not force_voice:
         segments = plugin._split_text(plain)
         if not segments:
             return
         await execute_segmented_reply(plugin, event, uid, uset, segments)
         result.chain = []
         return
+    if force_voice and plugin._segmentation_enabled(uid):
+        logger.info(
+            "MiMO TTS: adaptive voice_input forces full-text single voice "
+            "(skip segmentation dice) uid=%s",
+            uid,
+        )
 
     # Step 3: 全文单次合成（与 main 一致）
     polish_enabled = plugin._voice_polish_enabled(uid)

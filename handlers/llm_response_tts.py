@@ -80,9 +80,10 @@ async def handle_llm_response_tts(plugin, event: AstrMessageEvent, resp) -> None
     if not resolve_tts_active(plugin, event, uid):
         logger.info(
             "MiMO TTS: auto TTS inactive on llm_response, skip. "
-            "(auto_tts=%s tts_enabled=%s hook=llm_response)",
+            "(auto_tts=%s tts_enabled=%s smart=%s hook=llm_response)",
             plugin.config.get("auto_tts", True),
             uset.get("tts_enabled", True),
+            getattr(plugin.config, "smart_auto_tts_mode", False),
         )
         return
 

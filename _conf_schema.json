@@ -148,6 +148,23 @@
         "hint": "拦截 LLM 回复生成语音",
         "default": true
       },
+      "smart_auto_tts_mode": {
+        "type": "bool",
+        "description": "智能自适应模式",
+        "hint": "开启后自动回复不再按「触发概率」掷骰，改按「语音输入」触发条件出音；关闭时保持经典概率模式。「自然语言朗读」勾选后与本开关无关、始终生效",
+        "default": false
+      },
+      "adaptive_triggers": {
+        "type": "list",
+        "description": "智能触发条件（可多选）",
+        "hint": "统一勾选智能能力。①语音输入：需同时开启「智能自适应模式」——用户发语音强制回复语音、纯文字不出音；②自然语言朗读：匹配「用语音说/朗读/念…」等句式直接合成（等同 /mimo_say，不进 LLM/自动钩子），选中即生效不必开智能模式",
+        "options": ["voice_input", "nl_voice"],
+        "labels": [
+          "语音输入（需开智能模式；用户发语音→强制出音，纯文字不出）",
+          "自然语言朗读（「用语音说/朗读/念…」→ 直接合成，不进 LLM）"
+        ],
+        "default": ["voice_input"]
+      },
       "send_text_with_tts": {
         "type": "bool",
         "description": "TTS 输出时同步发送文字",
@@ -168,14 +185,14 @@
       },
       "tts_stream_synthesis": {
         "type": "bool",
-        "description": "MiMO TTS API 流式合成（实验·未接线）",
-        "hint": "P3 预留开关：当前实现恒请求 stream=false，勾选无效果。仅 default 模型规划支持；clone/design 恒非流式。勿依赖",
+        "description": "MiMO TTS API 流式合成（实验）",
+        "hint": "仅 default 模型、非唱歌路径可请求 stream=true；clone/design 恒非流式。失败自动降级非流式。日志看 tts_api_stream=true/false",
         "default": false
       },
       "stream_tts_timeout": {
         "type": "int",
         "description": "流式合成超时（秒）",
-        "hint": "P3 预留：MiMO API 流式合成总超时；当前未接线，默认 60",
+        "hint": "MiMO API 流式合成总超时；超时或解析失败自动降级非流式。最小 5",
         "default": 60
       },
       "audio_format": {

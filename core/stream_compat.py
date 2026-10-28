@@ -162,11 +162,14 @@ def has_voice_sent(event: Any) -> bool:
 
 
 def resolve_tts_active(plugin, event: Any, uid: str) -> bool:
-    """每条回复只掷骰一次；decorate 与 llm_response 共用。"""
+    """每条回复只判定一次；decorate 与 llm_response 共用。
+
+    v2.5.0 起走 ``_should_auto_tts(event, uid)``（含智能模式 adaptive / 概率）。
+    """
     checked = _event_extra(event, EXTRA_DICE_CHECKED)
     if checked is not None:
         return bool(_event_extra(event, EXTRA_DICE_ACTIVE))
-    active = plugin._is_tts_active(uid)
+    active = plugin._should_auto_tts(event, uid)
     _set_event_extra(event, EXTRA_DICE_CHECKED, True)
     _set_event_extra(event, EXTRA_DICE_ACTIVE, active)
     return active
