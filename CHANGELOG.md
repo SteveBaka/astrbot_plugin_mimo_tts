@@ -1,29 +1,32 @@
 # CHANGELOG
 
-## 2026-10-01 v2.4.5
+## 2026-10-28 v2.4.5
 
-> **流式输出自动 TTS 兼容**（原开发迭代 v2.4.2–v2.4.4 已并入本条）：AstrBot 开启「流式输出」后 MiMO 自动语音仍可出声；非流式行为回归 main 语义。
+> **流式输出自动 TTS 兼容**：AstrBot 开启「流式输出」后 MiMO 自动语音仍可出声；非流式行为回归 main 语义；流式下分段降级为全文单音，避免文声割裂。
 
 ### 新增
 
 - **`on_llm_response` 自动 TTS**（`handlers/llm_response_tts.py`）：LLM 流式结束/响应完成后取全文合成语音，语音用 `event.send(Record)` 发送；result 非 `STREAMING_*` 时立即 return 交给 decorate。
 - **`core/stream_compat.py`**：结果类型判定 + 文本提取 + 短窗去重（decorate 与 llm_response 双路防双发）。
 - **配置 `stream_llm_tts_compat`**（默认 `true`）：流式下仍自动 TTS 的总开关。
-- 预留 P3：`tts_stream_synthesis`（默认 `false`）、`stream_tts_timeout`（默认 `60`）；本版本 MiMO API 仍恒 `stream=false`。
+- 预留 P3：`tts_stream_synthesis`（默认 `false`）、`stream_tts_timeout`（默认 `60`）；本版本 MiMO API 仍恒 `stream=false`（**未接线**，勾选无效果）。
+- **Voice Studio**：同时开启「流式兼容 + 文本分段」时，配置页顶部显示相容性提示（二选一）。
 
 ### 修复
 
 - **双音**：`VoiceDedupStore` 改为插件实例/进程级共享（修复每次新建空表导致去重失效）；事件级 `claim_voice_send` / `_mimo_tts_voice_sent` 保证一条回复只出一次自动语音；background TTS 发送前抢占，防止与 `on_llm_response` 双发。
 - **分段语音顺序**：非流式 `on_llm_response` 在 result 非 `STREAMING_*` 时早退，不再误用 `text_already_sent=True`（避免音群前置、整段文字押后）；decorate 恢复非流式出声，仅在 streaming 结果或已 claim 时 skip。
 - `stream_llm_tts_compat=true` 时语音唯一出口为 `on_llm_response`；`=false` 时保持 v2.4.1 decorate 路径。
+- **流式 + 分段文声割裂**：平台已直播全文时插件若仍按段抽样补音，会出现「全字 + 零星音」；现强制降级为**全文一条音**（可润色），打 WARN 与 `mode=full_text`。段字+段音仅非流式 decorate 生效。
 
 ### 变更
 
 - **非流式 decorate（auto_tts）**：恢复 main 流程（`_is_tts_active` + 分段/全文），移除 claim / dedup / resolve_tts_active 等可能改变 main 行为的逻辑；background TTS 同样恢复 main（无 claim）。
 - **流式守卫**：`on_decorating_result` 增加流式结果守卫；非流式行为与 v2.4.1 一致。
-- 分段 `execute_segmented_reply` 新增 `text_already_sent`，仅流式调用使用；非流式保持 main 先字后音。
+- 分段 `execute_segmented_reply` 新增 `text_already_sent`，非流式调用不使用；流式路径**不再调用**该函数。
 - 流式路径文字语义：字已由 AstrBot 直播，插件**不重复发全文**；`send_text_async` / `segment_text_fallback` / `display_polished_text` 在流式下不再发展示文字。
-- 流式 + `enable_voice_polish`：仍可为语音润色，`display_polished_text` 自动降级 false（不回写聊天文字）；流式 + 分段只补语音，不重发段落文字。
+- 流式 + `enable_voice_polish`：仍可为语音润色，`display_polished_text` 自动降级 false（不回写聊天文字）。
+- **流式 × 分段为二选一**：配置 / Studio hint 写明；`tts_stream_synthesis` 标注 P3 预留未接线。
 
 ### 兼容
 

@@ -155,8 +155,9 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
       title: '输出设置', ic: 'adjustments',
       fields: [
         { key: 'auto_tts', label: '自动 TTS', type: 'bool', hint: '拦截 LLM 回复生成语音' },
+        { key: 'stream_llm_tts_compat', label: '流式输出自动 TTS 兼容', type: 'bool', hint: 'AstrBot 开启流式输出时仍自动补音；文字由平台直播，插件只发全文一条音。与「文本分段」二选一' },
         { key: 'send_text_with_tts', label: 'TTS 同步发送文字', type: 'bool' },
-        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启且保留文字输出时，文字先行、语音后台合成后追加（分段模式与全文模式均生效）' },
+        { key: 'send_text_async', label: '文字异步发送', type: 'bool', hint: '开启且保留文字输出时，文字先行、语音后台合成后追加（仅非流式；流式文字由平台直播）' },
         { key: 'audio_format', label: '音频格式', type: 'select', options: ['wav', 'mp3', 'ogg'] },
         { key: 'emotion_override', label: '默认情感覆盖', type: 'text', hint: '留空=自动检测' },
         { key: 'tts_example_inject', label: 'TTS 风格示例注入', type: 'bool', hint: '开启后按当前情感（emotion）匹配风格示例池，将画面感示例并入 user 控制通道。默认关闭：避免未经实测改变播报风格' },
@@ -178,7 +179,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
     {
       title: '文本分段', ic: 'scissors',
       fields: [
-        { key: 'enable_segmentation', label: '启用文本分段', type: 'bool', hint: '长文本按规则切分多段输出，每段独立掷骰出语音' },
+        { key: 'enable_segmentation', label: '启用文本分段', type: 'bool', hint: '段字+段音逐段投递。仅非流式生效；与「流式输出自动 TTS」二选一（流式下自动降级全文单音）' },
         { key: 'segment_pattern', label: '分段规则', type: 'select', options: ['sentence', 'paragraph', 'comma', 'mixed'], hint: 'sentence=句末标点，paragraph=空行，comma=逗号分号，mixed=混合' },
         { key: 'segment_max_count', label: '分段数量上限', type: 'number', hint: '超过此数量的分段将被合并。0=不限制' },
         { key: 'segment_voice_probability', label: '分段语音概率', type: 'slider', min: 0, max: 1, step: 0.1, hint: '全局触发通过后，每段独立掷骰。1.0=全部语音，0.0=全部文字' },
@@ -1353,7 +1354,14 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
 
       onMounted(() => { loadConfig(); });
 
-      return { config, jsonText, loading, saving, sections, saveSection, formatJsonField, icon };
+      const streamSegmentConflict = computed(() =>
+        !!(config.stream_llm_tts_compat && config.enable_segmentation)
+      );
+
+      return {
+        config, jsonText, loading, saving, sections, saveSection,
+        formatJsonField, icon, streamSegmentConflict
+      };
     },
     template: `
 <div class="page config-page">
@@ -1362,6 +1370,15 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
   <div v-if="loading" class="loading"><span class="spinner"></span> 加载中...</div>
 
   <template v-if="!loading">
+    <div v-if="streamSegmentConflict" class="alert alert-warn stream-seg-compat" role="status">
+      <span class="icon" v-html="icon('alert-circle')"></span>
+      <span>
+        <strong>流式 + 分段为二选一：</strong>已同时开启「流式输出自动 TTS 兼容」与「文本分段」。
+        流式下文字由平台直播全文，分段只会造成「全字 + 零星音」割裂，因此自动降级为<strong>全文一条音</strong>；
+        段字+段音仅在关闭流式（或关闭分段兼容）时生效。
+      </span>
+    </div>
+
     <div v-for="section in sections" :key="section.title" class="card config-section">
       <div class="section-title"><span v-html="icon(section.ic)"></span> {{ section.title }}</div>
       <div class="config-fields">

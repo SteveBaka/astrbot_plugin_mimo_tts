@@ -363,6 +363,10 @@ body {
 .alert .icon { font-size: 16px; flex-shrink: 0; }
 .alert-error { background: var(--danger-bg); color: var(--danger); border-color: rgba(255, 92, 106, 0.15); }
 .alert-success { background: var(--success-bg); color: var(--success); border-color: rgba(74, 222, 128, 0.15); }
+.alert-warn { background: var(--warn-bg); color: var(--warn); border-color: rgba(217, 119, 6, 0.2); }
+.stream-seg-compat { align-items: flex-start; line-height: 1.5; }
+.stream-seg-compat .icon { margin-top: 2px; }
+.stream-seg-compat strong { font-weight: 600; }
 
 /* ── Loading / Empty ── */
 .loading {

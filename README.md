@@ -59,6 +59,8 @@
 | `default_voice` | 默认音色 | `mimo_default` |
 | `audio_format` | 输出格式(mp3/wav/ogg) | `wav` |
 | `auto_tts` | 自动拦截 LLM 输出 | `true` |
+| `stream_llm_tts_compat` | AstrBot 流式输出下仍自动补音（文字平台直播，全文一条音；与分段二选一） | `true` |
+| `tts_stream_synthesis` | MiMO TTS API 流式合成（**P3 预留未接线**，当前恒 stream=false） | `false` |
 | `send_text_with_tts` | 自动 TTS 时是否同步发送文字 | `true` |
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
@@ -91,7 +93,7 @@
 | `nl_sing_enabled` | 自然语言触发唱歌（正则快路径） | `false` |
 | `nl_sing_cooldown` | 自然语言唱歌冷却（秒，0=不限） | `30` |
 | `nl_sing_tool` | NL 唱歌 LLM 工具兜底（与 nl_sing_enabled 同开） | `false` |
-| `enable_segmentation` | 启用文本分段 TTS | `false` |
+| `enable_segmentation` | 启用文本分段 TTS（**仅非流式**；与流式自动 TTS 为二选一，流式下降级全文单音） | `false` |
 | `segment_pattern` | 分段规则（sentence/paragraph/comma/mixed） | `sentence` |
 | `segment_max_count` | 分段数量上限 | `10` |
 | `segment_voice_probability` | 分段语音输出概率（0.0~1.0，每段独立掷骰） | `1.0` |

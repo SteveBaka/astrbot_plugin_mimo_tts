@@ -163,19 +163,19 @@
       "stream_llm_tts_compat": {
         "type": "bool",
         "description": "流式输出自动 TTS 兼容",
-        "hint": "AstrBot 开启「流式输出」时，LLM 回复仍自动合成语音；语音在流式结束后通过 on_llm_response 发送，不重复发全文文字",
+        "hint": "AstrBot 开启「流式输出」时仍自动合成语音；文字由平台直播，插件只补全文一条音。与「文本分段」为二选一：分段字+段音仅在关闭流式时生效",
         "default": true
       },
       "tts_stream_synthesis": {
         "type": "bool",
-        "description": "MiMO TTS API 流式合成（实验）",
-        "hint": "仅 default 模型可选；clone/design 恒非流式。失败自动降级为非流式",
+        "description": "MiMO TTS API 流式合成（实验·未接线）",
+        "hint": "P3 预留开关：当前实现恒请求 stream=false，勾选无效果。仅 default 模型规划支持；clone/design 恒非流式。勿依赖",
         "default": false
       },
       "stream_tts_timeout": {
         "type": "int",
         "description": "流式合成超时（秒）",
-        "hint": "P3 流式合成总超时；默认 60",
+        "hint": "P3 预留：MiMO API 流式合成总超时；当前未接线，默认 60",
         "default": 60
       },
       "audio_format": {
@@ -205,7 +205,7 @@
       "enable_segmentation": {
         "type": "bool",
         "description": "启用文本分段 TTS",
-        "hint": "长文本将按规则切分成多段输出，变为发送多个音频",
+        "hint": "长文本按规则切分，段字+段音逐段投递。仅非流式生效；AstrBot 流式输出开启时自动降级为全文一条音（二选一）",
         "default": false
       },
       "segment_pattern": {
