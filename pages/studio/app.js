@@ -217,7 +217,8 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
         { key: 'clone_model', label: '克隆模型', type: 'text' },
         { key: 'clone_voice_id', label: '克隆音色 ID', type: 'text' },
         { key: 'clone_style_prompt', label: '克隆风格控制', type: 'text' },
-        { key: 'clone_audio_tags', label: '克隆音频标签', type: 'text' }
+        { key: 'clone_audio_tags', label: '克隆音频标签', type: 'text' },
+        { key: 'clone_style_pool', label: '克隆音色风格控制池', type: 'json', hint: 'JSON 数组。每项 name（克隆音色 ID，与 /voiceclone 登记一致）/ style（风格控制）/ audio_tags（音频标签）；留空字段回退上方全局值' }
       ]
     },
     {
@@ -1294,6 +1295,7 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
     setup() {
       const config = reactive({});
       const jsonText = reactive({});
+      const configBaseline = reactive({});
       const loading = ref(false);
       const saving = ref(false);
       const sections = CONFIG_SECTIONS;
@@ -1401,45 +1403,77 @@ const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAY
             }
           }));
           initMultiFields();
+          // 基线：只提交改动过的字段，避免旧表单覆盖 Dashboard 的新改动
+          Object.keys(configBaseline).forEach(k => delete configBaseline[k]);
+          CONFIG_SECTIONS.forEach(s => s.fields.forEach(f => {
+            const token = fieldToken(f);
+            if (token !== null) configBaseline[f.key] = token;
+          }));
+        } else {
+          showError('读取配置失败（接口无响应）');
         }
         loading.value = false;
+      }
+
+      // 字段值的规范化比较串：json 用规范化文本，multi 用数组 JSON，其余 JSON 化
+      function fieldToken(f) {
+        try {
+          if (f.type === 'json') return normalizeJsonPayload(f.key, jsonText[f.key]);
+          if (f.type === 'multi') return JSON.stringify(multiToArr(config[f.key]));
+          return JSON.stringify(plainValue(config[f.key]));
+        } catch (e) {
+          return null;
+        }
       }
 
       async function saveSection(section) {
         saving.value = true;
         try {
           const payload = {};
+          const tokens = {};
           for (const f of section.fields) {
             if (config[f.key] === undefined) continue;
+            const token = fieldToken(f);
+            if (token === null) continue;
+            if (configBaseline[f.key] === token) continue;  // 未改动
+            tokens[f.key] = token;
             if (f.type === 'json') {
-              payload[f.key] = normalizeJsonPayload(f.key, jsonText[f.key]);
+              payload[f.key] = token;
             } else if (f.type === 'multi') {
               payload[f.key] = multiToArr(config[f.key]);
             } else {
               payload[f.key] = plainValue(config[f.key]);
             }
           }
+          const changedKeys = Object.keys(payload);
+          if (!changedKeys.length) {
+            showSuccess(section.title + ' 无改动');
+            return;
+          }
           const res = await apiPost('config/update', payload);
           if (res && res.error) {
             showError(res.error);
-          } else if (res) {
-            // 回写规范化后的 JSON 文本，避免界面与已保存值漂移
-            section.fields.forEach(f => {
-              if (f.type === 'json' && payload[f.key] !== undefined) {
-                try { jsonText[f.key] = JSON.stringify(JSON.parse(payload[f.key]), null, 2); }
-                catch (e) { /* keep */ }
-              }
-            });
-            const needsReload = section.fields.some(f =>
-              ['enable_plugin_log', 'timeout', 'max_retries'].includes(f.key)
-            );
-            const msg = needsReload
-              ? section.title + ' 已保存（部分配置需重载插件后生效）'
-              : section.title + ' 已保存';
-            showSuccess(msg);
-          } else {
-            showError('保存失败：接口无响应（请查看浏览器控制台）');
+            return;
           }
+          if (!res) {
+            showError('保存失败：接口无响应（请查看浏览器控制台）');
+            return;
+          }
+          // 回写规范化后的 JSON 文本，避免界面与已保存值漂移
+          section.fields.forEach(f => {
+            if (f.type === 'json' && payload[f.key] !== undefined) {
+              try { jsonText[f.key] = JSON.stringify(JSON.parse(payload[f.key]), null, 2); }
+              catch (e) { /* keep */ }
+            }
+          });
+          changedKeys.forEach(k => { configBaseline[k] = tokens[k]; });
+          const needsReload = changedKeys.some(k =>
+            ['enable_plugin_log', 'timeout', 'max_retries'].includes(k)
+          );
+          const msg = needsReload
+            ? section.title + ' 已保存并落盘（部分配置需重载插件后生效）'
+            : section.title + ' 已保存并落盘';
+          showSuccess(msg);
         } catch (e) {
           showError('保存失败：' + (e && e.message ? e.message : e));
         } finally {

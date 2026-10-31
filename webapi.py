@@ -42,6 +42,8 @@ async def api_health(plugin):
 async def api_get_config(plugin):
     from quart import jsonify
 
+    # 先与磁盘/最新对象对齐，避免 WebUI 拿到过期快照
+    plugin.config.refresh()
     return jsonify({"config": dict(plugin.config._flat)})
 
 
@@ -50,10 +52,11 @@ async def api_update_config(plugin):
 
     body = await request.json
     allowed_keys = set(plugin.config._SCHEMA_DEFAULTS.keys())
-    for k, v in body.items():
-        if k in allowed_keys:
-            plugin.config.set(k, v)
-    return jsonify({"status": "ok"})
+    patch = {k: v for k, v in (body or {}).items() if k in allowed_keys}
+    persisted = plugin.config.bulk_update(patch) if patch else False
+    if patch and not persisted:
+        return jsonify({"error": "配置写入失败（无法保存到磁盘）"}), 500
+    return jsonify({"status": "ok", "updated": sorted(patch)})
 
 
 async def api_tts_synthesize(plugin):

@@ -212,8 +212,10 @@ async def handle_voicegen(plugin, event: AstrMessageEvent):
         ]
         lines = [
             "用法:",
-            "  /voicegen <ID> <音色描述>  — 注册新设计音色（描述填示例池分类名如「温柔甜美」"
-            "自动启用完整词表提示+画面感例句）",
+            (
+                "  /voicegen <ID> <音色描述>  — 注册新设计音色（描述填示例池分类名如"
+                "「温柔甜美」，自动启用完整词表提示+画面感例句）"
+            ),
             "  /voicegen <分类名>         — 示例池分类名一键注册并切换设计音色（如 /voicegen 温柔甜美）",
             "  /voicegen <音色名>         — 切换到已注册的设计音色",
             "  /voicegen cancel <音色名>  — 取消注册某个设计音色",

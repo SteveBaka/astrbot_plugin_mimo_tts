@@ -20,6 +20,7 @@ from astrbot.api import logger
 
 from ..core.config import resolve_sing_style
 from ..core.style_lib import (
+    SING_DIRECT_PROMPT_DEFAULT,
     SING_TAG_PROMPT,
     SING_TAGS_MAX,
     collect_sing_tags,
@@ -42,20 +43,6 @@ if TYPE_CHECKING:
 _POLISH_CACHE: dict[tuple, tuple[float, str]] = {}
 _POLISH_CACHE_MAX = 64
 
-# 演唱描述默认模板（purpose="direct"）。改动会经指纹自动更换润色缓存。
-SING_DIRECT_PROMPT_DEFAULT = (
-    "你是一个专业的演唱指导。请根据【歌词】与【风格】，用一句 60 字以内的演唱描述，"
-    "指导如何唱出理想效果。\n"
-    "要求：\n"
-    '1. 用"像……一样"的画面比喻点明整体气质（如"像晨露一样清透"），'
-    '再给出明快/轻柔/活泼等语调基调，结尾带节奏或音高走向（如"语速略快，句尾上扬"）\n'
-    "2. 与已配置的音色、语速、音高协调，顺势突出其长处，绝不给出冲突的节奏或音高指令\n"
-    "3. 贴合人设与语境（撒娇/叙事/俏皮等），让描述具体可感\n"
-    '4. 禁止出现"收束/收紧/压低/减弱/收小"等收窄类词汇（会导致声音压窄）\n'
-    '5. 禁止时间轴分句（"开头/中段/结尾"）、禁止 [] 或 () 标签、不要出现歌词原文\n'
-    "6. 不要思考、不要分析过程，第一句就是最终描述\n\n"
-    "当前风格：{style}\n歌词：{text}"
-)
 
 
 def _polish_cache_key(

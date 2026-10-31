@@ -9,11 +9,16 @@ into a internal dict for backward-compatible property access.
 
 from __future__ import annotations
 
-from astrbot.api import logger
-
+import copy
 import json
 import re
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
+
+from astrbot.api import logger
+
+from .constants import SUPPORTED_AUDIO_FORMATS
+from .polish import POLISH_PROMPT_DEFAULT
+from .style_lib import SING_DIRECT_PROMPT_DEFAULT, SING_TAG_PROMPT
 
 # ── 唱歌风格库约束（sing-mode-feature.md §8.2 输入卫生） ──
 SING_STYLES_MAX = 20
@@ -412,6 +417,23 @@ def resolve_sing_style(
     return "", [], "none", group
 
 
+# 内置导演角色示例（首装即写入配置；新用户可直接 /direct 应用）
+DIRECTOR_CHARACTERS_PRESET = (
+    '[\n  {\n    "id": "xiaoyin",\n    "name": "小茵",\n'
+    '    "character": "二十岁出头的邻家学姐，说话轻、尾音软，偶尔带一点鼻音。",\n'
+    '    "baseline_guidance": "整体偏温柔、语速稍慢；句尾自然收，不夸张。",\n'
+    '    "scene": "",\n    "voice": "茉莉",\n'
+    '    "style_words": ["温柔"],\n    "enabled": true,\n'
+    '    "note": "示例角色，可删"\n  },\n  {\n'
+    '    "id": "editor",\n    "name": "电台主播",\n'
+    '    "character": "深夜电台男主播，声线偏低沉，咬字清楚，略带一点气声。",\n'
+    '    "baseline_guidance": "语速偏慢，句间留白；音色偏低沉磁性，气声略多但不夸张。",\n'
+    '    "scene": "深夜卧室，只开一盏小夜灯。",\n    "voice": "白桦",\n'
+    '    "style_words": ["磁性"],\n    "enabled": true,\n'
+    '    "note": "示例角色，可删"\n  }\n]'
+)
+
+
 class ConfigManager:
     """Plugin configuration manager.
 
@@ -423,7 +445,7 @@ class ConfigManager:
 
     # ── Schema defaults (flat key → value) ──
 
-    _SCHEMA_DEFAULTS: dict[str, Any] = {
+    _SCHEMA_DEFAULTS: ClassVar[dict[str, Any]] = {
         # API settings
         "api_key": "",
         "api_base_url": "https://api.xiaomimimo.com/v1",
@@ -437,8 +459,8 @@ class ConfigManager:
         "sing_polish_timeout": 20,
         "sing_polish_cache_ttl": 600,
         "sing_style_source": "prompt",
-        "sing_tag_prompt": "",
-        "sing_direct_prompt": "",
+        "sing_tag_prompt": SING_TAG_PROMPT,
+        "sing_direct_prompt": SING_DIRECT_PROMPT_DEFAULT,
         "nl_sing_enabled": False,
         "nl_sing_cooldown": 30,
         "nl_sing_tool": False,
@@ -452,7 +474,7 @@ class ConfigManager:
         "director_cache_ttl": 300,
         "director_characters_enabled": False,
         "character_require_voice": True,
-        "director_characters": "",
+        "director_characters": DIRECTOR_CHARACTERS_PRESET,
         # keep=保留会话音色/模式；force=覆盖音色；bind=同时按角色 tts_mode 切换（design 排除）
         "character_voice_policy": "keep",
         "character_mode_policy": "keep",
@@ -491,7 +513,7 @@ class ConfigManager:
         "enable_voice_polish": False,
         "display_polished_text": False,
         "polish_llm_provider": "",
-        "polish_prompt": "",
+        "polish_prompt": POLISH_PROMPT_DEFAULT,
         "optimize_text_preview": False,
         # Clone settings
         "clone_enabled": True,
@@ -527,11 +549,22 @@ class ConfigManager:
     # e.g. "api_key" → ("api_settings", "api_key")
 
     def __init__(self, config: dict):
-        raw_cfg: dict = config or {}
+        raw_cfg: dict = config if isinstance(config, dict) else {}
+        # AstrBotConfig: AstrBot 注入的配置对象，带 save_config() 才能落盘
+        self._raw = raw_cfg
+        self._save_fn = getattr(raw_cfg, "save_config", None)
+        if not callable(self._save_fn):
+            self._save_fn = None
 
         # Clean legacy fields
-        raw_cfg.pop("singing_mode", None)
-        self._design_voice_id: str = str(raw_cfg.pop("design_voice_id", "")).strip()
+        legacy_changed = False
+        if "singing_mode" in raw_cfg:
+            raw_cfg.pop("singing_mode", None)
+            legacy_changed = True
+        legacy_design_id = raw_cfg.pop("design_voice_id", None)
+        if legacy_design_id is not None:
+            legacy_changed = True
+        self._design_voice_id: str = str(legacy_design_id or "").strip()
 
         # Store the raw (possibly nested) config for persistence
         self._cfg: dict = raw_cfg
@@ -544,25 +577,44 @@ class ConfigManager:
         # Ensure all schema defaults exist in the flat dict
         for key, default_val in self._SCHEMA_DEFAULTS.items():
             if key not in self._flat:
-                self._flat[key] = default_val
+                self._flat[key] = copy.deepcopy(default_val)
+
+        # adaptive_triggers 旧字符串（过渡版本）→ list，避免 Dashboard 多选控件拿到错误类型
+        raw_triggers = self._flat.get("adaptive_triggers")
+        if isinstance(raw_triggers, str):
+            items = [
+                p.strip()
+                for p in re.split(r"[\s,，、]+", raw_triggers)
+                if p.strip()
+            ]
+            self._flat["adaptive_triggers"] = items
+            self._set_nested("adaptive_triggers", items)
+            legacy_changed = True
 
         # 旧 nl_voice_command=true → 并入 adaptive_triggers（统一控制面）
         if self._flat.get("nl_voice_command"):
             raw = self._flat.get("adaptive_triggers", ["voice_input"])
+            merged = None
             if isinstance(raw, (list, tuple)):
                 items = [str(x) for x in raw]
                 if "nl_voice" not in items:
                     items.append("nl_voice")
-                    self._flat["adaptive_triggers"] = items
+                    merged = items
             else:
                 text = str(raw or "")
                 if "nl_voice" not in text:
-                    self._flat["adaptive_triggers"] = (
-                        f"{text}, nl_voice" if text.strip() else "nl_voice"
-                    )
+                    merged = f"{text}, nl_voice" if text.strip() else "nl_voice"
+            if merged is not None:
+                self._flat["adaptive_triggers"] = merged
+                self._set_nested("adaptive_triggers", merged)
+            legacy_changed = True
         self._flat.pop("nl_voice_command", None)
         if isinstance(self._cfg.get("output_settings"), dict):
             self._cfg["output_settings"].pop("nl_voice_command", None)
+
+        # 迁移结果落盘：否则每次重载都会重跑迁移，且磁盘残留旧键
+        if legacy_changed:
+            self.save()
 
     # ── Flatten / unflatten helpers ──
 
@@ -581,6 +633,13 @@ class ConfigManager:
         """Write a flat key back into the nested ``_cfg`` dict."""
         path = self._key_to_path.get(key)
         if path is None:
+            # 新增于 schema 但旧配置缺该键时没有路径映射：扫描一层父容器自愈
+            for parent_key, container in list(self._cfg.items()):
+                if isinstance(container, dict) and key in container:
+                    path = (parent_key, key)
+                    self._key_to_path[key] = path
+                    break
+        if path is None:
             self._cfg[key] = value
             return
         d = self._cfg
@@ -596,20 +655,133 @@ class ConfigManager:
         """Get a config value by flat key."""
         return self._flat.get(key, default)
 
-    def set(self, key: str, value: Any) -> None:
-        """Set a config value (updates both flat and nested dicts)."""
+    def set(self, key: str, value: Any, *, persist: bool = True) -> None:
+        """Set a config value and persist it.
+
+        `_flat` 与嵌套 `_cfg` 同步更新；默认立即 `save_config()`，让
+        WebUI / 命令写入与 Dashboard 保存在同一份磁盘配置上（重启不丢）。
+        """
         self._flat[key] = value
         self._set_nested(key, value)
+        if persist:
+            self.save()
+
+    def _coerce_value(self, key: str, value: Any) -> Any:
+        """按默认值类型轻量强制转换，挡住 WebUI 传来的错类型字符串。"""
+        base = self._SCHEMA_DEFAULTS.get(key)
+        try:
+            if isinstance(base, bool):
+                if isinstance(value, str):
+                    return value.strip().lower() in ("1", "true", "yes", "on")
+                return bool(value)
+            if isinstance(base, int) and not isinstance(base, bool):
+                return int(value)
+            if isinstance(base, float):
+                return float(value)
+            if isinstance(base, list):
+                if isinstance(value, list):
+                    return value
+                if isinstance(value, str):
+                    return [p.strip() for p in re.split(r"[\s,，、]+", value) if p.strip()]
+                return list(value) if isinstance(value, (tuple, set)) else []
+        except (ValueError, TypeError):
+            return value
+        return value
+
+    def bulk_update(self, values: dict, *, persist: bool = True) -> bool:
+        """批量写入（一次落盘），用于 WebUI 整段配置保存。"""
+        changed = False
+        for key, value in (values or {}).items():
+            coerced = self._coerce_value(key, value)
+            self._flat[key] = coerced
+            self._set_nested(key, coerced)
+            changed = True
+        return self.save() if (changed and persist) else False
+
+    def save(self) -> bool:
+        """Persist the live AstrBotConfig; no-op when unavailable (unit tests)."""
+        if self._save_fn is None:
+            return False
+        try:
+            self._save_fn()
+            return True
+        except Exception:
+            logger.warning(
+                "MiMO TTS: failed to persist plugin config to disk", exc_info=True
+            )
+            return False
+
+    def refresh(self) -> None:
+        """Re-flatten from the live config object.
+
+        Dashboard 保存会先写盘再热重载插件；同进程内读取前刷新可保证
+        WebUI 拿到的一定是最新已落盘值。
+        """
+        if not self._cfg:
+            return
+        self._key_to_path = {}
+        self._flat = {}
+        self._flatten(self._cfg, self._flat)
+        for key, default_val in self._SCHEMA_DEFAULTS.items():
+            if key not in self._flat:
+                self._flat[key] = copy.deepcopy(default_val)
+
+    # ── Schema consistency guard ──
+
+    _PRESET_BACKED_KEYS: ClassVar[tuple[str, ...]] = (
+        "polish_prompt",
+        "sing_tag_prompt",
+        "sing_direct_prompt",
+        "sing_styles",
+        "style_examples",
+        "director_characters",
+    )
+
+    def check_schema_consistency(self, schema: Any) -> list[str]:
+        """比较 schema 默认值与 Python 内置常量，漂移时记 WARNING。
+
+        AstrBot 首次部署把 schema 默认值写进配置文件；代码内又按常量兜底。
+        两处不一致会让「新装默认」与「清空后回退」表现不同，故启动自检。
+        """
+        if not isinstance(schema, dict):
+            return []
+        flat: dict[str, Any] = {}
+
+        def walk(node: Any) -> None:
+            for key, meta in (node.get("items") or {}).items():
+                if isinstance(meta, dict) and meta.get("type") == "object":
+                    walk(meta)
+                elif isinstance(meta, dict):
+                    flat[key] = meta.get("default")
+
+        for group in schema.values():
+            if isinstance(group, dict):
+                walk(group)
+        drifted = []
+        for key in self._PRESET_BACKED_KEYS:
+            if key not in flat:
+                continue
+            if flat[key] != self._SCHEMA_DEFAULTS.get(key):
+                drifted.append(key)
+                logger.warning(
+                    "MiMO TTS: schema default drift detected for %s "
+                    "(schema != builtin preset); update _conf_schema.json",
+                    key,
+                )
+        if not drifted:
+            logger.debug("MiMO TTS: schema defaults match builtin presets")
+        return drifted
 
     # ── Typed property accessors ──
 
     @property
     def api_key(self) -> str:
-        return str(self._flat.get("api_key", ""))
+        # 常见粘贴带空格/换行，直接用于鉴权会 401
+        return str(self._flat.get("api_key", "") or "").strip()
 
     @property
     def api_base_url(self) -> str:
-        return str(self._flat.get("api_base_url", ""))
+        return str(self._flat.get("api_base_url", "") or "").strip()
 
     @property
     def model(self) -> str:
@@ -999,7 +1171,25 @@ class ConfigManager:
 
     @property
     def audio_format(self) -> str:
-        return str(self._flat.get("audio_format", "wav"))
+        value = str(self._flat.get("audio_format", "wav") or "").lower().strip()
+        return value if value in SUPPORTED_AUDIO_FORMATS else "wav"
+
+    @property
+    def min_text_length(self) -> int:
+        try:
+            value = int(self._flat.get("min_text_length", 5))
+        except (ValueError, TypeError):
+            value = 5
+        return max(0, value)
+
+    @property
+    def max_text_length(self) -> int:
+        try:
+            value = int(self._flat.get("max_text_length", 500))
+        except (ValueError, TypeError):
+            value = 500
+        # min > max 会让 should_skip 永久命中：至少保留 1 字余量
+        return max(self.min_text_length + 1, value)
 
     @property
     def timeout(self) -> int:
