@@ -7,7 +7,8 @@
         "type": "string",
         "description": "MiMO API Key",
         "hint": "从 MiMO 开放平台获取",
-        "default": ""
+        "default": "",
+        "secret": true
       },
       "api_base_url": {
         "type": "string",
@@ -158,12 +159,17 @@
         "type": "list",
         "description": "智能触发条件（可多选）",
         "hint": "统一勾选智能能力。①语音输入：需同时开启「智能自适应模式」——用户发语音强制回复语音、纯文字不出音；②自然语言朗读：匹配「用语音说/朗读/念…」等句式直接合成（等同 /mimo_say，不进 LLM/自动钩子），选中即生效不必开智能模式",
-        "options": ["voice_input", "nl_voice"],
+        "options": [
+          "voice_input",
+          "nl_voice"
+        ],
         "labels": [
           "语音输入（需开智能模式；用户发语音→强制出音，纯文字不出）",
           "自然语言朗读（「用语音说/朗读/念…」→ 直接合成，不进 LLM）"
         ],
-        "default": ["voice_input"]
+        "default": [
+          "voice_input"
+        ]
       },
       "send_text_with_tts": {
         "type": "bool",
@@ -199,7 +205,12 @@
         "type": "string",
         "description": "音频输出格式",
         "hint": "wav（推荐）/ mp3 / ogg",
-        "default": "wav"
+        "default": "wav",
+        "options": [
+          "wav",
+          "mp3",
+          "ogg"
+        ]
       },
       "min_text_length": {
         "type": "int",
@@ -310,7 +321,7 @@
         "obvious_hint": true,
         "editor_mode": true,
         "editor_language": "json",
-        "default": "[\n  {\n    \"name\": \"小雪\",\n    \"style\": \"声音清澈，温柔甜美\",\n    \"tags\": \"轻笑\",\n    \"voice\": \"茉莉\",\n    \"speed\": 1.5,\n    \"pitch\": 1\n  },\n  {\n    \"name\": \"小花\",\n    \"style\": \"温柔甜美的可爱风格\",\n    \"tags\": \"可爱\",\n    \"voice\": \"冰糖\",\n    \"speed\": 1.1,\n    \"pitch\": 1\n  }\n]"
+        "default": "[\n  {\n    \"name\": \"小雪\",\n    \"style\": \"声音清澈，温柔甜美\",\n    \"tags\": \"轻笑\",\n    \"voice\": \"茉莉\",\n    \"speed\": 1.5,\n    \"pitch\": 1\n  },\n  {\n    \"name\": \"小花\",\n    \"style\": \"温柔甜美的可爱风格\",\n    \"tags\": \"可爱\",\n    \"style_tags\": \"可爱\",\n    \"voice\": \"冰糖\",\n    \"speed\": 1.1,\n    \"pitch\": 1\n  }\n]"
       },
       "sing_voice": {
         "type": "string",
@@ -443,14 +454,20 @@
         "type": "string",
         "description": "角色音色策略",
         "hint": "keep=会话已是自定义音色时不覆盖；force=应用角色时总是切换到角色音色。改动会话音色前会快照，/direct off 可恢复",
-        "options": ["keep", "force"],
+        "options": [
+          "keep",
+          "force"
+        ],
         "default": "keep"
       },
       "character_mode_policy": {
         "type": "string",
         "description": "角色输出模式策略",
         "hint": "keep=不改会话输出模式；bind=角色 JSON 含 tts_mode（default/clone）时一并切换。design 不绑定（设计通道不注入导演）。/direct off 恢复进入前模式",
-        "options": ["keep", "bind"],
+        "options": [
+          "keep",
+          "bind"
+        ],
         "default": "keep"
       },
       "director_characters": {

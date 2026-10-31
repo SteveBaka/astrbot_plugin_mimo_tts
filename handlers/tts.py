@@ -25,7 +25,7 @@ async def handle_mimo_say(plugin, event: AstrMessageEvent):
     import re
 
     raw = str(event.message_str or "").strip()
-    first, sep, remainder = raw.partition(" ")
+    first, _sep, remainder = raw.partition(" ")
     normalized_first = first.lstrip("/").split("@", 1)[0].strip().lower()
     if normalized_first == "mimo_say":
         text = remainder.strip()

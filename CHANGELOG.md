@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 2026-10-31 v2.4.7
+
+> **配置持久化与配置面加固**（Issue #13）：WebUI/命令写入即落盘，重启不再丢 `api_key`、克隆风格池；默认模板单一来源；Studio 补齐克隆音色风格池编辑。
+
+### 修复
+
+- **配置持久化（Issue #13）**：`ConfigManager.set()` 此前只改内存、从不调用 `save_config()`，Studio / 克隆风格 / 角色库等写入在重启或 Dashboard 保存热重载后丢失。现写穿到 AstrBotConfig 并立即落盘；新增 `bulk_update()`（整段保存一次写盘）与 `refresh()`（读取前对齐最新落盘值）。
+- **升级迁移落盘**：`nl_voice_command` → `adaptive_triggers[].nl_voice`、字符串型 `adaptive_triggers` → list，迁移后立即写回磁盘，避免每次重载重复迁移、磁盘残留旧键。
+- **Studio 配置保存只提交改动字段**：避免旧表单整段覆盖 Dashboard 新改动；保存失败不再静默，改为明确报错。
+- **配置读取加固**：`api_key` / `api_base_url` 去首尾空白（避免粘贴空格导致 401）；`audio_format` 按白名单校验并回退 `wav`。
+- **文本长度互斥**：`min_text_length > max_text_length` 会让自动 TTS 永久跳过；现 `max_text_length` 至少为 min+1。
+- **WebUI 写入类型强制**：`config/update` 按默认值类型转换 bool/int/float/list，阻止字符串等错类型污染配置。
+- **`/voicegen` 用法文字**：补回缺失标点（「温柔甜美」，自动启用…）。
+- **ruff 清理**：`RUF012` 可变类属性改 `ClassVar` + 填充时 `deepcopy`；未使用变量与 import 排序。
+
+### 新增
+
+- **默认模板单一来源**：`polish_prompt` / `sing_tag_prompt` / `sing_direct_prompt` / `sing_styles` / `style_examples` / `director_characters` 的 schema 默认值与 Python 内置常量统一；新增启动自检 `check_schema_consistency()`，漂移记 WARNING。新装即含完整模板、两组唱歌风格、6 类风格示例与示例角色（小茵 / 电台主播）。
+- **Studio 配置页补齐「克隆音色风格控制池」**：JSON 编辑，与音色管理页同源同键，保存即落盘。
+- **Schema 补强**：`api_key` 增加 `secret`（新版 Dashboard 掩码显示）；`audio_format` 增加 `wav/mp3/ogg` 下拉选项。
+
+---
+
 ## 2026-10-28 v2.4.6
 
 > **API 流式合成 + 拼接修复 + Issue #11 自适应自动 TTS 控制面**（自 v2.4.5 收口后的合并发布）。
@@ -34,6 +57,8 @@
 - 默认 `smart_auto_tts_mode=false`、`adaptive_triggers=["voice_input"]`：升级后自动回复仍走经典概率，行为与 v2.4.5 对齐。
 - 默认关闭 `tts_stream_synthesis`；唱歌路径不走 API 流式。
 - 会话级 `tts_enabled` / 全局 `auto_tts` 总闸门不变；`/mimo_say` `/sing` `/direct` 不受影响。
+
+---
 
 ---
 

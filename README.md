@@ -27,6 +27,7 @@
 - [x]文本分段 TTS：长文本自动切分，每段独立掷骰出语音，命中段=文字+语音、未命中段=纯文字兜底（可配置丢弃），配合文字异步发送实现「先文字后语音」
 - [x]LLM 音色润色：调用 LLM 为文本注入 MiMO 音频标签，增强语音表现力
 - [x]Voice Studio WebUI：内置可视化管理界面，支持语音合成、音色管理、插件配置、会话管理
+- [x]配置即时落盘：Dashboard / Studio / 命令三处写入同步保存，重启或热重载不丢失；保存只提交改动字段
 - [x]错误原因透出：接口失败时直接返回具体报错原因
 - [x]多用户独立：每人独立设置，互不干扰
 
@@ -45,7 +46,7 @@
 
 1. **填 API Key**：插件配置 →「API 设置」→ 填入 `api_key`（MiMO 开放平台获取）并保存；
 2. **直接体验**：默认开启自动 TTS（LLM 回复自动生成语音）；`/mimo_say 你好呀` 手动合成，`/tts_help` 查看常用命令；
-3. **进阶玩法**：`/presetlist` 一键预设风格、`/sing 小星星亮晶晶` 唱歌（风格库见「唱歌优化」）、`/voicegen 温柔甜美` 一键创建设计音色、`/voiceclone <ID> <音频路径>` 声音克隆；
+3. **进阶玩法**：`/presetlist` 一键预设风格、`/sing 小星星亮晶晶` 唱歌（风格库见「唱歌优化」）、`/voicegen 温柔甜美` 一键创建设计音色、`/voiceclone <ID> <音频路径>` 声音克隆；想要「发语音才回语音、纯文字不出音」，在输出设置勾选「智能自适应模式」并保留「语音输入」触发条件，需要口令朗读则再勾「自然语言朗读」；
 4. **可视化操作**：Voice Studio 插件页面支持试听、音色/配置/会话管理、日志查看。
 
 ## 配置
@@ -66,25 +67,42 @@
 | `tts_stream_synthesis` | MiMO TTS API 流式合成（实验；仅 default 非唱歌路径，失败降级非流式） | `false` |
 | `stream_tts_timeout` | 流式合成总超时（秒，最小 5） | `60` |
 | `send_text_with_tts` | 自动 TTS 时是否同步发送文字 | `true` |
+| `send_text_async` | 文字异步发送（文字先发、语音后台补发；仅非流式） | `false` |
+| `probability` | 自动 TTS 触发概率（经典模式；智能模式不掷骰） | `0.8` |
+| `min_text_length` | 最小朗读字数（低于则跳过自动 TTS） | `5` |
+| `max_text_length` | 最大朗读字数（超出则跳过；>= 最小值+1） | `500` |
 | `default_speed` | 默认语速 | `1.0` |
 | `default_pitch` | 默认音高 | `0` |
 | `emotion_override` | 情感覆盖(auto=自动) | - |
+| `style_hint` | 全局风格提示（并入 user 控制通道） | - |
+| `breath_enabled` | 呼吸声 | `false` |
+| `stress_enabled` | 重音模式 | `false` |
+| `laughter_enabled` | 笑声 | `false` |
+| `pause_enabled` | 停顿模式 | `false` |
 | `tts_example_inject` | 普通 TTS 风格示例注入（P2：按情感匹配示例池并入 user 通道；默认关） | `false` |
 | `tts_output_mode` | TTS 输出来源模式（default/design/clone） | `default` |
+| `clone_enabled` | 启用声音克隆（隐藏项，默认开） | `true` |
+| `design_enabled` | 启用声音设计（隐藏项，默认开） | `true` |
 | `design_model` | 音色设计模型 | `mimo-v2.5-tts-voicedesign` |
 | `design_voice_description` | 设计音色描述：可填 style_examples 分类名精确引用（如"温柔甜美"，自动补全词表提示+画面感示例，快速切换），或自由描述（官方词自动匹配示例池） | - |
+| `design_style_pool` | 设计音色风格控制池（JSON：name/description；留空回退全局描述）。配置页与音色管理页同源 | `[]` |
 | `style_examples` | 风格示例池（导演模式先导，JSON：name/words/examples；design 描述命中风格词时自动并入参考示例） | 内置 6 类 |
 | `director_enabled` | 启用导演模式（/direct + WebUI 控制台；注入 default/克隆/唱歌） | `false` |
 | `director_parse_llm` | LLM 自由解析（内置场景/三维稿未命中时） | `false` |
 | `director_parse_llm_provider` | 导演解析专用 LLM Provider（留空回退润色→当前对话） | 空 |
+| `director_parse_prompt` | 导演解析提示词（`{text}` 占位；留空用内置模板） | 空 |
+| `director_timeout` | 导演解析超时（秒，0=不限） | `8` |
+| `director_cache_ttl` | 导演解析缓存（秒，0=关闭） | `300` |
 | `director_characters_enabled` | 启用角色库（`/direct <角色名>`、WebUI 角色下拉） | `false` |
 | `character_voice_policy` | 角色音色策略：`keep` / `force` | `keep` |
 | `character_mode_policy` | 角色输出模式策略：`keep` / `bind`（design 不绑定） | `keep` |
+| `character_require_voice` | 角色强制绑定音色（新建/编辑时校验） | `true` |
 | `director_characters` | 角色库（JSON 数组；保存即生效） | 内置示例 |
 | `clone_model` | 音色克隆模型 | `mimo-v2.5-tts-voiceclone` |
 | `clone_voice_id` | 克隆音色 ID | - |
 | `clone_style_prompt` | 克隆音色自然语言风格控制 | - |
 | `clone_audio_tags` | 克隆音色音频标签控制 | - |
+| `clone_style_pool` | 克隆音色风格控制池（JSON：name/style/audio_tags；留空回退全局）。配置页与音色管理页同源，保存即落盘 | `[]` |
 | `sing_voice` | 唱歌模式默认音色（预置音色名或风格库组名，组名自动用其绑定 voice） | 空（使用当前音色） |
 | `sing_styles` | 唱歌风格库（JSON，内置"小雪/小花"双组预设；tags 演绎词；style_tags 风格标签词；voice/speed/pitch 可选预设） | 内置示例 |
 | `sing_lyrics_polish` | 唱歌歌词 LLM 润色（关闭零影响） | `false` |
@@ -107,6 +125,16 @@
 | `polish_llm_provider` | 润色 LLM Provider（留空用当前模型） | - |
 | `polish_prompt` | 润色提示词（专业语音润色专家，`{text}` 为原文占位符；留空用内置新模板） | - |
 | `optimize_text_preview` | 官方智能润色（仅设计模式，与 LLM 润色二选一） | `false` |
+| `temperature` | 采样温度（0.0~1.5，TTS 建议 0.6） | `0.6` |
+| `top_p` | 核采样阈值（0.01~1.0） | `0.95` |
+| `timeout` | API 请求超时（秒） | `60` |
+| `max_retries` | 失败重试次数 | `2` |
+| `enable_plugin_log` | 启用插件日志（WebUI 日志页，7 天滚动；改动需重载插件） | `false` |
+| `preset_gentle_female` | 预设·温柔女生 描述词 | 内置 |
+| `preset_serious_male` | 预设·严肃男声 描述词 | 内置 |
+| `preset_cute_girl` | 预设·可爱女孩 描述词 | 内置 |
+| `preset_storyteller` | 预设·讲故事 描述词 | 内置 |
+| `preset_news_anchor` | 预设·新闻播报 描述词 | 内置 |
 
 ### 输出模式说明
 
@@ -291,7 +319,7 @@
   - `clone_audio_tags`：音频标签控制
 - 若这两个配置留空，则保持官方 API 默认行为，不额外注入控制文本。
 - **WebUI 试听一键保存（v2.2.6）**：Voice Studio 合成页克隆模式下，「克隆音色风格控制」输入框随当前所选音色联动显示其专属风格（无则显示全局），实时试听、仅本次合成；点「保存为音色风格」将当前风格保存为该克隆音色的专属风格。
-- **克隆音色风格控制池（v2.2.7/v2.2.8）**：**配置面板「声音克隆 → 克隆音色风格控制池（JSON）」是 per-voice 风格/标签的权威配置点**（与「唱歌风格库」同款 JSON 编辑器：`name`=克隆音色 ID、`style`=风格控制、`audio_tags`=音频标签，留空 = 用全局）——改配置即合成立即生效；WebUI 合成页/音色管理页的保存写入同一配置池，双向联动；音色管理页风格控制池区块可行内编辑并复制整池 JSON 备份。
+- **克隆音色风格控制池（v2.2.7/v2.2.8；v2.4.7 起 Voice Studio 配置页同步提供该 JSON 编辑器）**：**配置面板「声音克隆 → 克隆音色风格控制池（JSON）」是 per-voice 风格/标签的权威配置点**（与「唱歌风格库」同款 JSON 编辑器：`name`=克隆音色 ID、`style`=风格控制、`audio_tags`=音频标签，留空 = 用全局）——改配置即合成立即生效；WebUI 合成页/音色管理页的保存写入同一配置池，双向联动；音色管理页风格控制池区块可行内编辑并复制整池 JSON 备份。
 - `/voiceclone` 还支持以下子命令：
   - `/voiceclone <音色名>`：快速切换到已注册的克隆音色（无需重新指定音频路径）。
   - `/voiceclone cancel <音色名>`：取消注册某个克隆音色；若当前用户正在使用该音色，会自动回退为默认音色；若该音色是配置中的 `clone_voice_id`，会一并清理（v2.2.6）。
@@ -457,6 +485,13 @@ AstrBot/
 - 支持 mp3/wav/ogg 音频格式
 - 每用户独立设置，支持内联参数覆盖
 
+## 配置保存与持久化
+
+- 插件配置由 AstrBot 托管在 `data/config/<插件名>_config.json`；**Dashboard、Voice Studio、命令**三处写入都会立即落盘，重启或热重载不丢失。
+- Voice Studio 保存时只提交改动字段，避免用旧表单覆盖 Dashboard 的较新改动；两处读取前都会先与磁盘对齐。
+- 首次安装即写入完整默认值（润色/唱歌提示词、两组唱歌风格、6 类风格示例、示例角色），无需手动填模板。
+- 升级迁移（如旧 `nl_voice_command`、字符串型 `adaptive_triggers`）会自动转写并落盘。
+
 ## 安全机制
 
 - 路径白名单：`/voiceclone` 与 `/voicegen` 在存储音频文件路径前，会将用户输入经 `resolve()` 后校验是否位于允许目录（`data/plugin_data/astrbot_plugin_mimo_tts/clone/`）内，防止目录穿越攻击。
@@ -465,6 +500,10 @@ AstrBot/
 - 资源释放：插件卸载时自动关闭 HTTP session 等资源，避免连接泄漏。
 
 ## 更新日志
+
+- 2026-10-31，**v2.4.7** 更新：配置持久化修复（Issue #13，WebUI/命令写入即落盘）、Studio 配置页补齐克隆音色风格池与改动字段提交、配置读取/类型加固、默认模板单一来源与 schema 漂移自检；详见 CHANGELOG.md。
+
+- 2026-10-28，**v2.4.6** 更新：MiMO TTS API 流式合成接线与分片拼接修复、Issue #11 智能自适应模式（`smart_auto_tts_mode` + `adaptive_triggers` 多选，含 NL 语音朗读）、导演控制面同源注入；详见 CHANGELOG.md。
 
 - 2026-09-15，**v2.4.1** 更新：导演角色库（配置 JSON 权威 + `/direct 角色名` + `/char` 管理）、音色/模式绑定策略与 `director_snapshot`、分层清除、Voice Studio 会话编辑导演区与合成页控制台对齐；详见 CHANGELOG.md。
 
@@ -569,7 +608,7 @@ AstrBot/
     - `apply_singing_tag` 兼容官方"多风格同括号"写法（如 `(唱歌 温柔)`、`（唱歌，欢快）`），不再产生双重 `(唱歌)` 前缀。
     - 命名矫正：`build_system_prompt` → `build_control_prompt`、`synthesize(system_prompt=)` → `control_prompt=`。两者实际均为 MiMO 官方要求的 **user 角色控制指令**，原命名易被误读为 system prompt（纯内部重命名，零行为变化）。
     - `/sing` 开头风格括号语法：`/sing (温柔) <歌词>`（也支持 `(温柔 甜美)` 多词、`(唱歌)(温柔)词` 混排）。括号内的风格词自动移入 user 角色控制指令，assistant 只保留精确 `(唱歌)` 标签——此前 `(温柔)` 会被当作歌词读出来。带守卫：括号内容含句读或任一词超过 8 字时视为歌词原文保留，不误吞。
-- 由于迎来较大幅度的特性支持，故 `v2.2.0` 以及之后的版本将不在此记录日志，将只显示于 `CHANGELOG.md` 中。
+- `v2.2.0` 之后仅在此列主要版本摘要；逐项修复与完整条目请以 `CHANGELOG.md` 为准。
 
 ## 作者的怪想法
 

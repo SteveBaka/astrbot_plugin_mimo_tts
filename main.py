@@ -89,6 +89,7 @@ class MiMoTTSPlugin(Star):
         super().__init__(context)
 
         self.config = ConfigManager(config or {})
+        self.config.check_schema_consistency(getattr(config, "schema", None))
         migrate_sing_styles(self.config, config)
         self._plugin_dir = Path(__file__).resolve().parent
         self._data_dir = Path(StarTools.get_data_dir())
@@ -214,8 +215,8 @@ class MiMoTTSPlugin(Star):
     def _should_skip(self, text: str) -> bool:
         return should_skip(
             text,
-            self.config.get("min_text_length"),
-            self.config.get("max_text_length"),
+            self.config.min_text_length,
+            self.config.max_text_length,
             SKIP_PATTERNS,
         )
 
